@@ -1,0 +1,30 @@
+[
+    {
+        "id": "comment-1",
+        "post_id": "post-1",
+        "user_id": "user-2",
+        "content": "Block C WiFi is legendary for dying. You're not alone 🤣",
+        "created_at": "2025-02-05T10:10:00Z"
+    },
+    {
+        "id": "comment-2",
+        "post_id": "post-2",
+        "user_id": "user-3",
+        "content": "Prices going up but quality stays the same 😭",
+        "created_at": "2025-02-06T12:40:00Z"
+    },
+    {
+        "id": "comment-3",
+        "post_id": "post-5",
+        "user_id": "user-3",
+        "content": "I’ll check the security office for you.",
+        "created_at": "2025-02-05T15:00:00Z"
+    },
+    {
+        "id": "comment-4",
+        "post_id": "post-6",
+        "user_id": "user-1",
+        "content": "Could be mine! Does it have a NU sticker?",
+        "created_at": "2025-02-06T18:00:00Z"
+    }
+]

@@ -1,0 +1,23 @@
+[
+    {
+        "id": "user-1",
+        "email": "alyona@nu.edu.kz",
+        "username": "alyona",
+        "avatar_url": "https://api.dicebear.com/9.x/bottts/svg?seed=Alyona",
+        "created_at": "2025-02-01T10:00:00Z"
+    },
+    {
+        "id": "user-2",
+        "email": "umarov@nu.edu.kz",
+        "username": "umarov",
+        "avatar_url": "https://api.dicebear.com/9.x/bottts/svg?seed=Umar",
+        "created_at": "2025-02-01T11:00:00Z"
+    },
+    {
+        "id": "user-3",
+        "email": "sara@nu.edu.kz",
+        "username": "sara",
+        "avatar_url": "https://api.dicebear.com/9.x/bottts/svg?seed=Sara",
+        "created_at": "2025-02-02T08:20:00Z"
+    }
+]
