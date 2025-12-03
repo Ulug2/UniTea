@@ -6,6 +6,7 @@ import { Link } from 'expo-router';
 import { AntDesign, Ionicons } from '@expo/vector-icons';
 import nuLogo from "../../assets/images/nu-logo.png";
 import { useTheme } from '../context/ThemeContext';
+import { getPostScore, getCommentScore } from '../utils/votes';
 
 
 type PostListItemProps = {
@@ -13,10 +14,14 @@ type PostListItemProps = {
     isDetailedPost?: boolean; // optional
     user?: { username: string; avatar_url: string | null }; // pass user info for display
     commentCount?: number;
+    isBookmarked?: boolean;
+    onBookmarkPress?: () => void;
 };
 
-export default function PostListItem({ post, isDetailedPost, user, commentCount }: PostListItemProps) {
+export default function PostListItem({ post, isDetailedPost, user, commentCount, isBookmarked, onBookmarkPress }: PostListItemProps) {
     const { theme } = useTheme();
+
+    const postScore = getPostScore(post.id);
 
     const styles = StyleSheet.create({
         link: {
@@ -145,7 +150,7 @@ export default function PostListItem({ post, isDetailedPost, user, commentCount 
                     <View style={styles.footerLeft}>
                         <View style={styles.iconBox}>
                             <MaterialCommunityIcons name="arrow-up-bold-outline" size={19} color={theme.text} />
-                            <Text style={styles.iconText}>{post.upvotes}</Text>
+                            <Text style={styles.iconText}>{postScore}</Text>
                             <View style={styles.divider} />
                             <MaterialCommunityIcons name="arrow-down-bold-outline" size={19} color={theme.text} />
                         </View>
@@ -153,6 +158,21 @@ export default function PostListItem({ post, isDetailedPost, user, commentCount 
                             <MaterialCommunityIcons name="comment-outline" size={19} color={theme.text} />
                             <Text style={styles.iconText}>{commentCount || 0}</Text>
                         </View>
+                        {isDetailedPost && onBookmarkPress && (
+                            <Pressable
+                                onPress={(e) => {
+                                    e.preventDefault();
+                                    onBookmarkPress();
+                                }}
+                                style={styles.iconBox}
+                            >
+                                <MaterialCommunityIcons
+                                    name={isBookmarked ? 'bookmark' : 'bookmark-outline'}
+                                    size={19}
+                                    color={theme.text}
+                                />
+                            </Pressable>
+                        )}
                     </View>
                     <View style={styles.footerRight}>
                         <MaterialCommunityIcons name="share-outline" size={19} color={theme.text} style={styles.iconBox} />

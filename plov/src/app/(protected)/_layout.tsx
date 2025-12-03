@@ -1,14 +1,43 @@
 import { AntDesign, Entypo, MaterialIcons } from "@expo/vector-icons";
-import { Stack, router, Redirect } from "expo-router";
-import { View } from "react-native";
+import { Stack, router } from "expo-router";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from '../../context/AuthContext';
+import { ActivityIndicator, View } from 'react-native';
+import { useEffect } from 'react';
 
 export default function AppLayout() {
     const { theme } = useTheme();
+    const { session, loading } = useAuth();
+
+    useEffect(() => {
+        if (!loading && !session) {
+            router.replace('/(auth)');
+        }
+    }, [session, loading]);
+
+    if (loading) {
+        return (
+            <View style={{ flex: 1, backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator color={theme.primary} />
+            </View>
+        );
+    }
 
     return (
-        <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack screenOptions={{
+            animation: 'fade',
+        }}>
+            <Stack.Screen name="(tabs)" options={{
+                headerShown: false,
+            }} />
+            <Stack.Screen
+                name="create-post"
+                options={{
+                    headerShown: false,
+                    animation: "slide_from_bottom",
+                    presentation: "fullScreenModal",
+                }}
+            />
             <Stack.Screen
                 name="post/[id]"
                 options={{

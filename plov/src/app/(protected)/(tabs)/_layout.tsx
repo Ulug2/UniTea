@@ -16,6 +16,8 @@ export default function TabLayout() {
                 },
                 headerStyle: {
                     backgroundColor: theme.background,
+                    borderBottomWidth: 1,
+                    borderBottomColor: theme.border,
                 },
             }}
         >

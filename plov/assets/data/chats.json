@@ -2,6 +2,9 @@
     {
         "id": "chat-1",
         "post_id": "post-6",
+        "participant_1_id": "user-1",
+        "participant_2_id": "user-3",
+        "last_message_at": "2025-02-06T18:07:00Z",
         "created_at": "2025-02-06T18:05:00Z"
     }
 ]

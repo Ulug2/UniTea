@@ -3,28 +3,250 @@
         "id": "comment-1",
         "post_id": "post-1",
         "user_id": "user-2",
+        "parent_comment_id": null,
         "content": "Block C WiFi is legendary for dying. You're not alone 🤣",
-        "created_at": "2025-02-05T10:10:00Z"
+        "is_deleted": false,
+        "created_at": "2025-02-05T10:10:00Z",
+        "updated_at": "2025-02-05T10:10:00Z"
+    },
+    {
+        "id": "comment-5",
+        "post_id": "post-1",
+        "user_id": "user-1",
+        "parent_comment_id": "comment-1",
+        "content": "Right? I thought it was just me!",
+        "is_deleted": false,
+        "created_at": "2025-02-05T10:12:00Z",
+        "updated_at": "2025-02-05T10:12:00Z"
+    },
+    {
+        "id": "comment-6",
+        "post_id": "post-1",
+        "user_id": "user-3",
+        "parent_comment_id": "comment-1",
+        "content": "It's been like this for weeks now. IT department needs to fix this ASAP",
+        "is_deleted": false,
+        "created_at": "2025-02-05T10:15:00Z",
+        "updated_at": "2025-02-05T10:15:00Z"
+    },
+    {
+        "id": "comment-7",
+        "post_id": "post-1",
+        "user_id": "user-2",
+        "parent_comment_id": "comment-5",
+        "content": "Nah it's definitely not just you. Everyone in Block C has this issue",
+        "is_deleted": false,
+        "created_at": "2025-02-05T10:14:00Z",
+        "updated_at": "2025-02-05T10:14:00Z"
+    },
+    {
+        "id": "comment-8",
+        "post_id": "post-1",
+        "user_id": "user-1",
+        "parent_comment_id": "comment-7",
+        "content": "Has anyone reported this to IT?",
+        "is_deleted": false,
+        "created_at": "2025-02-05T10:16:00Z",
+        "updated_at": "2025-02-05T10:16:00Z"
+    },
+    {
+        "id": "comment-9",
+        "post_id": "post-1",
+        "user_id": "user-3",
+        "parent_comment_id": "comment-8",
+        "content": "I did last week. They said they're looking into it 🙄",
+        "is_deleted": false,
+        "created_at": "2025-02-05T10:18:00Z",
+        "updated_at": "2025-02-05T10:18:00Z"
+    },
+    {
+        "id": "comment-10",
+        "post_id": "post-1",
+        "user_id": null,
+        "parent_comment_id": null,
+        "content": "Try using mobile data or the library WiFi. It's much more stable",
+        "is_deleted": false,
+        "created_at": "2025-02-05T10:20:00Z",
+        "updated_at": "2025-02-05T10:20:00Z"
+    },
+    {
+        "id": "comment-11",
+        "post_id": "post-1",
+        "user_id": "user-2",
+        "parent_comment_id": "comment-10",
+        "content": "Good tip! Library WiFi is solid",
+        "is_deleted": false,
+        "created_at": "2025-02-05T10:22:00Z",
+        "updated_at": "2025-02-05T10:22:00Z"
     },
     {
         "id": "comment-2",
         "post_id": "post-2",
         "user_id": "user-3",
+        "parent_comment_id": null,
         "content": "Prices going up but quality stays the same 😭",
-        "created_at": "2025-02-06T12:40:00Z"
+        "is_deleted": false,
+        "created_at": "2025-02-06T12:40:00Z",
+        "updated_at": "2025-02-06T12:40:00Z"
+    },
+    {
+        "id": "comment-12",
+        "post_id": "post-2",
+        "user_id": "user-1",
+        "parent_comment_id": null,
+        "content": "The pizza was 1500 tenge last semester, now it's 2000 😤",
+        "is_deleted": false,
+        "created_at": "2025-02-06T12:45:00Z",
+        "updated_at": "2025-02-06T12:45:00Z"
+    },
+    {
+        "id": "comment-13",
+        "post_id": "post-2",
+        "user_id": "user-2",
+        "parent_comment_id": "comment-12",
+        "content": "Inflation is hitting everyone I guess",
+        "is_deleted": false,
+        "created_at": "2025-02-06T12:47:00Z",
+        "updated_at": "2025-02-06T12:47:00Z"
+    },
+    {
+        "id": "comment-14",
+        "post_id": "post-2",
+        "user_id": "user-3",
+        "parent_comment_id": "comment-13",
+        "content": "Still cheaper than ordering from outside though",
+        "is_deleted": false,
+        "created_at": "2025-02-06T12:50:00Z",
+        "updated_at": "2025-02-06T12:50:00Z"
+    },
+    {
+        "id": "comment-15",
+        "post_id": "post-2",
+        "user_id": "user-1",
+        "parent_comment_id": "comment-2",
+        "content": "At least they could improve the menu or add more variety",
+        "is_deleted": false,
+        "created_at": "2025-02-06T12:52:00Z",
+        "updated_at": "2025-02-06T12:52:00Z"
     },
     {
         "id": "comment-3",
         "post_id": "post-5",
         "user_id": "user-3",
-        "content": "I’ll check the security office for you.",
-        "created_at": "2025-02-05T15:00:00Z"
+        "parent_comment_id": null,
+        "content": "I'll check the security office for you.",
+        "is_deleted": false,
+        "created_at": "2025-02-05T15:00:00Z",
+        "updated_at": "2025-02-05T15:00:00Z"
+    },
+    {
+        "id": "comment-16",
+        "post_id": "post-5",
+        "user_id": "user-1",
+        "parent_comment_id": "comment-3",
+        "content": "Thanks! Really appreciate it 🙏",
+        "is_deleted": false,
+        "created_at": "2025-02-05T15:05:00Z",
+        "updated_at": "2025-02-05T15:05:00Z"
     },
     {
         "id": "comment-4",
         "post_id": "post-6",
         "user_id": "user-1",
+        "parent_comment_id": null,
         "content": "Could be mine! Does it have a NU sticker?",
-        "created_at": "2025-02-06T18:00:00Z"
+        "is_deleted": false,
+        "created_at": "2025-02-06T18:00:00Z",
+        "updated_at": "2025-02-06T18:00:00Z"
+    },
+    {
+        "id": "comment-17",
+        "post_id": "post-3",
+        "user_id": "user-2",
+        "parent_comment_id": null,
+        "content": "I'm down! What topics are you struggling with?",
+        "is_deleted": false,
+        "created_at": "2025-02-07T09:20:00Z",
+        "updated_at": "2025-02-07T09:20:00Z"
+    },
+    {
+        "id": "comment-18",
+        "post_id": "post-3",
+        "user_id": "user-3",
+        "parent_comment_id": "comment-17",
+        "content": "Integration and series mostly",
+        "is_deleted": false,
+        "created_at": "2025-02-07T09:25:00Z",
+        "updated_at": "2025-02-07T09:25:00Z"
+    },
+    {
+        "id": "comment-19",
+        "post_id": "post-3",
+        "user_id": "user-2",
+        "parent_comment_id": "comment-18",
+        "content": "Perfect! Those are my strong areas. Let's meet at the library tomorrow?",
+        "is_deleted": false,
+        "created_at": "2025-02-07T09:27:00Z",
+        "updated_at": "2025-02-07T09:27:00Z"
+    },
+    {
+        "id": "comment-20",
+        "post_id": "post-3",
+        "user_id": "user-3",
+        "parent_comment_id": "comment-19",
+        "content": "Sounds good! 3pm works?",
+        "is_deleted": false,
+        "created_at": "2025-02-07T09:30:00Z",
+        "updated_at": "2025-02-07T09:30:00Z"
+    },
+    {
+        "id": "comment-21",
+        "post_id": "post-3",
+        "user_id": "user-1",
+        "parent_comment_id": null,
+        "content": "Can I join too? Also need help with Calc II",
+        "is_deleted": false,
+        "created_at": "2025-02-07T09:35:00Z",
+        "updated_at": "2025-02-07T09:35:00Z"
+    },
+    {
+        "id": "comment-22",
+        "post_id": "post-3",
+        "user_id": "user-2",
+        "parent_comment_id": "comment-21",
+        "content": "Absolutely! The more the merrier",
+        "is_deleted": false,
+        "created_at": "2025-02-07T09:37:00Z",
+        "updated_at": "2025-02-07T09:37:00Z"
+    },
+    {
+        "id": "comment-23",
+        "post_id": "post-4",
+        "user_id": "user-1",
+        "parent_comment_id": null,
+        "content": "Finally! The old schedule was terrible",
+        "is_deleted": false,
+        "created_at": "2025-02-08T17:00:00Z",
+        "updated_at": "2025-02-08T17:00:00Z"
+    },
+    {
+        "id": "comment-24",
+        "post_id": "post-4",
+        "user_id": "user-3",
+        "parent_comment_id": "comment-23",
+        "content": "Right? Now I can actually work out before morning classes",
+        "is_deleted": false,
+        "created_at": "2025-02-08T17:05:00Z",
+        "updated_at": "2025-02-08T17:05:00Z"
+    },
+    {
+        "id": "comment-25",
+        "post_id": "post-4",
+        "user_id": "user-2",
+        "parent_comment_id": null,
+        "content": "They also added more equipment! The squat rack is finally free 🎉",
+        "is_deleted": false,
+        "created_at": "2025-02-08T17:10:00Z",
+        "updated_at": "2025-02-08T17:10:00Z"
     }
 ]

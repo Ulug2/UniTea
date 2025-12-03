@@ -1,0 +1,36 @@
+[
+    {
+        "id": "notif-1",
+        "user_id": "user-1",
+        "type": "comment_reply",
+        "related_post_id": "post-1",
+        "related_comment_id": "comment-1",
+        "related_user_id": "user-2",
+        "message": "user-2 commented on your post",
+        "is_read": true,
+        "created_at": "2025-02-05T10:10:00Z"
+    },
+    {
+        "id": "notif-2",
+        "user_id": "user-2",
+        "type": "upvote",
+        "related_post_id": "post-2",
+        "related_comment_id": null,
+        "related_user_id": "user-3",
+        "message": "Your post received an upvote",
+        "is_read": false,
+        "created_at": "2025-02-06T12:35:00Z"
+    },
+    {
+        "id": "notif-3",
+        "user_id": "user-1",
+        "type": "chat_message",
+        "related_post_id": "post-6",
+        "related_comment_id": null,
+        "related_user_id": "user-3",
+        "message": "user-3 sent you a message",
+        "is_read": true,
+        "created_at": "2025-02-06T18:07:00Z"
+    }
+]
+

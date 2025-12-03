@@ -1,18 +1,162 @@
 [
     {
+        "id": "vote-1",
         "user_id": "user-1",
-        "post_id": "post-1"
+        "post_id": "post-1",
+        "comment_id": null,
+        "vote_type": "upvote",
+        "created_at": "2025-02-05T10:05:00Z"
     },
     {
+        "id": "vote-2",
         "user_id": "user-2",
-        "post_id": "post-1"
+        "post_id": "post-1",
+        "comment_id": null,
+        "vote_type": "upvote",
+        "created_at": "2025-02-05T11:20:00Z"
     },
     {
+        "id": "vote-3",
         "user_id": "user-3",
-        "post_id": "post-2"
+        "post_id": "post-2",
+        "comment_id": null,
+        "vote_type": "upvote",
+        "created_at": "2025-02-06T12:35:00Z"
     },
     {
+        "id": "vote-4",
         "user_id": "user-1",
-        "post_id": "post-3"
+        "post_id": "post-3",
+        "comment_id": null,
+        "vote_type": "upvote",
+        "created_at": "2025-02-07T09:30:00Z"
+    },
+    {
+        "id": "vote-5",
+        "user_id": "user-2",
+        "post_id": "post-2",
+        "comment_id": null,
+        "vote_type": "downvote",
+        "created_at": "2025-02-06T13:00:00Z"
+    },
+    {
+        "id": "vote-6",
+        "user_id": "user-3",
+        "post_id": null,
+        "comment_id": "comment-1",
+        "vote_type": "upvote",
+        "created_at": "2025-02-05T10:15:00Z"
+    },
+    {
+        "id": "vote-7",
+        "user_id": "user-1",
+        "post_id": null,
+        "comment_id": "comment-1",
+        "vote_type": "upvote",
+        "created_at": "2025-02-05T10:16:00Z"
+    },
+    {
+        "id": "vote-8",
+        "user_id": "user-2",
+        "post_id": null,
+        "comment_id": "comment-5",
+        "vote_type": "upvote",
+        "created_at": "2025-02-05T10:17:00Z"
+    },
+    {
+        "id": "vote-9",
+        "user_id": "user-3",
+        "post_id": null,
+        "comment_id": "comment-10",
+        "vote_type": "upvote",
+        "created_at": "2025-02-05T10:23:00Z"
+    },
+    {
+        "id": "vote-10",
+        "user_id": "user-1",
+        "post_id": null,
+        "comment_id": "comment-10",
+        "vote_type": "upvote",
+        "created_at": "2025-02-05T10:24:00Z"
+    },
+    {
+        "id": "vote-11",
+        "user_id": "user-2",
+        "post_id": null,
+        "comment_id": "comment-2",
+        "vote_type": "upvote",
+        "created_at": "2025-02-06T12:42:00Z"
+    },
+    {
+        "id": "vote-12",
+        "user_id": "user-1",
+        "post_id": null,
+        "comment_id": "comment-12",
+        "vote_type": "upvote",
+        "created_at": "2025-02-06T12:48:00Z"
+    },
+    {
+        "id": "vote-13",
+        "user_id": "user-3",
+        "post_id": null,
+        "comment_id": "comment-12",
+        "vote_type": "upvote",
+        "created_at": "2025-02-06T12:49:00Z"
+    },
+    {
+        "id": "vote-14",
+        "user_id": "user-2",
+        "post_id": null,
+        "comment_id": "comment-17",
+        "vote_type": "upvote",
+        "created_at": "2025-02-07T09:22:00Z"
+    },
+    {
+        "id": "vote-15",
+        "user_id": "user-1",
+        "post_id": null,
+        "comment_id": "comment-17",
+        "vote_type": "upvote",
+        "created_at": "2025-02-07T09:23:00Z"
+    },
+    {
+        "id": "vote-16",
+        "user_id": "user-3",
+        "post_id": null,
+        "comment_id": "comment-23",
+        "vote_type": "upvote",
+        "created_at": "2025-02-08T17:02:00Z"
+    },
+    {
+        "id": "vote-17",
+        "user_id": "user-2",
+        "post_id": null,
+        "comment_id": "comment-25",
+        "vote_type": "upvote",
+        "created_at": "2025-02-08T17:12:00Z"
+    },
+    {
+        "id": "vote-18",
+        "user_id": "user-1",
+        "post_id": null,
+        "comment_id": "comment-25",
+        "vote_type": "upvote",
+        "created_at": "2025-02-08T17:13:00Z"
+    },
+    {
+        "id": "vote-19",
+        "user_id": "user-3",
+        "post_id": null,
+        "comment_id": "comment-6",
+        "vote_type": "upvote",
+        "created_at": "2025-02-05T10:18:00Z"
+    },
+    {
+        "id": "vote-20",
+        "user_id": "user-2",
+        "post_id": null,
+        "comment_id": "comment-9",
+        "vote_type": "downvote",
+        "created_at": "2025-02-05T10:19:00Z"
     }
 ]
