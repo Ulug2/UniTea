@@ -59,6 +59,20 @@ export default function AppLayout() {
                     animation: "slide_from_bottom",
                 }}
             />
+            <Stack.Screen
+                name="chat/[id]"
+                options={{
+                    headerShown: false,
+                    animation: "none",
+                }}
+            />
+            <Stack.Screen
+                name="lostfoundpost/[id]"
+                options={{
+                    headerShown: false,
+                    animation: "slide_from_right",
+                }}
+            />
         </Stack>
     )
 }

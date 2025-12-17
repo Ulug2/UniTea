@@ -23,13 +23,24 @@
     },
     {
         "id": "user-3",
-        "email": "sara@nu.edu.kz",
-        "username": "sara",
-        "avatar_url": "https://api.dicebear.com/9.x/bottts/svg?seed=Sara",
+        "email": "sarah@nu.edu.kz",
+        "username": "Sarah Kim",
+        "avatar_url": null,
         "bio": null,
         "is_verified": true,
         "is_banned": false,
         "created_at": "2025-02-02T08:20:00Z",
         "updated_at": "2025-02-02T08:20:00Z"
+    },
+    {
+        "id": "user-4",
+        "email": "alex.johnson@nu.edu.kz",
+        "username": "Alex Johnson",
+        "avatar_url": null,
+        "bio": "Business student",
+        "is_verified": true,
+        "is_banned": false,
+        "created_at": "2025-02-01T09:00:00Z",
+        "updated_at": "2025-02-01T09:00:00Z"
     }
 ]

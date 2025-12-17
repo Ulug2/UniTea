@@ -2,25 +2,105 @@
     {
         "id": "msg-1",
         "chat_id": "chat-1",
-        "user_id": "user-1",
-        "content": "Hey! I think those AirPods might be mine!",
-        "is_read": true,
-        "created_at": "2025-02-06T18:06:00Z"
+        "user_id": "anonymous-4721",
+        "content": "Hey, is this still available?",
+        "is_read": false,
+        "created_at": "2025-02-06T18:24:00Z"
     },
     {
         "id": "msg-2",
         "chat_id": "chat-1",
-        "user_id": "user-3",
-        "content": "Hi! Describe the sticker on the case?",
-        "is_read": true,
-        "created_at": "2025-02-06T18:07:00Z"
+        "user_id": "anonymous-4721",
+        "content": "I'm interested in this item",
+        "is_read": false,
+        "created_at": "2025-02-06T18:25:00Z"
     },
     {
         "id": "msg-3",
-        "chat_id": "chat-1",
+        "chat_id": "chat-2",
+        "user_id": "user-3",
+        "content": "Hey, I saw your post about the lost wallet",
+        "is_read": true,
+        "created_at": "2025-02-06T10:30:00Z"
+    },
+    {
+        "id": "msg-4",
+        "chat_id": "chat-2",
         "user_id": "user-1",
-        "content": "It has a small NU logo sticker on the front!",
+        "content": "Yes! Did you find it?",
+        "is_read": true,
+        "created_at": "2025-02-06T10:31:00Z"
+    },
+    {
+        "id": "msg-5",
+        "chat_id": "chat-2",
+        "user_id": "user-3",
+        "content": "I think I might have seen it at the library",
+        "is_read": true,
+        "created_at": "2025-02-06T10:32:00Z"
+    },
+    {
+        "id": "msg-6",
+        "chat_id": "chat-2",
+        "user_id": "user-3",
+        "content": "Can you describe it?",
+        "is_read": true,
+        "created_at": "2025-02-06T10:32:00Z"
+    },
+    {
+        "id": "msg-7",
+        "chat_id": "chat-2",
+        "user_id": "user-1",
+        "content": "It's a brown leather wallet with a NU student ID inside",
+        "is_read": true,
+        "created_at": "2025-02-06T10:39:00Z"
+    },
+    {
+        "id": "msg-8",
+        "chat_id": "chat-2",
+        "user_id": "user-3",
+        "content": "Yes that's the one! It's at the front desk",
+        "is_read": true,
+        "created_at": "2025-02-06T10:35:00Z"
+    },
+    {
+        "id": "msg-9",
+        "chat_id": "chat-2",
+        "user_id": "user-1",
+        "content": "Thank you so much! I'll go pick it up now",
+        "is_read": true,
+        "created_at": "2025-02-06T10:36:00Z"
+    },
+    {
+        "id": "msg-10",
+        "chat_id": "chat-2",
+        "user_id": "user-3",
+        "content": "I found your wallet at the library!",
+        "is_read": true,
+        "created_at": "2025-02-06T17:36:00Z"
+    },
+    {
+        "id": "msg-11",
+        "chat_id": "chat-3",
+        "user_id": "anonymous-8291",
+        "content": "Thanks for the info!",
         "is_read": false,
-        "created_at": "2025-02-06T18:08:00Z"
+        "created_at": "2025-02-06T15:27:00Z"
+    },
+    {
+        "id": "msg-12",
+        "chat_id": "chat-4",
+        "user_id": "user-4",
+        "content": "Do you still need the textbook?",
+        "is_read": true,
+        "created_at": "2025-02-05T18:27:00Z"
+    },
+    {
+        "id": "msg-13",
+        "chat_id": "chat-5",
+        "user_id": "anonymous-1234",
+        "content": "See you there!",
+        "is_read": true,
+        "created_at": "2025-02-04T18:27:00Z"
     }
 ]
