@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { AntDesign, Feather, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../../context/ThemeContext";
 
 export default function TabLayout() {
@@ -18,6 +18,7 @@ export default function TabLayout() {
                     backgroundColor: theme.background,
                     borderBottomWidth: 1,
                     borderBottomColor: theme.border,
+                    height: 100
                 },
             }}
         >
@@ -79,15 +80,6 @@ export default function TabLayout() {
                     },
                     tabBarIcon: ({ color }) => (
                         <Ionicons name="person-outline" size={24} color={color} />
-                    ),
-                    headerRight: () => (
-                        <Feather
-                            name="settings"
-                            size={22}
-                            color={theme.text}
-                            style={{ paddingRight: 10 }}
-                            onPress={() => console.log("sign out")}
-                        />
                     ),
                 }}
             />
