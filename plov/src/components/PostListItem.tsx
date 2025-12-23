@@ -1,27 +1,36 @@
 import { Image, Pressable, Text, View, StyleSheet } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { Post } from '../types/types';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { Link } from 'expo-router';
 import { AntDesign, Ionicons } from '@expo/vector-icons';
 import nuLogo from "../../assets/images/nu-logo.png";
 import { useTheme } from '../context/ThemeContext';
-import { getPostScore, getCommentScore } from '../utils/votes';
+import { Tables } from '../types/database.types';
+import { usePostScore } from '../hooks/usePostScore';
 
+type Post = Tables<'posts'>;
+type User = Tables<'profiles'>;
 
 type PostListItemProps = {
     post: Post;
-    isDetailedPost?: boolean; // optional
-    user?: { username: string; avatar_url: string | null }; // pass user info for display
+    user?: User | null;
+    isDetailedPost?: boolean;
     commentCount?: number;
     isBookmarked?: boolean;
     onBookmarkPress?: () => void;
 };
 
-export default function PostListItem({ post, isDetailedPost, user, commentCount, isBookmarked, onBookmarkPress }: PostListItemProps) {
+export default function PostListItem({
+    post,
+    user,
+    isDetailedPost = false,
+    commentCount,
+    isBookmarked = false,
+    onBookmarkPress,
+}: PostListItemProps) {
     const { theme } = useTheme();
 
-    const postScore = getPostScore(post.id);
+    const postScore = usePostScore(post.id);
 
     const styles = StyleSheet.create({
         link: {
@@ -111,6 +120,8 @@ export default function PostListItem({ post, isDetailedPost, user, commentCount,
         },
     });
 
+    const createdAt = post.created_at ? new Date(post.created_at) : new Date();
+
     return (
         <Link href={`/post/${post.id}`} asChild style={styles.link}>
             <Pressable style={styles.card}>
@@ -128,7 +139,7 @@ export default function PostListItem({ post, isDetailedPost, user, commentCount,
                     )}
                     <Text style={styles.time}>
                         <AntDesign name="clock-circle" size={12} color={theme.secondaryText} />
-                        <Text> {formatDistanceToNowStrict(new Date(post.created_at))}</Text>
+                        <Text> {formatDistanceToNowStrict(createdAt)}</Text>
                     </Text>
                 </View>
 

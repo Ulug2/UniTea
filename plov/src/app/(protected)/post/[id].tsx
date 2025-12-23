@@ -1,234 +1,390 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { useState, useRef, useMemo } from "react";
+import { useLocalSearchParams } from "expo-router";
 import {
-    Text,
-    View,
-    TextInput,
-    Pressable,
-    KeyboardAvoidingView,
-    Platform,
-    FlatList,
-    StyleSheet,
-} from 'react-native';
-import posts from '../../../../assets/data/posts.json';
-import comments from '../../../../assets/data/comments.json';
-import users from '../../../../assets/data/user.json';
-import bookmarks from '../../../../assets/data/bookmarks.json';
-import PostListItem from '../../../components/PostListItem';
-import CommentListItem from '../../../components/CommentListItem';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useTheme } from '../../../context/ThemeContext';
-import { getPostScore } from '../../../utils/votes';
-import { Comment, User } from '../../../types/types';
+  Text,
+  View,
+  TextInput,
+  Pressable,
+  KeyboardAvoidingView,
+  Platform,
+  FlatList,
+  StyleSheet,
+  ActivityIndicator,
+} from "react-native";
+import { useQuery } from "@tanstack/react-query";
+import PostListItem from "../../../components/PostListItem";
+import CommentListItem from "../../../components/CommentListItem";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useTheme } from "../../../context/ThemeContext";
+import { Tables } from "../../../types/database.types";
+import { supabase } from "../../../lib/supabase";
 
+type Post = Tables<"posts">;
+type Comment = Tables<"comments">;
+type Profile = Tables<"profiles">;
+type Vote = Tables<"votes">;
+type Bookmark = Tables<"bookmarks">;
+
+// Extended type to include the joined user profile and nested replies
 type CommentWithReplies = Comment & {
-    replies?: CommentWithReplies[];
-    user?: User;
+  user: Profile | undefined;
+  replies: CommentWithReplies[];
+  score?: number;
 };
 
 export default function PostDetailed() {
-    const { id } = useLocalSearchParams();
-    const insets = useSafeAreaInsets();
-    const { theme } = useTheme();
+  const { id } = useLocalSearchParams();
+  const postId = typeof id === "string" ? id : id?.[0];
+  const insets = useSafeAreaInsets();
+  const { theme } = useTheme();
 
-    const [comment, setComment] = useState<string>('');
-    const [isInputFocused, setIsInputFocused] = useState<boolean>(false);
-    const inputRef = useRef<TextInput | null>(null);
+  const [commentText, setCommentText] = useState<string>("");
+  const inputRef = useRef<TextInput | null>(null);
 
-    // For demo purposes, using user-1 as current user
-    const currentUserId = 'user-1';
+  // 1. Fetch Post Details
+  const {
+    data: detailedPost,
+    isLoading: isPostLoading,
+    error: postError,
+  } = useQuery<Post | null>({
+    queryKey: ["post", postId],
+    enabled: Boolean(postId),
+    queryFn: async () => {
+      if (!postId) return null;
+      const { data, error } = await supabase
+        .from("posts")
+        .select("*")
+        .eq("id", postId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5, // Post stays fresh for 5 minutes
+    gcTime: 1000 * 60 * 30, // Cache for 30 minutes
+    retry: 2,
+  });
 
-    const detailedPost = posts.find((post) => post.id === id);
+  // 2. Fetch Post Author
+  const {
+    data: postUser,
+    isLoading: isUserLoading,
+    error: userError,
+  } = useQuery<Profile | null>({
+    queryKey: ["post-user", detailedPost?.user_id],
+    enabled: Boolean(detailedPost?.user_id),
+    queryFn: async () => {
+      if (!detailedPost?.user_id) return null;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", detailedPost.user_id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 30, // Profile stays fresh for 30 minutes
+    gcTime: 1000 * 60 * 60, // Cache for 1 hour
+    retry: 2,
+  });
 
-    // Check if post is bookmarked by current user
-    const initialBookmarkState = detailedPost
-        ? bookmarks.some(b => b.user_id === currentUserId && b.post_id === detailedPost.id)
-        : false;
-    const [isBookmarked, setIsBookmarked] = useState(initialBookmarkState);
+  // 3. Fetch Comments (Flat List)
+  const {
+    data: rawComments,
+    isLoading: isCommentsLoading,
+    error: commentsError,
+  } = useQuery<CommentWithReplies[]>({
+    queryKey: ["comments", postId],
+    enabled: Boolean(postId),
+    queryFn: async () => {
+      if (!postId) return [];
 
-    // Get user for the post
-    const postUser = detailedPost ? users.find((u) => u.id === detailedPost.user_id) : null;
+      // Fetch comments
+      const { data: comments, error: commentsErr } = await supabase
+        .from("comments")
+        .select("*")
+        .eq("post_id", postId)
+        .eq("is_deleted", false)
+        .order("created_at", { ascending: true });
 
-    // Calculate vote counts for the post using utility function
-    const postScore = detailedPost ? getPostScore(detailedPost.id) : 0;
+      if (commentsErr) throw commentsErr;
+      if (!comments?.length) return [];
 
-    // Build nested comments structure
-    const nestedComments = useMemo(() => {
-        if (!detailedPost) return [];
+      // Get unique user IDs
+      const userIds = [
+        ...new Set(comments.map((c) => c.user_id).filter(Boolean)),
+      ] as string[];
 
-        const allComments = comments.filter(
-            (comment) => comment.post_id === detailedPost.id && !comment.is_deleted
+      // Fetch all comment authors in one query
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("*")
+        .in("id", userIds);
+
+      const usersById = new Map(profiles?.map((u) => [u.id, u]) || []);
+
+      // Fetch all votes for these comments in one query
+      const commentIds = comments.map((c) => c.id);
+      const { data: votes } = await supabase
+        .from("votes")
+        .select("comment_id, vote_type")
+        .in("comment_id", commentIds);
+
+      // Calculate score for each comment
+      const scoreByCommentId = new Map<string, number>();
+      votes?.forEach((vote) => {
+        if (!vote.comment_id) return;
+        const current = scoreByCommentId.get(vote.comment_id) || 0;
+        scoreByCommentId.set(
+          vote.comment_id,
+          current + (vote.vote_type === "upvote" ? 1 : -1)
         );
+      });
 
-        // Add user info to comments
-        const commentsWithUsers: CommentWithReplies[] = allComments.map(c => ({
-            ...c,
-            user: users.find(u => u.id === c.user_id),
-            replies: [],
-        }));
+      // Map comments with user data
+      return comments.map((c) => ({
+        ...c,
+        user: c.user_id ? usersById.get(c.user_id) : undefined,
+        score: scoreByCommentId.get(c.id) || 0,
+        replies: [],
+      }));
+    },
+    staleTime: 1000 * 30, // Comments stay fresh for 30 seconds
+    gcTime: 1000 * 60 * 15, // Cache for 15 minutes
+    retry: 2,
+  });
 
+  // 4. Transform Flat Comments into a Nested Tree
+  const nestedComments = useMemo(() => {
+    if (!rawComments) return [];
 
-        // Build nested structure
-        const commentMap = new Map<string, CommentWithReplies>();
-        const topLevelComments: CommentWithReplies[] = [];
+    const commentMap: { [key: string]: CommentWithReplies } = {};
+    const roots: CommentWithReplies[] = [];
 
-        // First pass: create map of all comments
-        commentsWithUsers.forEach(comment => {
-            commentMap.set(comment.id, comment);
-        });
+    // First pass: Create a map of all comments and initialize their replies array
+    rawComments.forEach((c) => {
+      commentMap[c.id] = { ...c, replies: [] };
+    });
 
-        // Second pass: build tree structure
-        commentsWithUsers.forEach(comment => {
-            if (comment.parent_comment_id) {
-                const parent = commentMap.get(comment.parent_comment_id);
-                if (parent) {
-                    if (!parent.replies) parent.replies = [];
-                    parent.replies.push(comment);
-                }
-            } else {
-                topLevelComments.push(comment);
-            }
-        });
+    // Second pass: Link children to parents
+    rawComments.forEach((c) => {
+      if (c.parent_comment_id) {
+        // If it has a parent, push it to the parent's replies array
+        if (commentMap[c.parent_comment_id]) {
+          commentMap[c.parent_comment_id].replies.push(commentMap[c.id]);
+        }
+      } else {
+        // If no parent, it's a top-level comment
+        roots.push(commentMap[c.id]);
+      }
+    });
 
-        return topLevelComments;
-    }, [detailedPost?.id]);
+    return roots;
+  }, [rawComments]);
 
-    if (!detailedPost) {
-        return (
-            <View style={[styles.container, { backgroundColor: theme.background }]}>
-                <Text style={[styles.errorText, { color: theme.text }]}>Post Not Found!</Text>
-            </View>
-        );
-    }
+  // Get current user
+  const { data: currentUser } = useQuery({
+    queryKey: ["current-user"],
+    queryFn: async () => {
+      const { data } = await supabase.auth.getSession();
+      return data.session?.user.id || null;
+    },
+    staleTime: Infinity, // Session doesn't change
+    gcTime: Infinity, // Keep in cache forever
+  });
 
-    const toggleBookmark = () => {
-        setIsBookmarked(!isBookmarked);
-        console.log(isBookmarked ? 'Removed bookmark' : 'Added bookmark');
-        // In production, this would make an API call to update the bookmarks table
-    };
+  // Fetch bookmarks for this post
+  const { data: postBookmarks = [] } = useQuery<Bookmark[]>({
+    queryKey: ["bookmarks", postId],
+    enabled: Boolean(postId),
+    queryFn: async () => {
+      if (!postId) return [];
+      const { data, error } = await supabase
+        .from("bookmarks")
+        .select("*")
+        .eq("post_id", postId);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 1000 * 60, // Bookmarks stay fresh for 1 minute
+    gcTime: 1000 * 60 * 30, // Cache for 30 minutes
+    retry: 2,
+  });
 
-    // useCallback with memo inside CommentListItem prevents re-renders when replying to a comment
-    const handleReplyPress = useCallback((commentId: string) => {
-        console.log('Reply to comment:', commentId);
-        inputRef.current?.focus();
-    }, []);
+  // Calculate if current user has bookmarked this post
+  const isBookmarked = useMemo(() => {
+    if (!currentUser) return false;
+    return postBookmarks.some((b) => b.user_id === currentUser);
+  }, [postBookmarks, currentUser]);
 
+  const postScore = 0;
+
+  const isLoading = isPostLoading || isUserLoading || isCommentsLoading;
+
+  if (isLoading) {
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={{ flex: 1, backgroundColor: theme.background }}
-            keyboardVerticalOffset={insets.top + 10}
-        >
-            <FlatList
-                ListHeaderComponent={
-                    <PostListItem
-                        post={{ ...detailedPost, upvotes: postScore } as any}
-                        isDetailedPost
-                        user={postUser || undefined}
-                        commentCount={nestedComments.length}
-                        isBookmarked={isBookmarked}
-                        onBookmarkPress={toggleBookmark}
-                    />
-                }
-                data={nestedComments}
-                renderItem={({ item }) => (
-                    <CommentListItem
-                        comment={item}
-                        depth={0}
-                        handleReplyPress={handleReplyPress}
-                    />
-                )}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={{ paddingBottom: 10 }}
-            />
-            {/* POST A COMMENT */}
-            <View
-                style={[
-                    styles.inputContainer,
-                    {
-                        paddingBottom: insets.bottom,
-                        backgroundColor: theme.card,
-                        borderTopColor: theme.border,
-                        shadowColor: theme.text,
-                    },
-                ]}
-            >
-                <View style={styles.inputRow}>
-                    <TextInput
-                        ref={inputRef}
-                        placeholder="Comment..."
-                        placeholderTextColor={theme.secondaryText}
-                        value={comment}
-                        onChangeText={(text) => setComment(text)}
-                        style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-                        multiline
-                        onFocus={() => setIsInputFocused(true)}
-                        onBlur={() => setIsInputFocused(false)}
-                    />
-                    <Pressable
-                        disabled={!comment}
-                        onPress={() => console.log('Reply pressed')}
-                        style={[
-                            styles.replyButton,
-                            {
-                                backgroundColor: !comment ? theme.border : theme.primary,
-                            },
-                        ]}
-                    >
-                        <MaterialCommunityIcons
-                            name="send"
-                            size={20}
-                            color="#fff"
-                        />
-                    </Pressable>
-                </View>
-            </View>
-        </KeyboardAvoidingView>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
     );
+  }
+
+  if (postError || userError || commentsError) {
+    console.log("post error:", postError);
+    console.log("user error: ", userError);
+    console.log("comments error: ", commentsError);
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <Text style={[styles.errorText, { color: theme.text }]}>
+          Failed to load content.
+        </Text>
+      </View>
+    );
+  }
+
+  if (!detailedPost) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <Text style={[styles.errorText, { color: theme.text }]}>
+          Post Not Found!
+        </Text>
+      </View>
+    );
+  }
+
+  const toggleBookmark = () => {
+    console.log(isBookmarked ? "Remove bookmark" : "Add bookmark");
+    // TODO: Implement bookmark mutation
+  };
+
+  const handleReplyPress = (commentId: string) => {
+    console.log("Reply to comment:", commentId);
+    // You might want to store this ID in state to know which comment is being replied to
+    inputRef.current?.focus();
+  };
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={{ flex: 1, backgroundColor: theme.background }}
+      keyboardVerticalOffset={insets.top + 10}
+    >
+      <FlatList
+        ListHeaderComponent={
+          <PostListItem
+            post={{ ...detailedPost, upvotes: postScore } as any}
+            isDetailedPost
+            user={postUser || undefined}
+            commentCount={rawComments?.length || 0}
+            isBookmarked={isBookmarked}
+            onBookmarkPress={toggleBookmark}
+          />
+        }
+        // Pass the nested tree (roots) to the FlatList
+        data={nestedComments}
+        renderItem={({ item }) => (
+          // Important: Your CommentListItem needs to be able to render 'item.replies' recursively
+          <CommentListItem
+            comment={item}
+            depth={0}
+            handleReplyPress={handleReplyPress}
+          />
+        )}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{ paddingBottom: 100 }} // Extra padding for input
+      />
+
+      {/* POST A COMMENT */}
+      <View
+        style={[
+          styles.inputContainer,
+          {
+            paddingBottom: insets.bottom + 10, // Added a little extra padding
+            backgroundColor: theme.card,
+            borderTopColor: theme.border,
+            shadowColor: theme.text,
+          },
+        ]}
+      >
+        <View style={styles.inputRow}>
+          <TextInput
+            ref={inputRef}
+            placeholder="Comment..."
+            placeholderTextColor={theme.secondaryText}
+            value={commentText}
+            onChangeText={setCommentText}
+            style={[
+              styles.input,
+              { backgroundColor: theme.background, color: theme.text },
+            ]}
+            multiline
+          />
+          <Pressable
+            disabled={!commentText.trim()}
+            onPress={() => console.log("Send pressed for:", commentText)}
+            style={[
+              styles.replyButton,
+              {
+                backgroundColor: !commentText.trim()
+                  ? theme.border
+                  : theme.primary,
+              },
+            ]}
+          >
+            <MaterialCommunityIcons name="send" size={20} color="#fff" />
+          </Pressable>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  errorText: {
+    fontSize: 16,
+    fontFamily: "Poppins_400Regular",
+  },
+  inputContainer: {
+    borderTopWidth: 1,
+    padding: 10,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    shadowOffset: {
+      width: 0,
+      height: -3,
     },
-    errorText: {
-        fontSize: 16,
-        fontFamily: 'Poppins_400Regular',
-    },
-    inputContainer: {
-        borderTopWidth: 1,
-        padding: 10,
-        borderRadius: 10,
-        shadowOffset: {
-            width: 0,
-            height: -3,
-        },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
-        elevation: 4,
-    },
-    inputRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        gap: 10,
-    },
-    input: {
-        flex: 1,
-        padding: 10,
-        borderRadius: 20,
-        fontFamily: 'Poppins_400Regular',
-        fontSize: 15,
-        minHeight: 40,
-        maxHeight: 100,
-    },
-    replyButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 10,
+    position: "absolute",
+    bottom: 0,
+    width: "100%",
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 10,
+  },
+  input: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 20,
+    fontFamily: "Poppins_400Regular",
+    fontSize: 15,
+    minHeight: 40,
+    maxHeight: 100,
+  },
+  replyButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 2, // Align visually with input
+  },
 });

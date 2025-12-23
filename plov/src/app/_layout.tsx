@@ -4,11 +4,14 @@ import { ActivityIndicator, View } from "react-native";
 import { ThemeProvider } from "../context/ThemeContext";
 import { AuthProvider } from '../context/AuthContext';
 import { lightTheme } from "../theme";
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // import { useEffect } from 'react';
 // import * as Linking from 'expo-linking';
 // import { supabase } from '../lib/supabase';
 
 // UNCOMMENT THIS WHEN DEPLOYING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+const queryClient = new QueryClient();
 
 export default function RootLayout() {
     const [fontsLoaded] = useFonts({
@@ -56,10 +59,12 @@ export default function RootLayout() {
     }
 
     return (
-        <ThemeProvider>
-            <AuthProvider>
-                <Slot />
-            </AuthProvider>
-        </ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+            <ThemeProvider>
+                <AuthProvider>
+                    <Slot />
+                </AuthProvider>
+            </ThemeProvider>
+        </QueryClientProvider>
     )
 }
