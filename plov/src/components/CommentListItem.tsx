@@ -12,6 +12,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { useTheme } from "../context/ThemeContext";
 import { Tables } from "../types/database.types";
 import nuLogo from "../../assets/images/nu-logo.png";
+import SupabaseImage from "./SupabaseImage";
 
 type Profile = Tables<"profiles">;
 type Comment = Tables<"comments">;
@@ -58,14 +59,22 @@ const CommentListItem = ({
       {/* User Info */}
       <View style={styles.userRow}>
         <View style={styles.userInfo}>
-          <Image
-            source={
-              comment.user?.avatar_url
-                ? { uri: comment.user.avatar_url }
-                : nuLogo
-            }
-            style={styles.avatar}
-          />
+          {comment.user?.avatar_url ? (
+            comment.user.avatar_url.startsWith("http") ? (
+              <Image
+                source={{ uri: comment.user.avatar_url }}
+                style={styles.avatar}
+              />
+            ) : (
+              <SupabaseImage
+                path={comment.user.avatar_url}
+                bucket="avatars"
+                style={styles.avatar}
+              />
+            )
+          ) : (
+            <Image source={nuLogo} style={styles.avatar} />
+          )}
           <Text style={[styles.username, { color: theme.text }]}>
             {comment.user?.username || "Unknown"}
           </Text>

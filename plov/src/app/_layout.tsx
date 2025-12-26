@@ -60,11 +60,11 @@ export default function RootLayout() {
 
     return (
         <QueryClientProvider client={queryClient}>
-            <ThemeProvider>
-                <AuthProvider>
-                    <Slot />
-                </AuthProvider>
-            </ThemeProvider>
+        <ThemeProvider>
+            <AuthProvider>
+                <Slot />
+            </AuthProvider>
+        </ThemeProvider>
         </QueryClientProvider>
     )
 }

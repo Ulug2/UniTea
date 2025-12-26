@@ -8,12 +8,14 @@ import {
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
 import { router } from "expo-router";
+import SupabaseImage from "./SupabaseImage";
 
 type Post = Tables<"posts">;
+type User = Tables<"profiles">;
 
 type LostFoundListItemProps = {
   post: Post;
-  user?: { username: string; avatar_url: string | null };
+  user?: User | null;
 };
 
 export default function LostFoundListItem({
@@ -127,10 +129,18 @@ export default function LostFoundListItem({
       <View style={styles.header}>
         <View style={styles.userInfo}>
           {user?.avatar_url ? (
-            <Image
-              source={{ uri: user.avatar_url }}
-              style={styles.avatarImage}
-            />
+            user.avatar_url.startsWith("http") ? (
+              <Image
+                source={{ uri: user.avatar_url }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <SupabaseImage
+                path={user.avatar_url}
+                bucket="avatars"
+                style={styles.avatarImage}
+              />
+            )
           ) : (
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{getInitial()}</Text>
@@ -139,7 +149,9 @@ export default function LostFoundListItem({
           <Text style={styles.username}>{user?.username || "Unknown"}</Text>
         </View>
         <Text style={styles.time}>
-          {formatDistanceToNowStrict(new Date(post.created_at))} ago
+          {post.created_at
+            ? `${formatDistanceToNowStrict(new Date(post.created_at))} ago`
+            : "Recently"}
         </Text>
       </View>
 

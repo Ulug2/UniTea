@@ -3,6 +3,7 @@ import { Tables } from "../types/database.types";
 import { useTheme } from "../context/ThemeContext";
 import { formatDistanceToNowStrict } from "date-fns";
 import { router } from "expo-router";
+import SupabaseImage from "./SupabaseImage";
 
 type Chat = Tables<"chats">;
 type Profile = Tables<"profiles">;
@@ -140,10 +141,18 @@ export default function ChatListItem({
     >
       <View style={styles.avatarContainer}>
         {otherUser?.avatar_url && !isAnonymous ? (
-          <Image
-            source={{ uri: otherUser.avatar_url }}
-            style={styles.avatarImage}
-          />
+          otherUser.avatar_url.startsWith("http") ? (
+            <Image
+              source={{ uri: otherUser.avatar_url }}
+              style={styles.avatarImage}
+            />
+          ) : (
+            <SupabaseImage
+              path={otherUser.avatar_url}
+              bucket="avatars"
+              style={styles.avatarImage}
+            />
+          )
         ) : (
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{getInitial()}</Text>
@@ -159,7 +168,9 @@ export default function ChatListItem({
       <View style={styles.contentContainer}>
         <View style={styles.header}>
           <Text style={styles.username}>{getDisplayName()}</Text>
-          <Text style={styles.time}>{formatTime(chat.last_message_at)}</Text>
+          <Text style={styles.time}>
+            {chat.last_message_at ? formatTime(chat.last_message_at) : "No messages"}
+          </Text>
         </View>
         <Text style={styles.lastMessage} numberOfLines={1}>
           {lastMessage}

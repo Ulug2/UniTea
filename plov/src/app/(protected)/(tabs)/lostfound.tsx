@@ -15,6 +15,45 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 
 type Post = Tables<"posts">;
+type User = Tables<"profiles">;
+type PostWithUser = Post & { user: User | null };
+
+const fetchLostFoundPosts = async (): Promise<PostWithUser[]> => {
+  // Fetch lost & found posts
+  const { data: postsData, error: postsError } = await supabase
+    .from("posts")
+    .select("*")
+    .eq("post_type", "lost_found")
+    .order("created_at", { ascending: false });
+
+  if (postsError) {
+    throw postsError;
+  }
+
+  const posts = (postsData as Post[]) ?? [];
+  const userIds = Array.from(new Set(posts.map((p) => p.user_id)));
+
+  // Fetch profiles for those user_ids
+  let profileMap = new Map<string, User>();
+  if (userIds.length) {
+    const { data: profilesData, error: profilesError } = await supabase
+      .from("profiles")
+      .select(
+        "id, username, avatar_url, bio, is_verified, is_banned, created_at, updated_at"
+      )
+      .in("id", userIds);
+
+    if (profilesError) throw profilesError;
+    profileMap = new Map((profilesData as User[]).map((p) => [p.id, p]));
+  }
+
+  const withUsers: PostWithUser[] = posts.map((p) => ({
+    ...p,
+    user: (profileMap.get(p.user_id) as User | undefined) ?? null,
+  }));
+
+  return withUsers;
+};
 
 export default function LostFoundScreen() {
   const { theme } = useTheme();
@@ -24,18 +63,9 @@ export default function LostFoundScreen() {
     isLoading,
     refetch,
     isRefetching,
-  } = useQuery<Post[]>({
+  } = useQuery<PostWithUser[]>({
     queryKey: ["posts", "lost_found"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("posts")
-        .select("*")
-        .eq("post_type", "lost_found")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: fetchLostFoundPosts,
     staleTime: 1000 * 60 * 2, // Data stays fresh for 2 minutes
     gcTime: 1000 * 60 * 30, // Cache for 30 minutes
     retry: 2, // Retry failed requests twice
@@ -46,7 +76,9 @@ export default function LostFoundScreen() {
       <FlatList
         data={lostFoundPosts}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <LostFoundListItem post={item} />}
+        renderItem={({ item }) => (
+          <LostFoundListItem post={item} user={item.user} />
+        )}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}

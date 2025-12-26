@@ -7,6 +7,7 @@ import nuLogo from "../../assets/images/nu-logo.png";
 import { useTheme } from '../context/ThemeContext';
 import { Tables } from '../types/database.types';
 import { usePostScore } from '../hooks/usePostScore';
+import SupabaseImage from './SupabaseImage';
 
 type Post = Tables<'posts'>;
 type User = Tables<'profiles'>;
@@ -129,10 +130,24 @@ export default function PostListItem({
                 <View style={styles.header}>
                     {user && (
                         <View style={styles.userInfo}>
-                            <Image
-                                source={post.is_anonymous ? nuLogo : { uri: user.avatar_url || undefined }}
-                                style={styles.avatar}
-                            />
+                            {post.is_anonymous ? (
+                                <Image source={nuLogo} style={styles.avatar} />
+                            ) : user.avatar_url ? (
+                                user.avatar_url.startsWith("http") ? (
+                                    <Image
+                                        source={{ uri: user.avatar_url }}
+                                        style={styles.avatar}
+                                    />
+                                ) : (
+                                    <SupabaseImage
+                                        path={user.avatar_url}
+                                        bucket="avatars"
+                                        style={styles.avatar}
+                                    />
+                                )
+                            ) : (
+                                <View style={styles.avatar} />
+                            )}
                             {post.is_anonymous ? <Text style={styles.username}>Anonymous</Text> : <Text style={styles.username}>{user.username}</Text>}
 
                         </View>
@@ -146,7 +161,7 @@ export default function PostListItem({
                 {/* CONTENT */}
                 <View style={{ marginTop: 1 }}>
                     {post.image_url && (
-                        <Image source={{ uri: post.image_url }} style={styles.postImage} />
+                        <SupabaseImage path={post.image_url} bucket="post-images" style={styles.postImage} />
                     )}
                     {post.content && (
                         <Text numberOfLines={isDetailedPost ? undefined : 4} style={styles.contentText}>

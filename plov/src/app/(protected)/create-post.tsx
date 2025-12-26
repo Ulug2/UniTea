@@ -11,19 +11,28 @@ import {
     Pressable,
     StyleSheet,
     Switch,
+    ActivityIndicator,
+    Alert,
 } from 'react-native';
 import { AntDesign, Feather, Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../context/ThemeContext';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
+import { Database } from '../../types/database.types';
+import { uploadImage, getImageUrl } from '../../utils/supabaseImages';
+
+type PostInsert = Database['public']['Tables']['posts']['Insert'];
 
 export default function CreatePostScreen() {
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
     const { type } = useLocalSearchParams<{ type?: string }>();
     const isLostFound = type === 'lost_found';
-
-    console.log('Top inset:', insets.top); // Debug log
+    const { session } = useAuth();
+    const queryClient = useQueryClient();
 
     const [content, setContent] = useState<string>('');
     const [image, setImage] = useState<string | null>(null);
@@ -46,7 +55,7 @@ export default function CreatePostScreen() {
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
             allowsEditing: true,
-            quality: 1,
+            quality: 0.8,
         });
 
         if (!result.canceled) {
@@ -54,31 +63,98 @@ export default function CreatePostScreen() {
         }
     };
 
-    const handlePost = () => {
-        // In production, this would make an API call to create the post
-        if (isLostFound) {
-            console.log('Creating lost & found post:', {
-                content,
-                image,
-                postType: 'lost_found',
-                category,
-                location,
-            });
-        } else {
-            console.log('Creating feed post:', {
-                content,
-                image,
-                isAnonymous,
-                postType: 'feed',
-            });
+
+    // Create post mutation
+    const createPostMutation = useMutation({
+        mutationFn: async ({
+            imagePath,
+            postContent,
+            postLocation,
+            postIsAnonymous,
+            postCategory,
+        }: {
+            imagePath: string | undefined;
+            postContent: string;
+            postLocation: string;
+            postIsAnonymous: boolean;
+            postCategory: 'lost' | 'found';
+        }) => {
+            if (!session?.user) {
+                throw new Error('You must be logged in to create a post.');
+            }
+
+            if (!postContent.trim()) {
+                throw new Error('Content is required');
+            }
+
+            if (isLostFound && !postLocation.trim()) {
+                throw new Error('Location is required for lost & found posts');
+            }
+
+            // Prepare post data
+            const postData: PostInsert = {
+                user_id: session.user.id,
+                content: postContent.trim(),
+                post_type: isLostFound ? 'lost_found' : 'feed',
+                image_url: imagePath || null,
+                is_anonymous: isLostFound ? false : postIsAnonymous, // Lost & Found posts are never anonymous
+                ...(isLostFound && {
+                    category: postCategory,
+                    location: postLocation.trim(),
+                }),
+            };
+
+            const { data, error } = await supabase
+                .from('posts')
+                .insert(postData)
+                .select()
+                .single();
+
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: () => {
+            // Invalidate posts query to refresh the feed
+            queryClient.invalidateQueries({ queryKey: ['posts'] });
+            Alert.alert('Success', 'Post created successfully!');
+            goBack();
+        },
+        onError: (error: Error) => {
+            console.error('Error creating post:', error);
+            Alert.alert('Error', error.message || 'Failed to create post. Please try again.');
+        },
+    });
+
+    const handlePost = async () => {
+        let imagePath: string | undefined = undefined;
+
+        // Upload image first if present
+        if (image) {
+            try {
+                imagePath = await uploadImage(image, supabase);
+            } catch (error: any) {
+                console.error('Image upload error:', error);
+                Alert.alert('Error', error.message || 'Failed to upload image. Please try again.');
+                return;
+            }
         }
-        goBack();
+
+        // Create post with all necessary data
+        createPostMutation.mutate({
+            imagePath,
+            postContent: content,
+            postLocation: location,
+            postIsAnonymous: isAnonymous,
+            postCategory: category,
+        });
     };
 
     // Validation: For feed posts, just content. For L&F posts, content + location
     const isPostButtonDisabled = isLostFound
         ? !content.trim() || !location.trim()
         : !content.trim();
+
+    const isLoading = createPostMutation.isPending;
 
     return (
         <SafeAreaView
@@ -100,16 +176,20 @@ export default function CreatePostScreen() {
                     {isLostFound ? 'Post Lost/Found Item' : 'Create Post'}
                 </Text>
                 <Pressable
-                    disabled={isPostButtonDisabled}
+                    disabled={isPostButtonDisabled || isLoading}
                     onPress={handlePost}
                     style={[
                         styles.postButton,
                         {
-                            backgroundColor: isPostButtonDisabled ? theme.border : theme.primary,
+                            backgroundColor: isPostButtonDisabled || isLoading ? theme.border : theme.primary,
                         },
                     ]}
                 >
-                    <Text style={styles.postButtonText}>Post</Text>
+                    {isLoading ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                        <Text style={styles.postButtonText}>Post</Text>
+                    )}
                 </Pressable>
             </View>
 
