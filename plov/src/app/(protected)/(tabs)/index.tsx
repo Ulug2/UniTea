@@ -20,10 +20,11 @@ type Comment = Tables<"comments">;
 type PostWithUser = Post & { user: User | null; commentCount: number };
 
 const fetchPosts = async (): Promise<PostWithUser[]> => {
-  // Fetch posts
+  // Fetch posts - only feed type posts
   const { data: postsData, error: postsError } = await supabase
     .from("posts")
     .select("*")
+    .eq("post_type", "feed")
     .order("created_at", { ascending: false });
 
   if (postsError) {

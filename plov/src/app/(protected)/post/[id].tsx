@@ -10,14 +10,17 @@ import {
   FlatList,
   StyleSheet,
   ActivityIndicator,
+  Alert,
+  RefreshControl,
 } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PostListItem from "../../../components/PostListItem";
 import CommentListItem from "../../../components/CommentListItem";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "../../../context/ThemeContext";
-import { Tables } from "../../../types/database.types";
+import { useAuth } from "../../../context/AuthContext";
+import { Tables, TablesInsert } from "../../../types/database.types";
 import { supabase } from "../../../lib/supabase";
 
 type Post = Tables<"posts">;
@@ -38,8 +41,12 @@ export default function PostDetailed() {
   const postId = typeof id === "string" ? id : id?.[0];
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
+  const { session } = useAuth();
+  const queryClient = useQueryClient();
 
   const [commentText, setCommentText] = useState<string>("");
+  const [parentCommentId, setParentCommentId] = useState<string | null>(null);
+  const [replyingToUsername, setReplyingToUsername] = useState<string | null>(null);
   const inputRef = useRef<TextInput | null>(null);
 
   // 1. Fetch Post Details
@@ -93,6 +100,8 @@ export default function PostDetailed() {
     data: rawComments,
     isLoading: isCommentsLoading,
     error: commentsError,
+    refetch: refetchComments,
+    isRefetching: isRefetchingComments,
   } = useQuery<CommentWithReplies[]>({
     queryKey: ["comments", postId],
     enabled: Boolean(postId),
@@ -149,7 +158,7 @@ export default function PostDetailed() {
         replies: [],
       }));
     },
-    staleTime: 1000 * 30, // Comments stay fresh for 30 seconds
+    staleTime: 0, // Always refetch when invalidated for immediate updates
     gcTime: 1000 * 60 * 15, // Cache for 15 minutes
     retry: 2,
   });
@@ -183,15 +192,7 @@ export default function PostDetailed() {
   }, [rawComments]);
 
   // Get current user
-  const { data: currentUser } = useQuery({
-    queryKey: ["current-user"],
-    queryFn: async () => {
-      const { data } = await supabase.auth.getSession();
-      return data.session?.user.id || null;
-    },
-    staleTime: Infinity, // Session doesn't change
-    gcTime: Infinity, // Keep in cache forever
-  });
+  const currentUserId = session?.user?.id || null;
 
   // Fetch bookmarks for this post
   const { data: postBookmarks = [] } = useQuery<Bookmark[]>({
@@ -213,9 +214,63 @@ export default function PostDetailed() {
 
   // Calculate if current user has bookmarked this post
   const isBookmarked = useMemo(() => {
-    if (!currentUser) return false;
-    return postBookmarks.some((b) => b.user_id === currentUser);
-  }, [postBookmarks, currentUser]);
+    if (!currentUserId) return false;
+    return postBookmarks.some((b) => b.user_id === currentUserId);
+  }, [postBookmarks, currentUserId]);
+
+  // Mutation to post a comment
+  const createCommentMutation = useMutation({
+    mutationFn: async ({
+      content,
+      parentId,
+    }: {
+      content: string;
+      parentId: string | null;
+    }) => {
+      if (!currentUserId) {
+        throw new Error("You must be logged in to post a comment");
+      }
+
+      if (!postId) {
+        throw new Error("Post ID is required");
+      }
+
+      const commentData: TablesInsert<"comments"> = {
+        post_id: postId,
+        user_id: currentUserId,
+        content: content.trim(),
+        parent_comment_id: parentId,
+        is_deleted: false,
+      };
+
+      const { data, error } = await supabase
+        .from("comments")
+        .insert(commentData)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: async (newComment) => {
+      // Invalidate and immediately refetch comments to get the new comment with user profile
+      await queryClient.refetchQueries({ queryKey: ["comments", postId] });
+
+      // Also invalidate posts to update comment count
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.invalidateQueries({ queryKey: ["post", postId] });
+
+      // Clear input and reset reply state
+      setCommentText("");
+      setParentCommentId(null);
+      setReplyingToUsername(null);
+      inputRef.current?.blur();
+    },
+    onError: (error: Error) => {
+      console.error("Error posting comment:", error);
+      Alert.alert("Error", error.message || "Failed to post comment. Please try again.");
+    },
+  });
 
   const postScore = 0;
 
@@ -258,81 +313,148 @@ export default function PostDetailed() {
   };
 
   const handleReplyPress = (commentId: string) => {
-    console.log("Reply to comment:", commentId);
-    // You might want to store this ID in state to know which comment is being replied to
-    inputRef.current?.focus();
+    // Find the comment to get the username
+    const findComment = (comments: CommentWithReplies[]): CommentWithReplies | null => {
+      for (const comment of comments) {
+        if (comment.id === commentId) {
+          return comment;
+        }
+        if (comment.replies && comment.replies.length > 0) {
+          const found = findComment(comment.replies);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const targetComment = findComment(nestedComments);
+    if (targetComment) {
+      setParentCommentId(commentId);
+      setReplyingToUsername(targetComment.user?.username || "Unknown");
+      inputRef.current?.focus();
+    }
+  };
+
+  const handlePostComment = () => {
+    if (!commentText.trim()) return;
+    if (!currentUserId) {
+      Alert.alert("Error", "You must be logged in to post a comment");
+      return;
+    }
+
+    createCommentMutation.mutate({
+      content: commentText,
+      parentId: parentCommentId,
+    });
+  };
+
+  const handleCancelReply = () => {
+    setParentCommentId(null);
+    setReplyingToUsername(null);
+    setCommentText("");
   };
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={{ flex: 1, backgroundColor: theme.background }}
-      keyboardVerticalOffset={insets.top + 10}
+      keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
     >
-      <FlatList
-        ListHeaderComponent={
-          <PostListItem
-            post={{ ...detailedPost, upvotes: postScore } as any}
-            isDetailedPost
-            user={postUser || undefined}
-            commentCount={rawComments?.length || 0}
-            isBookmarked={isBookmarked}
-            onBookmarkPress={toggleBookmark}
-          />
-        }
-        // Pass the nested tree (roots) to the FlatList
-        data={nestedComments}
-        renderItem={({ item }) => (
-          // Important: Your CommentListItem needs to be able to render 'item.replies' recursively
-          <CommentListItem
-            comment={item}
-            depth={0}
-            handleReplyPress={handleReplyPress}
-          />
-        )}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 100 }} // Extra padding for input
-      />
+      <View style={{ flex: 1 }}>
+        <FlatList
+          ListHeaderComponent={
+            <PostListItem
+              post={{ ...detailedPost, upvotes: postScore } as any}
+              isDetailedPost
+              user={postUser || undefined}
+              commentCount={rawComments?.length || 0}
+              isBookmarked={isBookmarked}
+              onBookmarkPress={toggleBookmark}
+            />
+          }
+          // Pass the nested tree (roots) to the FlatList
+          data={nestedComments}
+          renderItem={({ item }) => (
+            // Important: Your CommentListItem needs to be able to render 'item.replies' recursively
+            <CommentListItem
+              comment={item}
+              depth={0}
+              handleReplyPress={handleReplyPress}
+            />
+          )}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingBottom: 20 }}
+          keyboardShouldPersistTaps="handled"
+          style={{ flex: 1 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetchingComments}
+              onRefresh={refetchComments}
+              tintColor={theme.primary}
+            />
+          }
+        />
 
-      {/* POST A COMMENT */}
-      <View
-        style={[
-          styles.inputContainer,
-          {
-            paddingBottom: insets.bottom + 10, // Added a little extra padding
-            backgroundColor: theme.card,
-            borderTopColor: theme.border,
-            shadowColor: theme.text,
-          },
-        ]}
-      >
-        <View style={styles.inputRow}>
-          <TextInput
-            ref={inputRef}
-            placeholder="Comment..."
-            placeholderTextColor={theme.secondaryText}
-            value={commentText}
-            onChangeText={setCommentText}
-            style={[
-              styles.input,
-              { backgroundColor: theme.background, color: theme.text },
-            ]}
-            multiline
-          />
-          <Pressable
-            disabled={!commentText.trim()}
-            onPress={() => console.log("Send pressed for:", commentText)}
-            style={[
-              styles.replyButton,
-              {
-                backgroundColor: !commentText.trim()
-                  ? theme.border
-                  : theme.primary,
-              },
-            ]}
-          >
-            <MaterialCommunityIcons name="send" size={20} color="#fff" />
-          </Pressable>
+        {/* POST A COMMENT */}
+        <View
+          style={[
+            styles.inputContainer,
+            {
+              paddingBottom: insets.bottom + 10,
+              backgroundColor: theme.card,
+              borderTopColor: theme.border,
+              shadowColor: theme.text,
+            },
+          ]}
+        >
+          {/* Reply indicator */}
+          {replyingToUsername && (
+            <View style={styles.replyIndicator}>
+              <Text style={[styles.replyIndicatorText, { color: theme.secondaryText }]}>
+                Replying to <Text style={{ fontWeight: "600" }}>{replyingToUsername}</Text>
+              </Text>
+              <Pressable onPress={handleCancelReply} style={styles.cancelReplyButton}>
+                <MaterialCommunityIcons
+                  name="close"
+                  size={16}
+                  color={theme.secondaryText}
+                />
+              </Pressable>
+            </View>
+          )}
+          <View style={styles.inputRow}>
+            <TextInput
+              ref={inputRef}
+              placeholder={parentCommentId ? `Reply to ${replyingToUsername}...` : "Comment..."}
+              placeholderTextColor={theme.secondaryText}
+              value={commentText}
+              onChangeText={setCommentText}
+              style={[
+                styles.input,
+                { backgroundColor: theme.background, color: theme.text },
+              ]}
+              multiline
+              editable={!createCommentMutation.isPending}
+            />
+            <Pressable
+              disabled={!commentText.trim() || createCommentMutation.isPending}
+              onPress={handlePostComment}
+              style={[
+                styles.replyButton,
+                {
+                  backgroundColor: !commentText.trim() || createCommentMutation.isPending
+                    ? theme.border
+                    : theme.primary,
+                },
+              ]}
+            >
+              {createCommentMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <MaterialCommunityIcons name="send" size={20} color="#fff" />
+              )}
+            </Pressable>
+          </View>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -361,8 +483,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 10,
-    position: "absolute",
-    bottom: 0,
     width: "100%",
   },
   inputRow: {
@@ -386,5 +506,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 2, // Align visually with input
+  },
+  replyIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 8,
+    backgroundColor: "transparent",
+  },
+  replyIndicatorText: {
+    fontSize: 12,
+    fontFamily: "Poppins_400Regular",
+  },
+  cancelReplyButton: {
+    padding: 4,
   },
 });

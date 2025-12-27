@@ -1,4 +1,4 @@
-import { useState, memo } from "react";
+import { useState, useEffect, memo } from "react";
 import {
   View,
   Text,
@@ -6,11 +6,15 @@ import {
   FlatList,
   Pressable,
   StyleSheet,
+  LayoutAnimation,
+  UIManager,
+  Platform,
 } from "react-native";
 import { Entypo, Octicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { formatDistanceToNowStrict } from "date-fns";
 import { useTheme } from "../context/ThemeContext";
 import { Tables } from "../types/database.types";
+import { useVote } from "../hooks/useVote";
 import nuLogo from "../../assets/images/nu-logo.png";
 import SupabaseImage from "./SupabaseImage";
 
@@ -45,7 +49,25 @@ const CommentListItem = ({
     replyCount <= 3 && replyCount > 0
   );
 
-  const commentScore = comment.score || 0;
+  // Enable layout animation for Android
+  if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+
+  // Fix state synchronization: Auto-show replies when new replies are added
+  useEffect(() => {
+    // If reply count increases and is <= 3, automatically show replies
+    if (replyCount > 0 && replyCount <= 3 && !showReplies) {
+      // Trigger smooth layout animation before updating state
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setShowReplies(true);
+    }
+  }, [replyCount, showReplies]);
+
+  // Use vote hook for comment voting
+  const { userVote, score: commentScore, handleUpvote, handleDownvote, isVoting } = useVote({
+    commentId: comment.id,
+  });
 
   return (
     <View
@@ -94,15 +116,19 @@ const CommentListItem = ({
             </>
           )}
           <Text style={[styles.dot, { color: theme.secondaryText }]}>•</Text>
-          {/* <Text style={[styles.time, { color: theme.secondaryText }]}>
-            {formatDistanceToNowStrict(new Date(comment.created_at))}
-          </Text> */}
+          <Text style={[styles.time, { color: theme.secondaryText }]}>
+            {comment.created_at
+              ? formatDistanceToNowStrict(new Date(comment.created_at))
+              : "Recently"}
+          </Text>
         </View>
-        <Entypo
-          name="dots-three-horizontal"
-          size={15}
-          color={theme.secondaryText}
-        />
+        <View style={styles.threeDots}>
+          <Entypo
+            name="dots-three-horizontal"
+            size={15}
+            color={theme.secondaryText}
+          />
+        </View>
       </View>
 
       {/* Comment Content */}
@@ -122,19 +148,29 @@ const CommentListItem = ({
           </Text>
         </Pressable>
         <View style={styles.votes}>
-          <MaterialCommunityIcons
-            name="arrow-up-bold-outline"
-            size={18}
-            color={theme.secondaryText}
-          />
+          <Pressable
+            onPress={handleUpvote}
+            disabled={isVoting}
+          >
+            <MaterialCommunityIcons
+              name={userVote === 'upvote' ? 'arrow-up-bold' : 'arrow-up-bold-outline'}
+              size={18}
+              color={userVote === 'upvote' ? theme.primary : theme.secondaryText}
+            />
+          </Pressable>
           <Text style={[styles.voteCount, { color: theme.secondaryText }]}>
             {commentScore}
           </Text>
-          <MaterialCommunityIcons
-            name="arrow-down-bold-outline"
-            size={18}
-            color={theme.secondaryText}
-          />
+          <Pressable
+            onPress={handleDownvote}
+            disabled={isVoting}
+          >
+            <MaterialCommunityIcons
+              name={userVote === 'downvote' ? 'arrow-down-bold' : 'arrow-down-bold-outline'}
+              size={18}
+              color={userVote === 'downvote' ? theme.primary : theme.secondaryText}
+            />
+          </Pressable>
         </View>
       </View>
 
@@ -175,6 +211,14 @@ const CommentListItem = ({
               </Text>
             </Pressable>
           )}
+          {/* 
+            SCALABILITY WARNING:
+            scrollEnabled={false} disables virtualization, meaning all child comments
+            are rendered simultaneously. This is fine for shallow threads (3-10 replies),
+            but will cause performance issues if a single comment has 50+ expanded children
+            as they will all render at once. Consider implementing pagination or virtualized
+            scrolling for deeply nested comment threads.
+          */}
           <FlatList
             data={comment.replies}
             keyExtractor={(reply) => reply.id}
@@ -197,7 +241,7 @@ const CommentListItem = ({
 const styles = StyleSheet.create({
   container: {
     marginTop: 0,
-    paddingHorizontal: 15,
+    paddingLeft: 15,
     paddingVertical: 6,
     gap: 5,
   },
@@ -230,6 +274,9 @@ const styles = StyleSheet.create({
   dot: {
     fontSize: 13,
   },
+  threeDots: {
+    marginRight: 15,
+  },
   time: {
     fontSize: 13,
     fontFamily: "Poppins_400Regular",
@@ -243,6 +290,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginRight: 15, // Consistent right margin for all comments
   },
   actionButton: {
     flexDirection: "row",

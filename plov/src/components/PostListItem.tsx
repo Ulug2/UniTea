@@ -6,7 +6,7 @@ import { AntDesign, Ionicons } from '@expo/vector-icons';
 import nuLogo from "../../assets/images/nu-logo.png";
 import { useTheme } from '../context/ThemeContext';
 import { Tables } from '../types/database.types';
-import { usePostScore } from '../hooks/usePostScore';
+import { useVote } from '../hooks/useVote';
 import SupabaseImage from './SupabaseImage';
 
 type Post = Tables<'posts'>;
@@ -31,7 +31,9 @@ export default function PostListItem({
 }: PostListItemProps) {
     const { theme } = useTheme();
 
-    const postScore = usePostScore(post.id);
+    const { userVote, score: postScore, handleUpvote, handleDownvote, isVoting } = useVote({
+        postId: post.id,
+    });
 
     const styles = StyleSheet.create({
         link: {
@@ -175,10 +177,36 @@ export default function PostListItem({
                 <View style={styles.footer}>
                     <View style={styles.footerLeft}>
                         <View style={styles.iconBox}>
-                            <MaterialCommunityIcons name="arrow-up-bold-outline" size={19} color={theme.text} />
+                            <Pressable
+                                onPress={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleUpvote();
+                                }}
+                                disabled={isVoting}
+                            >
+                                <MaterialCommunityIcons
+                                    name={userVote === 'upvote' ? 'arrow-up-bold' : 'arrow-up-bold-outline'}
+                                    size={19}
+                                    color={userVote === 'upvote' ? theme.primary : theme.text}
+                                />
+                            </Pressable>
                             <Text style={styles.iconText}>{postScore}</Text>
                             <View style={styles.divider} />
-                            <MaterialCommunityIcons name="arrow-down-bold-outline" size={19} color={theme.text} />
+                            <Pressable
+                                onPress={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleDownvote();
+                                }}
+                                disabled={isVoting}
+                            >
+                                <MaterialCommunityIcons
+                                    name={userVote === 'downvote' ? 'arrow-down-bold' : 'arrow-down-bold-outline'}
+                                    size={19}
+                                    color={userVote === 'downvote' ? theme.primary : theme.text}
+                                />
+                            </Pressable>
                         </View>
                         <View style={styles.iconBox}>
                             <MaterialCommunityIcons name="comment-outline" size={19} color={theme.text} />
