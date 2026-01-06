@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { router } from 'expo-router';
@@ -17,8 +17,8 @@ export default function AuthLayout() {
 
     if (loading) {
         return (
-            <View style={{ flex: 1, backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator color={theme.primary} />
+            <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
+                <ActivityIndicator color={theme.primary} size="large" />
             </View>
         );
     }
@@ -32,3 +32,11 @@ export default function AuthLayout() {
         </Stack>
     );
 }
+
+const styles = StyleSheet.create({
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+});

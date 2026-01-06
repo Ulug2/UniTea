@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocalSearchParams, router } from "expo-router";
 import {
   View,
@@ -9,19 +9,35 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../../context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
-import { format, isToday, isYesterday } from "date-fns";
+import { format, isToday, isYesterday, startOfDay, isSameDay } from "date-fns";
 import { Tables } from "../../../types/database.types";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
+import ChatDetailSkeleton from "../../../components/ChatDetailSkeleton";
 
 type Chat = Tables<"chats">;
 type ChatMessage = Tables<"chat_messages">;
 type Profile = Tables<"profiles">;
+
+const MESSAGES_PER_PAGE = 20;
+
+// Simple hash function for deterministic anonymous user numbers
+function hashStringToNumber(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash % 9000) + 1000;
+}
 
 export default function ChatDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -30,9 +46,10 @@ export default function ChatDetailScreen() {
   const [message, setMessage] = useState("");
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
+  const queryClient = useQueryClient();
 
   // Fetch chat data
-  const { data: chat } = useQuery<Chat | null>({
+  const { data: chat, isLoading: isLoadingChat } = useQuery<Chat | null>({
     queryKey: ["chat", id],
     queryFn: async () => {
       if (!id) return null;
@@ -61,7 +78,7 @@ export default function ChatDetailScreen() {
   const isAnonymous = otherUserId?.startsWith("anonymous-");
 
   // Fetch other user profile
-  const { data: otherUser } = useQuery<Profile | null>({
+  const { data: otherUser, isLoading: isLoadingUser } = useQuery<Profile | null>({
     queryKey: ["chat-other-user", otherUserId],
     queryFn: async () => {
       if (!otherUserId || isAnonymous) return null;
@@ -81,35 +98,176 @@ export default function ChatDetailScreen() {
     retry: 2,
   });
 
-  const otherUserName = isAnonymous
-    ? `Anonymous User #${Math.floor(Math.random() * 9000) + 1000}`
-    : otherUser?.username || "Unknown User";
+  // Fix anonymous name flickering with deterministic generation
+  const otherUserName = useMemo(() => {
+    if (isAnonymous && otherUserId) {
+      return `Anonymous User #${hashStringToNumber(otherUserId)}`;
+    }
+    return otherUser?.username || "Unknown User";
+  }, [isAnonymous, otherUserId, otherUser?.username]);
 
-  const otherUserInitial = isAnonymous
-    ? "?"
-    : otherUser?.username?.charAt(0).toUpperCase() || "?";
+  const otherUserInitial = useMemo(() => {
+    if (isAnonymous) return "?";
+    return otherUser?.username?.charAt(0).toUpperCase() || "?";
+  }, [isAnonymous, otherUser?.username]);
 
-  // Fetch messages for this chat
-  const { data: messages = [] } = useQuery<ChatMessage[]>({
+  // Fetch messages with pagination using useInfiniteQuery
+  const {
+    data: messagesData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: isLoadingMessages,
+  } = useInfiniteQuery({
     queryKey: ["chat-messages", id],
-    queryFn: async () => {
+    queryFn: async ({ pageParam = 0 }) => {
       if (!id) return [];
+
+      const from = pageParam * MESSAGES_PER_PAGE;
+      const to = from + MESSAGES_PER_PAGE - 1;
 
       const { data, error } = await supabase
         .from("chat_messages")
         .select("*")
         .eq("chat_id", id)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false }) // Fetch newest first for pagination
+        .range(from, to);
 
       if (error) throw error;
       return data || [];
     },
+    getNextPageParam: (lastPage, allPages) => {
+      // If last page has full page of results, there might be more
+      if (lastPage.length === MESSAGES_PER_PAGE) {
+        return allPages.length;
+      }
+      return undefined;
+    },
     enabled: Boolean(id),
-    staleTime: 1000 * 5, // Messages stay fresh for 5 seconds
-    gcTime: 1000 * 60 * 15, // Cache for 15 minutes
-    refetchInterval: 3000, // Poll every 3 seconds for new messages
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 15,
+    initialPageParam: 0,
     retry: 2,
   });
+
+  // Flatten messages (keep newest first for inverted list)
+  const messages = useMemo(() => {
+    if (!messagesData) return [];
+    return messagesData.pages.flat();
+  }, [messagesData]);
+
+  // Real-time subscription for new messages
+  useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase
+      .channel(`chat-${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+          filter: `chat_id=eq.${id}`,
+        },
+        (payload) => {
+          // New message received - add to cache immediately
+          queryClient.setQueryData(
+            ["chat-messages", id],
+            (oldData: any) => {
+              if (!oldData) return oldData;
+
+              // Add new message to first page (most recent)
+              const newPages = [...oldData.pages];
+              if (newPages[0]) {
+                newPages[0] = [payload.new, ...newPages[0]];
+              } else {
+                newPages[0] = [payload.new];
+              }
+
+              return {
+                ...oldData,
+                pages: newPages,
+              };
+            }
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "chat_messages",
+          filter: `chat_id=eq.${id}`,
+        },
+        () => {
+          // Message updated (e.g., read status) - invalidate to refetch
+          queryClient.invalidateQueries({ queryKey: ["chat-messages", id] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, queryClient]);
+
+  // Mark messages as read when opening chat - optimized
+  useEffect(() => {
+    if (!id || !currentUserId || messages.length === 0) return;
+
+    const markAsRead = async () => {
+      // Check if there are any unread messages from other user
+      const hasUnread = messages.some(
+        (msg) => !msg.is_read && msg.user_id !== currentUserId
+      );
+
+      if (!hasUnread) return;
+
+      // Mark all unread messages as read (single query)
+      const { error } = await supabase
+        .from("chat_messages")
+        .update({ is_read: true })
+        .eq("chat_id", id)
+        .eq("is_read", false)
+        .neq("user_id", currentUserId);
+
+      if (error) {
+        console.error("Error marking messages as read:", error);
+        return;
+      }
+
+      // Optimistically update cache
+      queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
+        if (!oldData) return oldData;
+
+        const newPages = oldData.pages.map((page: ChatMessage[]) =>
+          page.map((msg) => {
+            if (msg.user_id !== currentUserId && !msg.is_read) {
+              return { ...msg, is_read: true };
+            }
+            return msg;
+          })
+        );
+
+        return {
+          ...oldData,
+          pages: newPages,
+        };
+      });
+
+      // Refresh chat summaries to update unread counts (don't refetch to preserve scroll)
+      queryClient.invalidateQueries({
+        queryKey: ["chat-summaries"],
+        refetchType: 'none'
+      });
+    };
+
+    // Debounce to avoid marking as read too quickly
+    const timer = setTimeout(markAsRead, 800);
+    return () => clearTimeout(timer);
+  }, [id, currentUserId, messages, queryClient]);
 
   const getMessageTime = (dateString: string | null) => {
     if (!dateString) return "";
@@ -125,24 +283,174 @@ export default function ChatDetailScreen() {
     return format(date, "MMMM d, yyyy");
   };
 
+  /**
+   * Determines if a date divider should be shown between messages
+   * 
+   * Context: Messages are stored newest-first and rendered with inverted FlatList
+   * - Data: [msg1(today), msg2(yesterday), msg3(yesterday)]
+   * - Visual: msg3 (bottom) → msg2 → msg1 (top)
+   * 
+   * Logic: Show divider when current message is from a different day than next (older) message
+   * The divider is rendered AFTER the message in JSX, so with inverted list it appears
+   * BELOW the message visually, acting as a separator between date groups
+   * 
+   * Timezone handling: Uses isSameDay from date-fns which compares calendar days
+   * in the user's local timezone, ensuring consistent behavior across timezones
+   * 
+   * @param currentMsg - The message being rendered
+   * @param nextMsg - The next message in the array (older chronologically)
+   * @returns true if a date divider should be shown
+   */
   const shouldShowDateDivider = (
     currentMsg: ChatMessage,
-    previousMsg: ChatMessage | null
+    nextMsg: ChatMessage | null
   ) => {
-    if (!previousMsg || !currentMsg.created_at || !previousMsg.created_at)
+    // Always show divider for the last (oldest) message
+    if (!nextMsg || !currentMsg.created_at || !nextMsg.created_at) {
       return true;
-    const currentDate = new Date(currentMsg.created_at).toDateString();
-    const previousDate = new Date(previousMsg.created_at).toDateString();
-    return currentDate !== previousDate;
+    }
+
+    // Use date-fns isSameDay for robust timezone-aware comparison
+    // This handles edge cases like DST transitions and server/client timezone differences
+    const currentDate = new Date(currentMsg.created_at);
+    const nextDate = new Date(nextMsg.created_at);
+
+    return !isSameDay(currentDate, nextDate);
   };
 
-  const handleSend = () => {
-    if (message.trim()) {
-      console.log("Sending message:", message);
-      // In production, this would send the message via API
-      setMessage("");
+  const handleSend = useCallback(async () => {
+    if (!message.trim() || !id || !currentUserId) return;
+
+    const messageText = message.trim();
+    const tempId = `temp-${Date.now()}`; // Temporary ID for optimistic update
+    const now = new Date().toISOString();
+
+    const optimisticMessage: ChatMessage = {
+      id: tempId,
+      chat_id: id,
+      user_id: currentUserId,
+      content: messageText,
+      created_at: now,
+      is_read: false,
+    };
+
+    setMessage(""); // Clear input immediately
+
+    // 1. Optimistic update - add message to chat detail cache immediately
+    queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
+      if (!oldData) return oldData;
+
+      const newPages = [...oldData.pages];
+      if (newPages[0]) {
+        newPages[0] = [optimisticMessage, ...newPages[0]];
+      } else {
+        newPages[0] = [optimisticMessage];
+      }
+
+      return {
+        ...oldData,
+        pages: newPages,
+      };
+    });
+
+    // 2. Optimistic update - update chat list cache (WhatsApp-style instant update!)
+    // Update for empty search query (most common case)
+    queryClient.setQueryData<any[]>(
+      ["chat-summaries", currentUserId, ""],
+      (oldSummaries: any[] | undefined) => {
+        if (!oldSummaries) return oldSummaries;
+
+        // Find the chat and move it to top with new message
+        let updatedChat: any = null;
+        const others = oldSummaries.filter((summary: any) => {
+          if (summary.chat_id === id) {
+            updatedChat = {
+              ...summary,
+              last_message_content: messageText,
+              last_message_at: now,
+            };
+            return false; // Remove from current position
+          }
+          return true;
+        });
+
+        // Put updated chat at the top (most recent first)
+        return updatedChat ? [updatedChat, ...others] : oldSummaries;
+      }
+    );
+
+    try {
+      // 1. Insert message
+      const { data: newMessage, error: messageError } = await supabase
+        .from("chat_messages")
+        .insert({
+          chat_id: id,
+          user_id: currentUserId,
+          content: messageText,
+          is_read: false,
+        })
+        .select()
+        .single();
+
+      if (messageError) throw messageError;
+
+      // 2. Update chat's last_message_at
+      const { error: chatError } = await supabase
+        .from("chats")
+        .update({
+          last_message_at: now,
+        })
+        .eq("id", id);
+
+      if (chatError) throw chatError;
+
+      // 3. Replace optimistic message with real one
+      queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
+        if (!oldData) return oldData;
+
+        const newPages = oldData.pages.map((page: ChatMessage[]) =>
+          page.map((msg) => (msg.id === tempId ? newMessage : msg))
+        );
+
+        return {
+          ...oldData,
+          pages: newPages,
+        };
+      });
+
+      // 4. Mark all chat summaries as stale for eventual server sync (preserves scroll)
+      // This ensures data accuracy when user navigates back or refetches
+      queryClient.invalidateQueries({
+        queryKey: ["chat-summaries"],
+        refetchType: 'none' // Don't refetch now, wait for focus
+      });
+    } catch (error) {
+      console.error("Error sending message:", error);
+
+      // Rollback optimistic update for messages
+      queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
+        if (!oldData) return oldData;
+
+        const newPages = oldData.pages.map((page: ChatMessage[]) =>
+          page.filter((msg) => msg.id !== tempId)
+        );
+
+        return {
+          ...oldData,
+          pages: newPages,
+        };
+      });
+
+      // Rollback optimistic update for chat summaries - refetch to get correct state
+      queryClient.invalidateQueries({
+        queryKey: ["chat-summaries", currentUserId],
+        refetchType: 'active' // Force immediate refetch on error
+      });
+
+      Alert.alert("Error", "Failed to send message. Please try again.");
+      setMessage(messageText); // Restore message on error
     }
-  };
+  }, [message, id, currentUserId, queryClient]);
 
   const renderMessage = ({
     item,
@@ -152,24 +460,13 @@ export default function ChatDetailScreen() {
     index: number;
   }) => {
     const isCurrentUser = item.user_id === currentUserId;
-    const previousMsg = index > 0 ? messages[index - 1] : null;
-    const showDateDivider = shouldShowDateDivider(item, previousMsg);
+    // For inverted list: compare with next item (older message)
+    const nextMsg = index < messages.length - 1 ? messages[index + 1] : null;
+    const showDateDivider = shouldShowDateDivider(item, nextMsg);
 
     return (
       <>
-        {showDateDivider && (
-          <View style={styles.dateDividerContainer}>
-            <View
-              style={[styles.dateDivider, { backgroundColor: theme.border }]}
-            >
-              <Text
-                style={[styles.dateDividerText, { color: theme.secondaryText }]}
-              >
-                {getDateDivider(item.created_at)}
-              </Text>
-            </View>
-          </View>
-        )}
+        {/* Message bubble rendered first in JSX */}
         <View
           style={[
             styles.messageContainer,
@@ -206,9 +503,33 @@ export default function ChatDetailScreen() {
             {getMessageTime(item.created_at)}
           </Text>
         </View>
+        {/* Date divider rendered AFTER message in JSX
+            With inverted={true}, this appears BELOW the message visually,
+            creating a proper separator between date groups */}
+        {showDateDivider && (
+          <View style={styles.dateDividerContainer}>
+            <View
+              style={[styles.dateDivider, { backgroundColor: theme.border }]}
+            >
+              <Text
+                style={[styles.dateDividerText, { color: theme.secondaryText }]}
+              >
+                {getDateDivider(item.created_at)}
+              </Text>
+            </View>
+          </View>
+        )}
       </>
     );
   };
+
+  // Show skeleton loading screen while chat or user data is loading
+  // This prevents "Unknown User" flicker and ensures complete data before render
+  const isInitialLoading = isLoadingChat || (isLoadingUser && !isAnonymous);
+
+  if (isInitialLoading) {
+    return <ChatDetailSkeleton />;
+  }
 
   const dynamicStyles = StyleSheet.create({
     container: {
@@ -312,16 +633,29 @@ export default function ChatDetailScreen() {
 
       {/* MESSAGES LIST */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
-        keyboardVerticalOffset={0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         <FlatList
           data={messages}
           renderItem={renderMessage}
           keyExtractor={(item) => item.id}
           contentContainerStyle={dynamicStyles.messagesList}
-          inverted={false}
+          inverted={true}
+          onEndReached={() => {
+            if (hasNextPage && !isFetchingNextPage) {
+              fetchNextPage();
+            }
+          }}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={{ padding: 16, alignItems: "center" }}>
+                <ActivityIndicator size="small" color={theme.primary} />
+              </View>
+            ) : null
+          }
         />
 
         {/* INPUT */}
@@ -333,10 +667,14 @@ export default function ChatDetailScreen() {
             onChangeText={setMessage}
             style={dynamicStyles.input}
             multiline
+            maxLength={1000}
           />
           <Pressable
             onPress={handleSend}
-            style={dynamicStyles.sendButton}
+            style={[
+              dynamicStyles.sendButton,
+              { opacity: !message.trim() ? 0.5 : 1 }
+            ]}
             disabled={!message.trim()}
           >
             <Ionicons name="send" size={20} color="#FFFFFF" />

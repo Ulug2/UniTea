@@ -5,100 +5,100 @@ import {
   Pressable,
   Text,
   RefreshControl,
+  ActivityIndicator,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
 import { router } from "expo-router";
 import PostListItem from "../../../components/PostListItem";
+import PostListSkeleton from "../../../components/PostListSkeleton";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
-import { Tables } from "../../../types/database.types";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useCallback } from "react";
 
-type Post = Tables<"posts">;
-type User = Tables<"profiles">;
-type Comment = Tables<"comments">;
-type PostWithUser = Post & { user: User | null; commentCount: number };
+const POSTS_PER_PAGE = 10;
 
-const fetchPosts = async (): Promise<PostWithUser[]> => {
-  // Fetch posts - only feed type posts
-  const { data: postsData, error: postsError } = await supabase
-    .from("posts")
-    .select("*")
-    .eq("post_type", "feed")
-    .order("created_at", { ascending: false });
-
-  if (postsError) {
-    throw postsError;
-  }
-
-  const posts = (postsData as Post[]) ?? [];
-  const userIds = Array.from(new Set(posts.map((p) => p.user_id)));
-  const postIds = posts.map((p) => p.id);
-
-  // Fetch profiles for those user_ids
-  let profileMap = new Map<string, User>();
-  if (userIds.length) {
-    const { data: profilesData, error: profilesError } = await supabase
-      .from("profiles")
-      .select(
-        "id, username, avatar_url, bio, is_verified, is_banned, created_at, updated_at"
-      )
-      .in("id", userIds);
-
-    if (profilesError) throw profilesError;
-    profileMap = new Map((profilesData as User[]).map((p) => [p.id, p]));
-  }
-
-  // Fetch comment counts for these posts
-  let commentCountMap = new Map<string, number>();
-  if (postIds.length) {
-    const { data: commentsData, error: commentsError } = await supabase
-      .from("comments")
-      .select("post_id, is_deleted")
-      .in("post_id", postIds);
-
-    if (commentsError) throw commentsError;
-
-    commentCountMap =
-      (commentsData as Comment[])?.reduce((map, c) => {
-        if (c.is_deleted) return map;
-        const current = map.get(c.post_id) ?? 0;
-        map.set(c.post_id, current + 1);
-        return map;
-      }, new Map<string, number>()) ?? new Map<string, number>();
-  }
-
-  const withUsers: PostWithUser[] = posts.map((p) => ({
-    ...p,
-    user: (profileMap.get(p.user_id) as User | undefined) ?? null,
-    commentCount: commentCountMap.get(p.id) ?? 0,
-  }));
-
-  return withUsers;
+// Type for the optimized view
+type PostSummary = {
+  post_id: string;
+  user_id: string;
+  content: string;
+  image_url: string | null;
+  category: string | null;
+  location: string | null;
+  post_type: string;
+  is_anonymous: boolean | null;
+  is_deleted: boolean | null;
+  is_edited: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+  edited_at: string | null;
+  view_count: number | null;
+  username: string;
+  avatar_url: string | null;
+  is_verified: boolean | null;
+  is_banned: boolean | null;
+  comment_count: number;
+  vote_score: number;
+  user_vote: 'upvote' | 'downvote' | null;
 };
 
 export default function FeedScreen() {
   const { theme } = useTheme();
+
+  // Fetch posts using optimized view with pagination
   const {
-    data: posts = [],
-    error,
+    data: postsData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
     isLoading,
-    refetch: refetchPosts,
-    isRefetching: isRefetchingPosts,
-  } = useQuery<PostWithUser[]>({
-    queryKey: ["posts"],
-    queryFn: fetchPosts,
+    refetch,
+    isRefetching,
+  } = useInfiniteQuery({
+    queryKey: ["posts", "feed"],
+    queryFn: async ({ pageParam = 0 }) => {
+      const from = pageParam * POSTS_PER_PAGE;
+      const to = from + POSTS_PER_PAGE - 1;
+
+      // Type cast needed since view isn't in generated types
+      const { data, error } = await (supabase as any)
+        .from("posts_summary_view")
+        .select("*")
+        .eq("post_type", "feed")
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+      return (data || []) as PostSummary[];
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      // If last page has full page of results, there might be more
+      if (lastPage.length === POSTS_PER_PAGE) {
+        return allPages.length;
+      }
+      return undefined;
+    },
+    initialPageParam: 0,
     staleTime: 1000 * 60 * 2, // Posts stay fresh for 2 minutes
     gcTime: 1000 * 60 * 30, // Cache for 30 minutes
     retry: 2,
   });
 
-  if (error) {
+  // Flatten pages into single array
+  const posts = postsData?.pages.flat() ?? [];
+
+  const handleLoadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Show skeleton while loading initial data
+  if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <Text style={{ color: theme.text }}>
-          Failed to load posts: {(error as Error).message}
-        </Text>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <PostListSkeleton />
       </View>
     );
   }
@@ -107,20 +107,45 @@ export default function FeedScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <FlatList
         data={posts}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.post_id}
         renderItem={({ item }) => (
           <PostListItem
-            post={item}
-            user={item.user ?? null}
-            commentCount={item.commentCount}
+            postId={item.post_id}
+            userId={item.user_id}
+            content={item.content}
+            imageUrl={item.image_url}
+            category={item.category}
+            location={item.location}
+            postType={item.post_type}
+            isAnonymous={item.is_anonymous}
+            isEdited={item.is_edited}
+            createdAt={item.created_at}
+            updatedAt={item.updated_at}
+            editedAt={item.edited_at}
+            viewCount={item.view_count}
+            username={item.username}
+            avatarUrl={item.avatar_url}
+            isVerified={item.is_verified}
+            commentCount={item.comment_count}
+            voteScore={item.vote_score}
+            userVote={item.user_vote}
           />
         )}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetchingPosts}
-            onRefresh={refetchPosts}
+            refreshing={isRefetching}
+            onRefresh={refetch}
             tintColor={theme.primary}
           />
+        }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <View style={{ padding: 16, alignItems: "center" }}>
+              <ActivityIndicator size="small" color={theme.primary} />
+            </View>
+          ) : null
         }
         ListEmptyComponent={
           !isLoading ? (
@@ -131,6 +156,7 @@ export default function FeedScreen() {
             </View>
           ) : null
         }
+        contentInsetAdjustmentBehavior="automatic"
       />
       {/* Floating Action Button */}
       <Pressable

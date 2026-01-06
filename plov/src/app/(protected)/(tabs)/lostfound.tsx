@@ -5,86 +5,141 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ActivityIndicator,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import LostFoundListItem from "../../../components/LostFoundListItem";
-import { Tables } from "../../../types/database.types";
+import LostFoundListSkeleton from "../../../components/LostFoundListSkeleton";
 import { router } from "expo-router";
 import { FontAwesome } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
+import { useCallback } from "react";
 
-type Post = Tables<"posts">;
-type User = Tables<"profiles">;
-type PostWithUser = Post & { user: User | null };
+const POSTS_PER_PAGE = 10;
 
-const fetchLostFoundPosts = async (): Promise<PostWithUser[]> => {
-  // Fetch lost & found posts
-  const { data: postsData, error: postsError } = await supabase
-    .from("posts")
-    .select("*")
-    .eq("post_type", "lost_found")
-    .order("created_at", { ascending: false });
-
-  if (postsError) {
-    throw postsError;
-  }
-
-  const posts = (postsData as Post[]) ?? [];
-  const userIds = Array.from(new Set(posts.map((p) => p.user_id)));
-
-  // Fetch profiles for those user_ids
-  let profileMap = new Map<string, User>();
-  if (userIds.length) {
-    const { data: profilesData, error: profilesError } = await supabase
-      .from("profiles")
-      .select(
-        "id, username, avatar_url, bio, is_verified, is_banned, created_at, updated_at"
-      )
-      .in("id", userIds);
-
-    if (profilesError) throw profilesError;
-    profileMap = new Map((profilesData as User[]).map((p) => [p.id, p]));
-  }
-
-  const withUsers: PostWithUser[] = posts.map((p) => ({
-    ...p,
-    user: (profileMap.get(p.user_id) as User | undefined) ?? null,
-  }));
-
-  return withUsers;
+// Type for the optimized view
+type PostSummary = {
+  post_id: string;
+  user_id: string;
+  content: string;
+  image_url: string | null;
+  category: string | null;
+  location: string | null;
+  post_type: string;
+  is_anonymous: boolean | null;
+  is_deleted: boolean | null;
+  is_edited: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+  edited_at: string | null;
+  view_count: number | null;
+  username: string;
+  avatar_url: string | null;
+  is_verified: boolean | null;
+  is_banned: boolean | null;
+  comment_count: number;
+  vote_score: number;
+  user_vote: 'upvote' | 'downvote' | null;
 };
 
 export default function LostFoundScreen() {
   const { theme } = useTheme();
 
+  // Fetch lost & found posts using optimized view with pagination
   const {
-    data: lostFoundPosts = [],
+    data: postsData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
     isLoading,
     refetch,
     isRefetching,
-  } = useQuery<PostWithUser[]>({
+  } = useInfiniteQuery({
     queryKey: ["posts", "lost_found"],
-    queryFn: fetchLostFoundPosts,
+    queryFn: async ({ pageParam = 0 }) => {
+      const from = pageParam * POSTS_PER_PAGE;
+      const to = from + POSTS_PER_PAGE - 1;
+
+      // Type cast needed since view isn't in generated types
+      const { data, error } = await (supabase as any)
+        .from("posts_summary_view")
+        .select("*")
+        .eq("post_type", "lost_found")
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+      return (data || []) as PostSummary[];
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      // If last page has full page of results, there might be more
+      if (lastPage.length === POSTS_PER_PAGE) {
+        return allPages.length;
+      }
+      return undefined;
+    },
+    initialPageParam: 0,
     staleTime: 1000 * 60 * 2, // Data stays fresh for 2 minutes
     gcTime: 1000 * 60 * 30, // Cache for 30 minutes
-    retry: 2, // Retry failed requests twice
+    retry: 2,
   });
+
+  // Flatten pages into single array
+  const lostFoundPosts = postsData?.pages.flat() ?? [];
+
+  const handleLoadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Show skeleton while loading initial data
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={styles.contentContainer}>
+          <LostFoundListSkeleton />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <FlatList
         data={lostFoundPosts}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.post_id}
         renderItem={({ item }) => (
-          <LostFoundListItem post={item} user={item.user} />
+          <LostFoundListItem
+            postId={item.post_id}
+            userId={item.user_id}
+            content={item.content}
+            imageUrl={item.image_url}
+            category={item.category}
+            location={item.location}
+            isAnonymous={item.is_anonymous}
+            createdAt={item.created_at}
+            username={item.username}
+            avatarUrl={item.avatar_url}
+            isVerified={item.is_verified}
+          />
         )}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
             onRefresh={refetch}
             tintColor={theme.primary}
           />
+        }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <View style={{ padding: 16, alignItems: "center" }}>
+              <ActivityIndicator size="small" color={theme.primary} />
+            </View>
+          ) : null
         }
         ListEmptyComponent={
           !isLoading ? (
@@ -95,6 +150,7 @@ export default function LostFoundScreen() {
             </View>
           ) : null
         }
+        contentInsetAdjustmentBehavior="automatic"
       />
       {/* Floating Action Button */}
       <Pressable

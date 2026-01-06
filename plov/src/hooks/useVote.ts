@@ -9,26 +9,36 @@ interface UseVoteOptions {
     postId?: string;
     commentId?: string;
     onVoteSuccess?: () => void;
+    // Optional: provide initial values to avoid fetching
+    initialUserVote?: VoteType;
+    initialScore?: number;
 }
 
-export function useVote({ postId, commentId, onVoteSuccess }: UseVoteOptions) {
+export function useVote({ 
+    postId, 
+    commentId, 
+    onVoteSuccess,
+    initialUserVote,
+    initialScore,
+}: UseVoteOptions) {
     const { session } = useAuth();
     const userId = session?.user?.id;
     const queryClient = useQueryClient();
 
-    // Fetch current user's vote
+    // Fetch current user's vote (skip if initial value provided)
     const { data: userVote, refetch: refetchUserVote } = useQuery<VoteType>({
         queryKey: ['user-vote', userId, postId, commentId],
         queryFn: async () => {
             if (!userId) return null;
             return await getUserVote(userId, postId, commentId);
         },
-        enabled: !!userId && (!!postId || !!commentId),
+        enabled: !!userId && (!!postId || !!commentId) && initialUserVote === undefined,
         staleTime: 1000 * 30, // 30 seconds
         gcTime: 1000 * 60 * 5, // 5 minutes
+        initialData: initialUserVote,
     });
 
-    // Fetch score
+    // Fetch score (skip if initial value provided)
     const { data: score, refetch: refetchScore } = useQuery<number>({
         queryKey: ['score', postId, commentId],
         queryFn: async () => {
@@ -39,9 +49,10 @@ export function useVote({ postId, commentId, onVoteSuccess }: UseVoteOptions) {
             }
             return 0;
         },
-        enabled: !!postId || !!commentId,
+        enabled: (!!postId || !!commentId) && initialScore === undefined,
         staleTime: 1000 * 10, // 10 seconds
         gcTime: 1000 * 60 * 5, // 5 minutes
+        initialData: initialScore,
     });
 
     // Vote mutation with optimistic updates

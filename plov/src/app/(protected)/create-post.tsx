@@ -116,7 +116,6 @@ export default function CreatePostScreen() {
         onSuccess: () => {
             // Invalidate posts query to refresh the feed
             queryClient.invalidateQueries({ queryKey: ['posts'] });
-            Alert.alert('Success', 'Post created successfully!');
             goBack();
         },
         onError: (error: Error) => {

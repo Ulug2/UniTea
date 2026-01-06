@@ -2,37 +2,69 @@ import { Image, Pressable, Text, View, StyleSheet } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { Link } from 'expo-router';
-import { AntDesign, Ionicons } from '@expo/vector-icons';
+import { AntDesign } from '@expo/vector-icons';
 import nuLogo from "../../assets/images/nu-logo.png";
 import { useTheme } from '../context/ThemeContext';
-import { Tables } from '../types/database.types';
 import { useVote } from '../hooks/useVote';
 import SupabaseImage from './SupabaseImage';
 
-type Post = Tables<'posts'>;
-type User = Tables<'profiles'>;
-
 type PostListItemProps = {
-    post: Post;
-    user?: User | null;
+    // Post data from view
+    postId: string;
+    userId: string;
+    content: string;
+    imageUrl: string | null;
+    category: string | null;
+    location: string | null;
+    postType?: string;
+    isAnonymous: boolean | null;
+    isEdited: boolean | null;
+    createdAt: string | null;
+    updatedAt?: string | null;
+    editedAt?: string | null;
+    viewCount?: number | null;
+    
+    // User data from view
+    username: string;
+    avatarUrl: string | null;
+    isVerified: boolean | null;
+    
+    // Aggregated data from view
+    commentCount: number;
+    voteScore: number;
+    userVote: 'upvote' | 'downvote' | null;
+    
+    // Optional props for detailed post view
     isDetailedPost?: boolean;
-    commentCount?: number;
     isBookmarked?: boolean;
     onBookmarkPress?: () => void;
 };
 
 export default function PostListItem({
-    post,
-    user,
-    isDetailedPost = false,
+    postId,
+    userId,
+    content,
+    imageUrl,
+    isAnonymous,
+    isEdited,
+    createdAt,
+    username,
+    avatarUrl,
+    isVerified,
     commentCount,
+    voteScore,
+    userVote: initialUserVote,
+    isDetailedPost = false,
     isBookmarked = false,
     onBookmarkPress,
 }: PostListItemProps) {
     const { theme } = useTheme();
 
+    // Use voting hook for optimistic updates (still handles local state)
     const { userVote, score: postScore, handleUpvote, handleDownvote, isVoting } = useVote({
-        postId: post.id,
+        postId: postId,
+        initialUserVote,
+        initialScore: voteScore,
     });
 
     const styles = StyleSheet.create({
@@ -123,51 +155,50 @@ export default function PostListItem({
         },
     });
 
-    const createdAt = post.created_at ? new Date(post.created_at) : new Date();
+    const postCreatedAt = createdAt ? new Date(createdAt) : new Date();
 
     return (
-        <Link href={`/post/${post.id}`} asChild style={styles.link}>
+        <Link href={`/post/${postId}`} asChild style={styles.link}>
             <Pressable style={styles.card}>
                 {/* HEADER */}
                 <View style={styles.header}>
-                    {user && (
-                        <View style={styles.userInfo}>
-                            {post.is_anonymous ? (
-                                <Image source={nuLogo} style={styles.avatar} />
-                            ) : user.avatar_url ? (
-                                user.avatar_url.startsWith("http") ? (
-                                    <Image
-                                        source={{ uri: user.avatar_url }}
-                                        style={styles.avatar}
-                                    />
-                                ) : (
-                                    <SupabaseImage
-                                        path={user.avatar_url}
-                                        bucket="avatars"
-                                        style={styles.avatar}
-                                    />
-                                )
+                    <View style={styles.userInfo}>
+                        {isAnonymous ? (
+                            <Image source={nuLogo} style={styles.avatar} />
+                        ) : avatarUrl ? (
+                            avatarUrl.startsWith("http") ? (
+                                <Image
+                                    source={{ uri: avatarUrl }}
+                                    style={styles.avatar}
+                                />
                             ) : (
-                                <View style={styles.avatar} />
-                            )}
-                            {post.is_anonymous ? <Text style={styles.username}>Anonymous</Text> : <Text style={styles.username}>{user.username}</Text>}
-
-                        </View>
-                    )}
+                                <SupabaseImage
+                                    path={avatarUrl}
+                                    bucket="avatars"
+                                    style={styles.avatar}
+                                />
+                            )
+                        ) : (
+                            <View style={styles.avatar} />
+                        )}
+                        <Text style={styles.username}>
+                            {isAnonymous ? 'Anonymous' : username}
+                        </Text>
+                    </View>
                     <Text style={styles.time}>
                         <AntDesign name="clock-circle" size={12} color={theme.secondaryText} />
-                        <Text> {formatDistanceToNowStrict(createdAt)}</Text>
+                        <Text> {formatDistanceToNowStrict(postCreatedAt)}</Text>
                     </Text>
                 </View>
 
                 {/* CONTENT */}
                 <View style={{ marginTop: 1 }}>
-                    {post.image_url && (
-                        <SupabaseImage path={post.image_url} bucket="post-images" style={styles.postImage} />
+                    {imageUrl && (
+                        <SupabaseImage path={imageUrl} bucket="post-images" style={styles.postImage} />
                     )}
-                    {post.content && (
+                    {content && (
                         <Text numberOfLines={isDetailedPost ? undefined : 4} style={styles.contentText}>
-                            {post.content}
+                            {content}
                         </Text>
                     )}
                 </View>

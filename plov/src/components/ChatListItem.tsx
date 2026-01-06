@@ -1,15 +1,14 @@
 import { View, Text, Pressable, StyleSheet, Image } from "react-native";
 import { Tables } from "../types/database.types";
 import { useTheme } from "../context/ThemeContext";
-import { formatDistanceToNowStrict } from "date-fns";
 import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
 
-type Chat = Tables<"chats">;
 type Profile = Tables<"profiles">;
 
 type ChatListItemProps = {
-  chat: Chat;
+  chatId: string;
+  lastMessageAt: string | null;
   otherUser: Profile | null;
   lastMessage: string;
   unreadCount: number;
@@ -17,7 +16,8 @@ type ChatListItemProps = {
 };
 
 export default function ChatListItem({
-  chat,
+  chatId,
+  lastMessageAt,
   otherUser,
   lastMessage,
   unreadCount,
@@ -40,14 +40,16 @@ export default function ChatListItem({
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
-    const diffInHours = Math.floor(
-      (now.getTime() - date.getTime()) / (1000 * 60 * 60)
-    );
+    const diffInMs = now.getTime() - date.getTime();
+    const diffInSeconds = Math.floor(diffInMs / 1000);
+    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
+    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
 
-    if (diffInHours < 1) {
-      const diffInMinutes = Math.floor(
-        (now.getTime() - date.getTime()) / (1000 * 60)
-      );
+    if (diffInMinutes < 1) {
+      // Show seconds only when less than 1 minute
+      return `${diffInSeconds}s ago`;
+    } else if (diffInHours < 1) {
+      // Show minutes only when less than 1 hour
       return `${diffInMinutes}m ago`;
     } else if (diffInHours < 24) {
       return `${diffInHours}h ago`;
@@ -137,7 +139,7 @@ export default function ChatListItem({
   return (
     <Pressable
       style={styles.container}
-      onPress={() => router.push(`/chat/${chat.id}`)}
+      onPress={() => router.push(`/chat/${chatId}`)}
     >
       <View style={styles.avatarContainer}>
         {otherUser?.avatar_url && !isAnonymous ? (
@@ -169,11 +171,11 @@ export default function ChatListItem({
         <View style={styles.header}>
           <Text style={styles.username}>{getDisplayName()}</Text>
           <Text style={styles.time}>
-            {chat.last_message_at ? formatTime(chat.last_message_at) : "No messages"}
+            {lastMessageAt ? formatTime(lastMessageAt) : "No messages"}
           </Text>
         </View>
         <Text style={styles.lastMessage} numberOfLines={1}>
-          {lastMessage}
+          {lastMessage || "No messages yet"}
         </Text>
       </View>
     </Pressable>

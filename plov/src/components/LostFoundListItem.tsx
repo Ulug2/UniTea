@@ -1,31 +1,100 @@
-import { View, Text, Pressable, StyleSheet, Image } from "react-native";
-import { Tables } from "../types/database.types";
+import { View, Text, Pressable, StyleSheet, Image, Alert } from "react-native";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
+import { supabase } from "../lib/supabase";
 import { formatDistanceToNowStrict } from "date-fns";
 import {
-  AntDesign,
   Ionicons,
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
 import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
-
-type Post = Tables<"posts">;
-type User = Tables<"profiles">;
+import { useState } from "react";
 
 type LostFoundListItemProps = {
-  post: Post;
-  user?: User | null;
+  postId: string;
+  userId: string;
+  content: string;
+  imageUrl: string | null;
+  category: string | null;
+  location: string | null;
+  isAnonymous: boolean | null;
+  createdAt: string | null;
+  username: string;
+  avatarUrl: string | null;
+  isVerified: boolean | null;
 };
 
 export default function LostFoundListItem({
-  post,
-  user,
+  postId,
+  userId,
+  content,
+  category,
+  location,
+  isAnonymous,
+  createdAt,
+  username,
+  avatarUrl,
 }: LostFoundListItemProps) {
   const { theme } = useTheme();
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id;
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  
+  // Check if this is the current user's post
+  const isOwnPost = currentUserId === userId;
+
+  const handleChatPress = async () => {
+    if (!currentUserId) {
+      Alert.alert("Error", "You must be logged in to start a chat");
+      return;
+    }
+
+    setIsCreatingChat(true);
+
+    try {
+      // Check if chat already exists between these two users
+      const { data: existingChats, error: searchError } = await supabase
+        .from("chats")
+        .select("*")
+        .or(
+          `and(participant_1_id.eq.${currentUserId},participant_2_id.eq.${userId}),and(participant_1_id.eq.${userId},participant_2_id.eq.${currentUserId})`
+        );
+
+      if (searchError) throw searchError;
+
+      if (existingChats && existingChats.length > 0) {
+        // Chat already exists, navigate to it
+        router.push(`/chat/${existingChats[0].id}`);
+        return;
+      }
+
+      // Create new chat
+      const { data: newChat, error: createError } = await supabase
+        .from("chats")
+        .insert({
+          participant_1_id: currentUserId,
+          participant_2_id: userId,
+          post_id: postId,
+          last_message_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (createError) throw createError;
+
+      // Navigate to new chat
+      router.push(`/chat/${newChat.id}`);
+    } catch (error: any) {
+      console.error("Error creating/finding chat:", error);
+      Alert.alert("Error", error.message || "Failed to start chat. Please try again.");
+    } finally {
+      setIsCreatingChat(false);
+    }
+  };
 
   // Get the category prefix
-  const categoryPrefix = post.category === "lost" ? "Lost" : "Found";
+  const categoryPrefix = category === "lost" ? "Lost" : "Found";
 
   const styles = StyleSheet.create({
     link: {
@@ -118,25 +187,24 @@ export default function LostFoundListItem({
 
   // Get user's first initial for avatar
   const getInitial = () => {
-    if (!user?.username) return "?";
-    return user.username.charAt(0).toUpperCase();
+    if (!username) return "?";
+    return username.charAt(0).toUpperCase();
   };
 
   return (
-    // <Link href={`/lostfoundpost/${post.id}`} asChild style={styles.link}>
     <Pressable style={styles.card}>
       {/* HEADER */}
       <View style={styles.header}>
         <View style={styles.userInfo}>
-          {user?.avatar_url ? (
-            user.avatar_url.startsWith("http") ? (
+          {avatarUrl ? (
+            avatarUrl.startsWith("http") ? (
               <Image
-                source={{ uri: user.avatar_url }}
+                source={{ uri: avatarUrl }}
                 style={styles.avatarImage}
               />
             ) : (
               <SupabaseImage
-                path={user.avatar_url}
+                path={avatarUrl}
                 bucket="avatars"
                 style={styles.avatarImage}
               />
@@ -146,11 +214,13 @@ export default function LostFoundListItem({
               <Text style={styles.avatarText}>{getInitial()}</Text>
             </View>
           )}
-          <Text style={styles.username}>{user?.username || "Unknown"}</Text>
+          <Text style={styles.username}>
+            {isAnonymous ? 'Anonymous' : username || "Unknown"}
+          </Text>
         </View>
         <Text style={styles.time}>
-          {post.created_at
-            ? `${formatDistanceToNowStrict(new Date(post.created_at))} ago`
+          {createdAt
+            ? `${formatDistanceToNowStrict(new Date(createdAt))} ago`
             : "Recently"}
         </Text>
       </View>
@@ -165,40 +235,43 @@ export default function LostFoundListItem({
         }}
       >
         <Text style={styles.title}>{categoryPrefix}</Text>
-        {post.location && (
+        {location && (
           <View style={styles.locationContainer}>
             <Ionicons
               name="location-outline"
               size={14}
               color={theme.secondaryText}
             />
-            <Text style={styles.locationText}>{post.location}</Text>
+            <Text style={styles.locationText}>{location}</Text>
           </View>
         )}
       </View>
 
       {/* CONTENT */}
       <Text style={styles.description} numberOfLines={3}>
-        {post.content}
+        {content}
       </Text>
 
-      {/* CHAT BUTTON */}
-      <Pressable
-        style={styles.chatButton}
-        onPress={(e) => {
-          e.preventDefault();
-          // Handle chat button press
-          router.push(`/chat/${post.id}`);
-        }}
-      >
-        <MaterialCommunityIcons
-          name="message-outline"
-          size={20}
-          color="#FFFFFF"
-        />
-        <Text style={styles.chatButtonText}>Chat</Text>
-      </Pressable>
+      {/* CHAT BUTTON - Only show if not own post */}
+      {!isOwnPost && (
+        <Pressable
+          style={[styles.chatButton, isCreatingChat && { opacity: 0.6 }]}
+          onPress={(e) => {
+            e.preventDefault();
+            handleChatPress();
+          }}
+          disabled={isCreatingChat}
+        >
+          <MaterialCommunityIcons
+            name="message-outline"
+            size={20}
+            color="#FFFFFF"
+          />
+          <Text style={styles.chatButtonText}>
+            {isCreatingChat ? "Loading..." : "Chat"}
+          </Text>
+        </Pressable>
+      )}
     </Pressable>
-    // </Link>
   );
 }

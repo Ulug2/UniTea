@@ -32,7 +32,7 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState<"all" | "anonymous">("all");
 
   // Fetch current user profile
-  const { data: currentUser, refetch: refetchProfile } =
+  const { data: currentUser, refetch: refetchProfile, isLoading: isLoadingProfile } =
     useQuery<Profile | null>({
       queryKey: ["current-user-profile"],
       queryFn: async () => {
@@ -249,6 +249,15 @@ export default function ProfileScreen() {
       </Pressable>
     );
   };
+
+  // Show loading while fetching profile to prevent "User" flicker
+  if (isLoadingProfile) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={[styles.userName, { color: theme.secondaryText }]}>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>

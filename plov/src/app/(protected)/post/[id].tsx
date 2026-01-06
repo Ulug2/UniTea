@@ -218,7 +218,7 @@ export default function PostDetailed() {
     return postBookmarks.some((b) => b.user_id === currentUserId);
   }, [postBookmarks, currentUserId]);
 
-  // Mutation to post a comment
+  // Mutation to post a comment with optimistic updates
   const createCommentMutation = useMutation({
     mutationFn: async ({
       content,
@@ -252,23 +252,78 @@ export default function PostDetailed() {
       if (error) throw error;
       return data;
     },
-    onSuccess: async (newComment) => {
-      // Invalidate and immediately refetch comments to get the new comment with user profile
-      await queryClient.refetchQueries({ queryKey: ["comments", postId] });
+    onMutate: async ({ content, parentId }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["comments", postId] });
 
-      // Also invalidate posts to update comment count
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      queryClient.invalidateQueries({ queryKey: ["post", postId] });
+      // Snapshot previous value
+      const previousComments = queryClient.getQueryData<CommentWithReplies[]>([
+        "comments",
+        postId,
+      ]);
+
+      // Fetch current user profile for optimistic comment
+      const { data: currentUser } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", currentUserId)
+        .single();
+
+      // Create optimistic comment
+      const optimisticComment: CommentWithReplies = {
+        id: `temp-${Date.now()}`,
+        post_id: postId!,
+        user_id: currentUserId!,
+        content: content.trim(),
+        parent_comment_id: parentId,
+        is_deleted: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        user: currentUser || undefined,
+        replies: [],
+        score: 0,
+      };
+
+      // Optimistically update cache
+      queryClient.setQueryData<CommentWithReplies[]>(["comments", postId], (old = []) => {
+        return [...old, optimisticComment];
+      });
+
+      return { previousComments };
+    },
+    onError: (error: Error, variables, context) => {
+      // Rollback on error
+      if (context?.previousComments) {
+        queryClient.setQueryData(["comments", postId], context.previousComments);
+      }
+      console.error("Error posting comment:", error);
+      Alert.alert("Error", error.message || "Failed to post comment. Please try again.");
+    },
+    onSuccess: async (newComment) => {
+      // Replace temp comment with real one from server
+      queryClient.setQueryData<CommentWithReplies[]>(["comments", postId], (old = []) => {
+        return old.map((comment) =>
+          comment.id.startsWith("temp-")
+            ? { ...comment, id: newComment.id, created_at: newComment.created_at }
+            : comment
+        );
+      });
+
+      // Mark posts queries as stale without refetching (preserves scroll position)
+      queryClient.invalidateQueries({ 
+        queryKey: ["posts", "feed"],
+        refetchType: 'none' // Don't refetch, just mark as stale
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ["post", postId],
+        refetchType: 'none'
+      });
 
       // Clear input and reset reply state
       setCommentText("");
       setParentCommentId(null);
       setReplyingToUsername(null);
       inputRef.current?.blur();
-    },
-    onError: (error: Error) => {
-      console.error("Error posting comment:", error);
-      Alert.alert("Error", error.message || "Failed to post comment. Please try again.");
     },
   });
 
@@ -364,10 +419,26 @@ export default function PostDetailed() {
         <FlatList
           ListHeaderComponent={
             <PostListItem
-              post={{ ...detailedPost, upvotes: postScore } as any}
-              isDetailedPost
-              user={postUser || undefined}
+              postId={detailedPost.id}
+              userId={detailedPost.user_id}
+              content={detailedPost.content}
+              imageUrl={detailedPost.image_url}
+              category={detailedPost.category}
+              location={detailedPost.location}
+              postType={detailedPost.post_type}
+              isAnonymous={detailedPost.is_anonymous}
+              isEdited={detailedPost.is_edited}
+              createdAt={detailedPost.created_at}
+              updatedAt={detailedPost.updated_at}
+              editedAt={detailedPost.edited_at}
+              viewCount={detailedPost.view_count}
+              username={postUser?.username || "Unknown"}
+              avatarUrl={postUser?.avatar_url || null}
+              isVerified={postUser?.is_verified || null}
               commentCount={rawComments?.length || 0}
+              voteScore={postScore}
+              userVote={null}
+              isDetailedPost
               isBookmarked={isBookmarked}
               onBookmarkPress={toggleBookmark}
             />
