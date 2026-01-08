@@ -25,6 +25,46 @@ export type Post = {
     view_count: number;
     created_at: string;
     updated_at: string;
+    // Repost fields
+    reposted_from_post_id: string | null;
+    repost_comment: string | null;
+};
+
+// Type for posts_summary_view with aggregated data
+export type PostSummary = {
+    post_id: string;
+    user_id: string;
+    content: string;
+    image_url: string | null;
+    category: string | null;
+    location: string | null;
+    post_type: string;
+    is_anonymous: boolean | null;
+    is_deleted: boolean | null;
+    is_edited: boolean | null;
+    created_at: string | null;
+    updated_at: string | null;
+    edited_at: string | null;
+    view_count: number | null;
+    username: string;
+    avatar_url: string | null;
+    is_verified: boolean | null;
+    is_banned: boolean | null;
+    comment_count: number;
+    vote_score: number;
+    user_vote: 'upvote' | 'downvote' | null;
+    // Repost fields
+    reposted_from_post_id: string | null;
+    repost_comment: string | null;
+    repost_count: number;
+    // Original post data (if this is a repost)
+    original_post_id?: string | null;
+    original_content?: string | null;
+    original_user_id?: string | null;
+    original_author_username?: string | null;
+    original_author_avatar?: string | null;
+    original_is_anonymous?: boolean | null;
+    original_created_at?: string | null;
 };
 
 export type Comment = {

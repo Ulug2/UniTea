@@ -49,20 +49,20 @@ export default function PostDetailed() {
   const [replyingToUsername, setReplyingToUsername] = useState<string | null>(null);
   const inputRef = useRef<TextInput | null>(null);
 
-  // 1. Fetch Post Details
+  // 1. Fetch Post Details (using view to get repost data)
   const {
     data: detailedPost,
     isLoading: isPostLoading,
     error: postError,
-  } = useQuery<Post | null>({
+  } = useQuery<any>({
     queryKey: ["post", postId],
     enabled: Boolean(postId),
     queryFn: async () => {
       if (!postId) return null;
       const { data, error } = await supabase
-        .from("posts")
+        .from("posts_summary_view")
         .select("*")
-        .eq("id", postId)
+        .eq("post_id", postId)
         .single();
       if (error) throw error;
       return data;
@@ -263,6 +263,8 @@ export default function PostDetailed() {
       ]);
 
       // Fetch current user profile for optimistic comment
+      if (!currentUserId) return { previousComments };
+
       const { data: currentUser } = await supabase
         .from("profiles")
         .select("*")
@@ -310,11 +312,11 @@ export default function PostDetailed() {
       });
 
       // Mark posts queries as stale without refetching (preserves scroll position)
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: ["posts", "feed"],
         refetchType: 'none' // Don't refetch, just mark as stale
       });
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: ["post", postId],
         refetchType: 'none'
       });
@@ -419,7 +421,7 @@ export default function PostDetailed() {
         <FlatList
           ListHeaderComponent={
             <PostListItem
-              postId={detailedPost.id}
+              postId={detailedPost.post_id || detailedPost.id}
               userId={detailedPost.user_id}
               content={detailedPost.content}
               imageUrl={detailedPost.image_url}
@@ -432,12 +434,20 @@ export default function PostDetailed() {
               updatedAt={detailedPost.updated_at}
               editedAt={detailedPost.edited_at}
               viewCount={detailedPost.view_count}
-              username={postUser?.username || "Unknown"}
-              avatarUrl={postUser?.avatar_url || null}
-              isVerified={postUser?.is_verified || null}
+              username={detailedPost.username || postUser?.username || "Unknown"}
+              avatarUrl={detailedPost.avatar_url || postUser?.avatar_url || null}
+              isVerified={detailedPost.is_verified || postUser?.is_verified || null}
               commentCount={rawComments?.length || 0}
               voteScore={postScore}
               userVote={null}
+              repostCount={detailedPost.repost_count || 0}
+              repostedFromPostId={detailedPost.reposted_from_post_id}
+              repostComment={detailedPost.repost_comment}
+              originalContent={detailedPost.original_content}
+              originalAuthorUsername={detailedPost.original_author_username}
+              originalAuthorAvatar={detailedPost.original_author_avatar}
+              originalIsAnonymous={detailedPost.original_is_anonymous}
+              originalCreatedAt={detailedPost.original_created_at}
               isDetailedPost
               isBookmarked={isBookmarked}
               onBookmarkPress={toggleBookmark}

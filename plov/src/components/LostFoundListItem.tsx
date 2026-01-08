@@ -1,3 +1,4 @@
+import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet, Image, Alert } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
@@ -9,7 +10,6 @@ import {
 } from "@expo/vector-icons";
 import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
-import { useState } from "react";
 
 type LostFoundListItemProps = {
   postId: string;
@@ -25,7 +25,7 @@ type LostFoundListItemProps = {
   isVerified: boolean | null;
 };
 
-export default function LostFoundListItem({
+const LostFoundListItem = React.memo(function LostFoundListItem({
   postId,
   userId,
   content,
@@ -274,4 +274,6 @@ export default function LostFoundListItem({
       )}
     </Pressable>
   );
-}
+});
+
+export default LostFoundListItem;

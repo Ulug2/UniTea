@@ -18,21 +18,41 @@ import { AntDesign, Feather, Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../context/ThemeContext';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Database } from '../../types/database.types';
 import { uploadImage, getImageUrl } from '../../utils/supabaseImages';
+import { formatDistanceToNowStrict } from 'date-fns';
+import nuLogo from '../../../assets/images/nu-logo.png';
+import SupabaseImage from '../../components/SupabaseImage';
 
 type PostInsert = Database['public']['Tables']['posts']['Insert'];
 
 export default function CreatePostScreen() {
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
-    const { type } = useLocalSearchParams<{ type?: string }>();
+    const { type, repostId } = useLocalSearchParams<{ type?: string; repostId?: string }>();
     const isLostFound = type === 'lost_found';
+    const isRepost = !!repostId;
     const { session } = useAuth();
     const queryClient = useQueryClient();
+
+    // Fetch original post if reposting
+    const { data: originalPost, isLoading: isLoadingOriginal } = useQuery({
+        queryKey: ['original-post', repostId],
+        queryFn: async () => {
+            if (!repostId) return null;
+            const { data, error } = await supabase
+                .from('posts_summary_view')
+                .select('*')
+                .eq('post_id', repostId)
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        enabled: !!repostId,
+    });
 
     const [content, setContent] = useState<string>('');
     const [image, setImage] = useState<string | null>(null);
@@ -83,7 +103,8 @@ export default function CreatePostScreen() {
                 throw new Error('You must be logged in to create a post.');
             }
 
-            if (!postContent.trim()) {
+            // Content is required for regular posts, optional for reposts
+            if (!repostId && !postContent.trim()) {
                 throw new Error('Content is required');
             }
 
@@ -94,13 +115,16 @@ export default function CreatePostScreen() {
             // Prepare post data
             const postData: PostInsert = {
                 user_id: session.user.id,
-                content: postContent.trim(),
+                content: postContent.trim() || '', // Allow empty content for reposts
                 post_type: isLostFound ? 'lost_found' : 'feed',
                 image_url: imagePath || null,
                 is_anonymous: isLostFound ? false : postIsAnonymous, // Lost & Found posts are never anonymous
                 ...(isLostFound && {
                     category: postCategory,
                     location: postLocation.trim(),
+                }),
+                ...(repostId && {
+                    reposted_from_post_id: repostId,
                 }),
             };
 
@@ -148,8 +172,10 @@ export default function CreatePostScreen() {
         });
     };
 
-    // Validation: For feed posts, just content. For L&F posts, content + location
-    const isPostButtonDisabled = isLostFound
+    // Validation: For feed posts, just content. For L&F posts, content + location. For reposts, content is optional
+    const isPostButtonDisabled = isRepost 
+        ? false // Reposts don't require content
+        : isLostFound
         ? !content.trim() || !location.trim()
         : !content.trim();
 
@@ -172,7 +198,7 @@ export default function CreatePostScreen() {
                     <AntDesign name="close" size={28} color={theme.text} />
                 </Pressable>
                 <Text style={[styles.headerTitle, { color: theme.text }]}>
-                    {isLostFound ? 'Post Lost/Found Item' : 'Create Post'}
+                    {isRepost ? 'Repost' : isLostFound ? 'Post Lost/Found Item' : 'Create Post'}
                 </Text>
                 <Pressable
                     disabled={isPostButtonDisabled || isLoading}
@@ -278,14 +304,15 @@ export default function CreatePostScreen() {
                     {/* CONTENT INPUT */}
                     <View style={styles.contentSection}>
                         {isLostFound && <Text style={[styles.sectionLabel, { color: theme.text }]}>Description *</Text>}
+                        {isRepost && <Text style={[styles.sectionLabel, { color: theme.text }]}>Add your thoughts (optional)</Text>}
                         <TextInput
-                            placeholder={isLostFound ? "Describe the item..." : "What's on your mind?"}
+                            placeholder={isRepost ? "Say something about this..." : isLostFound ? "Describe the item..." : "What's on your mind?"}
                             placeholderTextColor={theme.secondaryText}
                             style={[styles.contentInput, { color: theme.text }]}
                             onChangeText={setContent}
                             value={content}
                             multiline
-                            autoFocus={!isLostFound}
+                            autoFocus={!isLostFound && !isRepost}
                             scrollEnabled={false}
                         />
                     </View>
@@ -297,6 +324,49 @@ export default function CreatePostScreen() {
                                 <AntDesign name="close" size={20} color="white" />
                             </Pressable>
                             <Image source={{ uri: image }} style={styles.imagePreview} />
+                        </View>
+                    )}
+
+                    {/* ORIGINAL POST PREVIEW (for reposts) */}
+                    {isRepost && originalPost && (
+                        <View style={[styles.originalPostPreview, { 
+                            backgroundColor: theme.background, 
+                            borderColor: theme.border 
+                        }]}>
+                            <Text style={[styles.originalPostLabel, { color: theme.secondaryText }]}>
+                                Original post
+                            </Text>
+                            <View style={styles.originalPostHeader}>
+                                {originalPost.is_anonymous ? (
+                                    <Image source={nuLogo} style={styles.originalAvatar} />
+                                ) : originalPost.avatar_url ? (
+                                    originalPost.avatar_url.startsWith("http") ? (
+                                        <Image
+                                            source={{ uri: originalPost.avatar_url }}
+                                            style={styles.originalAvatar}
+                                        />
+                                    ) : (
+                                        <SupabaseImage
+                                            path={originalPost.avatar_url}
+                                            bucket="avatars"
+                                            style={styles.originalAvatar}
+                                        />
+                                    )
+                                ) : (
+                                    <View style={[styles.originalAvatar, { backgroundColor: theme.border }]} />
+                                )}
+                                <View style={styles.originalPostHeaderText}>
+                                    <Text style={[styles.originalAuthor, { color: theme.text }]}>
+                                        {originalPost.is_anonymous ? 'Anonymous' : originalPost.username}
+                                    </Text>
+                                    <Text style={[styles.originalTime, { color: theme.secondaryText }]}>
+                                        {formatDistanceToNowStrict(new Date(originalPost.created_at!))} ago
+                                    </Text>
+                                </View>
+                            </View>
+                            <Text style={[styles.originalContent, { color: theme.text }]} numberOfLines={6}>
+                                {originalPost.content}
+                            </Text>
                         </View>
                     )}
                 </ScrollView>
@@ -464,6 +534,44 @@ const styles = StyleSheet.create({
     },
     footerButton: {
         padding: 5,
+    },
+    originalPostPreview: {
+        marginTop: 15,
+        marginBottom: 15,
+        padding: 15,
+        borderRadius: 12,
+        borderWidth: 1,
+    },
+    originalPostLabel: {
+        fontSize: 13,
+        fontFamily: 'Poppins_500Medium',
+        marginBottom: 10,
+    },
+    originalPostHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    originalAvatar: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+    },
+    originalPostHeaderText: {
+        marginLeft: 10,
+        flex: 1,
+    },
+    originalAuthor: {
+        fontSize: 14,
+        fontFamily: 'Poppins_500Medium',
+    },
+    originalTime: {
+        fontSize: 12,
+    },
+    originalContent: {
+        fontSize: 15,
+        fontFamily: 'Poppins_400Regular',
+        lineHeight: 22,
     },
 });
 

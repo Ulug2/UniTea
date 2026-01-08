@@ -14,34 +14,10 @@ import PostListSkeleton from "../../../components/PostListSkeleton";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
+import { PostSummary } from "../../../types/types";
 
 const POSTS_PER_PAGE = 10;
-
-// Type for the optimized view
-type PostSummary = {
-  post_id: string;
-  user_id: string;
-  content: string;
-  image_url: string | null;
-  category: string | null;
-  location: string | null;
-  post_type: string;
-  is_anonymous: boolean | null;
-  is_deleted: boolean | null;
-  is_edited: boolean | null;
-  created_at: string | null;
-  updated_at: string | null;
-  edited_at: string | null;
-  view_count: number | null;
-  username: string;
-  avatar_url: string | null;
-  is_verified: boolean | null;
-  is_banned: boolean | null;
-  comment_count: number;
-  vote_score: number;
-  user_vote: 'upvote' | 'downvote' | null;
-};
 
 export default function FeedScreen() {
   const { theme } = useTheme();
@@ -85,8 +61,15 @@ export default function FeedScreen() {
     retry: 2,
   });
 
-  // Flatten pages into single array
-  const posts = postsData?.pages.flat() ?? [];
+  // Flatten pages into single array and remove duplicates
+  const posts = useMemo(() => {
+    const allPosts = postsData?.pages.flat() ?? [];
+    // Remove duplicates by post_id
+    const uniquePosts = Array.from(
+      new Map(allPosts.map(post => [post.post_id, post])).values()
+    );
+    return uniquePosts;
+  }, [postsData]);
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -129,6 +112,14 @@ export default function FeedScreen() {
             commentCount={item.comment_count}
             voteScore={item.vote_score}
             userVote={item.user_vote}
+            repostCount={item.repost_count}
+            repostedFromPostId={item.reposted_from_post_id}
+            repostComment={item.repost_comment}
+            originalContent={item.original_content}
+            originalAuthorUsername={item.original_author_username}
+            originalAuthorAvatar={item.original_author_avatar}
+            originalIsAnonymous={item.original_is_anonymous}
+            originalCreatedAt={item.original_created_at}
           />
         )}
         onEndReached={handleLoadMore}
