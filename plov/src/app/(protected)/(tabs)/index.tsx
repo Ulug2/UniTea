@@ -16,11 +16,13 @@ import { supabase } from "../../../lib/supabase";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { PostSummary } from "../../../types/types";
+import { useFilterContext } from "./_layout";
 
 const POSTS_PER_PAGE = 10;
 
 export default function FeedScreen() {
   const { theme } = useTheme();
+  const { selectedFilter } = useFilterContext();
 
   // Fetch posts using optimized view with pagination
   const {
@@ -32,39 +34,63 @@ export default function FeedScreen() {
     refetch,
     isRefetching,
   } = useInfiniteQuery({
-    queryKey: ["posts", "feed"],
+    queryKey: ["posts", "feed", selectedFilter], // Add filter to query key
     queryFn: async ({ pageParam = 0 }) => {
       const from = pageParam * POSTS_PER_PAGE;
       const to = from + POSTS_PER_PAGE - 1;
 
-      // Type cast needed since view isn't in generated types
-      const { data, error } = await (supabase as any)
+      let query = (supabase as any)
         .from("posts_summary_view")
         .select("*")
-        .eq("post_type", "feed")
-        .order("created_at", { ascending: false })
-        .range(from, to);
+        .eq("post_type", "feed");
 
+      // Apply sorting based on selected filter
+      switch (selectedFilter) {
+        case 'new':
+          // Sort by newest first
+          query = query.order("created_at", { ascending: false });
+          break;
+
+        case 'top':
+          // Sort by highest score in the last 24 hours
+          const last24Hours = new Date();
+          last24Hours.setHours(last24Hours.getHours() - 24);
+          query = query
+            .gte("created_at", last24Hours.toISOString())
+            .order("vote_score", { ascending: false });
+          break;
+
+        case 'hot':
+          // Trending: Posts from last 7 days sorted by score
+          const last7Days = new Date();
+          last7Days.setDate(last7Days.getDate() - 7);
+          query = query
+            .gte("created_at", last7Days.toISOString())
+            .order("vote_score", { ascending: false });
+          break;
+      }
+
+      query = query.range(from, to);
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data || []) as PostSummary[];
     },
     getNextPageParam: (lastPage, allPages) => {
-      // If last page has full page of results, there might be more
       if (lastPage.length === POSTS_PER_PAGE) {
         return allPages.length;
       }
       return undefined;
     },
     initialPageParam: 0,
-    staleTime: 1000 * 60 * 2, // Posts stay fresh for 2 minutes
-    gcTime: 1000 * 60 * 30, // Cache for 30 minutes
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 30,
     retry: 2,
   });
 
   // Flatten pages into single array and remove duplicates
   const posts = useMemo(() => {
     const allPosts = postsData?.pages.flat() ?? [];
-    // Remove duplicates by post_id
     const uniquePosts = Array.from(
       new Map(allPosts.map(post => [post.post_id, post])).values()
     );
@@ -76,6 +102,42 @@ export default function FeedScreen() {
       fetchNextPage();
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Memoize keyExtractor
+  const keyExtractor = useCallback((item: PostSummary) => item.post_id, []);
+
+  // Memoize renderItem to prevent unnecessary re-renders
+  const renderItem = useCallback(({ item }: { item: PostSummary }) => (
+    <PostListItem
+      postId={item.post_id}
+      userId={item.user_id}
+      content={item.content}
+      imageUrl={item.image_url}
+      category={item.category}
+      location={item.location}
+      postType={item.post_type}
+      isAnonymous={item.is_anonymous}
+      isEdited={item.is_edited}
+      createdAt={item.created_at}
+      updatedAt={item.updated_at}
+      editedAt={item.edited_at}
+      viewCount={item.view_count}
+      username={item.username}
+      avatarUrl={item.avatar_url}
+      isVerified={item.is_verified}
+      commentCount={item.comment_count}
+      voteScore={item.vote_score}
+      userVote={item.user_vote}
+      repostCount={item.repost_count}
+      repostedFromPostId={item.reposted_from_post_id}
+      repostComment={item.repost_comment}
+      originalContent={item.original_content}
+      originalAuthorUsername={item.original_author_username}
+      originalAuthorAvatar={item.original_author_avatar}
+      originalIsAnonymous={item.original_is_anonymous}
+      originalCreatedAt={item.original_created_at}
+    />
+  ), []);
 
   // Show skeleton while loading initial data
   if (isLoading) {
@@ -90,40 +152,15 @@ export default function FeedScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <FlatList
         data={posts}
-        keyExtractor={(item) => item.post_id}
-        renderItem={({ item }) => (
-          <PostListItem
-            postId={item.post_id}
-            userId={item.user_id}
-            content={item.content}
-            imageUrl={item.image_url}
-            category={item.category}
-            location={item.location}
-            postType={item.post_type}
-            isAnonymous={item.is_anonymous}
-            isEdited={item.is_edited}
-            createdAt={item.created_at}
-            updatedAt={item.updated_at}
-            editedAt={item.edited_at}
-            viewCount={item.view_count}
-            username={item.username}
-            avatarUrl={item.avatar_url}
-            isVerified={item.is_verified}
-            commentCount={item.comment_count}
-            voteScore={item.vote_score}
-            userVote={item.user_vote}
-            repostCount={item.repost_count}
-            repostedFromPostId={item.reposted_from_post_id}
-            repostComment={item.repost_comment}
-            originalContent={item.original_content}
-            originalAuthorUsername={item.original_author_username}
-            originalAuthorAvatar={item.original_author_avatar}
-            originalIsAnonymous={item.original_is_anonymous}
-            originalCreatedAt={item.original_created_at}
-          />
-        )}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.5}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        initialNumToRender={10}
+        windowSize={10}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}

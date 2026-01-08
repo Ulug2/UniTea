@@ -297,11 +297,7 @@ const PostListItem = React.memo(function PostListItem({
                         </View>
                         <Text style={styles.time}>
                             <AntDesign name="clock-circle" size={12} color={theme.secondaryText} />
-                            <Text> {formatDistanceToNowStrict(
-                                isRepost && originalCreatedAt
-                                    ? new Date(originalCreatedAt)
-                                    : postCreatedAt
-                            )}</Text>
+                            <Text> {formatDistanceToNowStrict(postCreatedAt)}</Text>
                         </Text>
                     </View>
 
@@ -318,6 +314,11 @@ const PostListItem = React.memo(function PostListItem({
                                 <Text numberOfLines={isDetailedPost ? undefined : 4} style={styles.originalContent}>
                                     {originalContent}
                                 </Text>
+                                {originalCreatedAt && (
+                                    <Text style={styles.originalDate}>
+                                        Original post: {formatDistanceToNowStrict(new Date(originalCreatedAt))} ago
+                                    </Text>
+                                )}
                             </View>
                         ) : (
                             // Regular post content

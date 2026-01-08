@@ -77,13 +77,31 @@ export default function LostFoundScreen() {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  // Memoize keyExtractor
+  const keyExtractor = useCallback((item: PostSummary) => item.post_id, []);
+
+  // Memoize renderItem to prevent unnecessary re-renders
+  const renderItem = useCallback(({ item }: { item: PostSummary }) => (
+    <LostFoundListItem
+      postId={item.post_id}
+      userId={item.user_id}
+      content={item.content}
+      imageUrl={item.image_url}
+      category={item.category}
+      location={item.location}
+      isAnonymous={item.is_anonymous}
+      createdAt={item.created_at}
+      username={item.username}
+      avatarUrl={item.avatar_url}
+      isVerified={item.is_verified}
+    />
+  ), []);
+
   // Show skeleton while loading initial data
   if (isLoading) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <View style={styles.contentContainer}>
-          <LostFoundListSkeleton />
-        </View>
+        <LostFoundListSkeleton />
       </View>
     );
   }
@@ -92,24 +110,15 @@ export default function LostFoundScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <FlatList
         data={lostFoundPosts}
-        keyExtractor={(item) => item.post_id}
-        renderItem={({ item }) => (
-          <LostFoundListItem
-            postId={item.post_id}
-            userId={item.user_id}
-            content={item.content}
-            imageUrl={item.image_url}
-            category={item.category}
-            location={item.location}
-            isAnonymous={item.is_anonymous}
-            createdAt={item.created_at}
-            username={item.username}
-            avatarUrl={item.avatar_url}
-            isVerified={item.is_verified}
-          />
-        )}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.5}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        initialNumToRender={10}
+        windowSize={10}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
