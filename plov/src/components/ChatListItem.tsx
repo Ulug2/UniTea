@@ -1,10 +1,10 @@
 import { View, Text, Pressable, StyleSheet, Image } from "react-native";
-import { Tables } from "../types/database.types";
+import { Database } from "../types/database.types";
 import { useTheme } from "../context/ThemeContext";
 import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
 
-type Profile = Tables<"profiles">;
+type Profile = Database['public']['Tables']['profiles']['Row'];
 
 type ChatListItemProps = {
   chatId: string;
@@ -142,7 +142,7 @@ export default function ChatListItem({
       onPress={() => router.push(`/chat/${chatId}`)}
     >
       <View style={styles.avatarContainer}>
-        {otherUser?.avatar_url && !isAnonymous ? (
+        {!isAnonymous && otherUser?.avatar_url ? (
           otherUser.avatar_url.startsWith("http") ? (
             <Image
               source={{ uri: otherUser.avatar_url }}

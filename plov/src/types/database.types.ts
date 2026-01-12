@@ -174,6 +174,7 @@ export type Database = {
                     content: string
                     created_at: string | null
                     id: string
+                    is_anonymous: boolean | null
                     is_deleted: boolean | null
                     parent_comment_id: string | null
                     post_id: string
@@ -184,6 +185,7 @@ export type Database = {
                     content: string
                     created_at?: string | null
                     id?: string
+                    is_anonymous?: boolean | null
                     is_deleted?: boolean | null
                     parent_comment_id?: string | null
                     post_id: string
@@ -194,6 +196,7 @@ export type Database = {
                     content?: string
                     created_at?: string | null
                     id?: string
+                    is_anonymous?: boolean | null
                     is_deleted?: boolean | null
                     parent_comment_id?: string | null
                     post_id?: string
@@ -676,7 +679,7 @@ export type Tables<
     }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never,
 > = DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
 }

@@ -8,6 +8,8 @@ import {
   Modal,
   ScrollView,
   RefreshControl,
+  Alert,
+  Image,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
@@ -16,20 +18,58 @@ import { router, useNavigation } from "expo-router";
 import { formatDistanceToNowStrict } from "date-fns";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "../../../context/AuthContext";
-import { useQuery } from "@tanstack/react-query";
-import { Tables } from "../../../types/database.types";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Database } from "../../../types/database.types";
+import ManageAccountModal from "../../../components/ManageAccountModal";
+import * as ImagePicker from 'expo-image-picker';
+import { uploadImage } from '../../../utils/supabaseImages';
+import SupabaseImage from "../../../components/SupabaseImage";
+import nuLogo from "../../../../assets/images/nu-logo.png";
 
-type Profile = Tables<"profiles">;
-type Post = Tables<"posts">;
-type Vote = Tables<"votes">;
-type Comment = Tables<"comments">;
+type Profile = Database['public']['Tables']['profiles']['Row'];
+type Post = Database['public']['Tables']['posts']['Row'];
+type Vote = Database['public']['Tables']['votes']['Row'];
+type Comment = Database['public']['Tables']['comments']['Row'];
 
 export default function ProfileScreen() {
   const { theme, isDark, toggleTheme } = useTheme();
   const { session } = useAuth();
   const navigation = useNavigation();
+  const queryClient = useQueryClient();
   const [settingsVisible, setSettingsVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<"all" | "anonymous">("all");
+  const [manageAccountVisible, setManageAccountVisible] = useState(false);
+  const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState<"all" | "anonymous" | "bookmarked">("all");
+
+  // Fetch blocked users
+  const { data: blocks = [] } = useQuery({
+    queryKey: ["blocks", session?.user?.id],
+    enabled: Boolean(session?.user?.id),
+    queryFn: async () => {
+      const currentUserId = session?.user?.id;
+      if (!currentUserId) return [];
+
+      // Get users blocked by me and users who blocked me
+      const [blockedByMe, blockedMe] = await Promise.all([
+        supabase
+          .from("blocks")
+          .select("blocked_id")
+          .eq("blocker_id", currentUserId),
+        supabase
+          .from("blocks")
+          .select("blocker_id")
+          .eq("blocked_id", currentUserId),
+      ]);
+
+      const blockedUserIds = new Set<string>();
+      blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
+      blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
+
+      return Array.from(blockedUserIds);
+    },
+    staleTime: 1000 * 60 * 5, // Blocks stay fresh for 5 minutes
+    gcTime: 1000 * 60 * 30,
+  });
 
   // Fetch current user profile
   const { data: currentUser, refetch: refetchProfile, isLoading: isLoadingProfile } =
@@ -70,22 +110,70 @@ export default function ProfileScreen() {
         .select("*")
         .eq("user_id", userId)
         .eq("post_type", "feed")
+        .eq("is_deleted", false)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
       return data || [];
     },
     enabled: Boolean(session?.user?.id),
-    staleTime: 1000 * 60 * 2, // Posts stay fresh for 2 minutes
+    staleTime: 1000 * 30, // Posts stay fresh for 30 seconds (more responsive)
     gcTime: 1000 * 60 * 30, // Cache for 30 minutes
     retry: 2,
   });
 
-  // Get all post IDs for batch queries
-  const postIds = userPosts.map((p) => p.id);
+  // Fetch user's bookmarked posts
+  const {
+    data: bookmarkedPosts = [],
+    refetch: refetchBookmarks,
+  } = useQuery<Post[]>({
+    queryKey: ["bookmarked-posts", session?.user?.id],
+    queryFn: async () => {
+      const userId = session?.user?.id;
+      if (!userId) return [];
+
+      // First get bookmark IDs with creation dates
+      const { data: bookmarks, error: bookmarkError } = await supabase
+        .from("bookmarks")
+        .select("post_id, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (bookmarkError) throw bookmarkError;
+      if (!bookmarks || bookmarks.length === 0) return [];
+
+      const bookmarkedPostIds = bookmarks.map(b => b.post_id);
+
+      // Then get the actual posts (filter out deleted posts)
+      const { data, error } = await supabase
+        .from("posts")
+        .select("*")
+        .in("id", bookmarkedPostIds)
+        .eq("is_deleted", false);
+
+      if (error) throw error;
+
+      // Sort by bookmark creation date (most recently bookmarked first)
+      const sortedData = data?.sort((a, b) => {
+        const aBookmark = bookmarks.find(bm => bm.post_id === a.id);
+        const bBookmark = bookmarks.find(bm => bm.post_id === b.id);
+        return new Date(bBookmark?.created_at || 0).getTime() - new Date(aBookmark?.created_at || 0).getTime();
+      });
+
+      return sortedData || [];
+    },
+    enabled: Boolean(session?.user?.id),
+    staleTime: 1000 * 30, // Bookmarks stay fresh for 30 seconds (more responsive)
+    gcTime: 1000 * 60 * 30, // Cache for 30 minutes
+    retry: 2,
+  });
+
+  // Get all post IDs for batch queries (including bookmarked posts)
+  const allPosts = activeTab === "bookmarked" ? bookmarkedPosts : userPosts;
+  const postIds = allPosts.map((p) => p.id);
 
   // Fetch votes for all user posts
-  const { data: postVotes = [] } = useQuery<Vote[]>({
+  const { data: postVotes = [], refetch: refetchVotes } = useQuery<Vote[]>({
     queryKey: ["user-post-votes", postIds],
     queryFn: async () => {
       if (postIds.length === 0) return [];
@@ -106,7 +194,7 @@ export default function ProfileScreen() {
   });
 
   // Fetch comments for all user posts
-  const { data: postComments = [] } = useQuery<Comment[]>({
+  const { data: postComments = [], refetch: refetchComments } = useQuery<Comment[]>({
     queryKey: ["user-post-comments", postIds],
     queryFn: async () => {
       if (postIds.length === 0) return [];
@@ -120,7 +208,7 @@ export default function ProfileScreen() {
       return data || [];
     },
     enabled: postIds.length > 0,
-    staleTime: 1000 * 60, // Comments stay fresh for 1 minute
+    staleTime: 1000 * 30, // Comments stay fresh for 30 seconds (more responsive)
     gcTime: 1000 * 60 * 15, // Cache for 15 minutes
     retry: 2,
   });
@@ -179,12 +267,21 @@ export default function ProfileScreen() {
     );
   }, [postScoresMap]);
 
-  // Filter posts based on active tab
-  const filteredPosts =
-    activeTab === "all" ? userPosts : userPosts.filter((p) => p.is_anonymous);
+  // Filter posts based on active tab (and filter blocked users from bookmarked posts)
+  const filteredPosts = useMemo(() => {
+    if (activeTab === "all") {
+      return userPosts;
+    } else if (activeTab === "anonymous") {
+      return userPosts.filter((p) => p.is_anonymous);
+    } else {
+      // Filter out bookmarked posts from blocked users
+      return bookmarkedPosts.filter((p) => !blocks.includes(p.user_id));
+    }
+  }, [activeTab, userPosts, bookmarkedPosts, blocks]);
 
   async function signOut() {
     setSettingsVisible(false);
+    setManageAccountVisible(false);
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("Sign out error:", error.message);
@@ -193,13 +290,209 @@ export default function ProfileScreen() {
     router.replace("/(auth)");
   }
 
+  // Unblock all users mutation
+  const unblockAllMutation = useMutation({
+    mutationFn: async () => {
+      const currentUserId = session?.user?.id;
+      if (!currentUserId) throw new Error("User ID missing");
+
+      // Delete all blocks where current user is the blocker
+      const { error } = await supabase
+        .from("blocks")
+        .delete()
+        .eq("blocker_id", currentUserId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      // Invalidate blocks query to refresh the list
+      queryClient.invalidateQueries({ queryKey: ["blocks"] });
+      // Invalidate all content queries to show unblocked users' content
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.invalidateQueries({ queryKey: ["comments"] });
+
+      Alert.alert("Success", "All users have been unblocked");
+      setManageAccountVisible(false);
+    },
+    onError: (error: any) => {
+      Alert.alert("Error", error.message || "Failed to unblock users");
+    },
+  });
+
+  // Delete account mutation
+  const deleteAccountMutation = useMutation({
+    mutationFn: async () => {
+      const currentUserId = session?.user?.id;
+      if (!currentUserId) throw new Error("User ID missing");
+
+      // Delete the user's profile (this will cascade delete all related data)
+      // The cascade deletion will handle:
+      // - posts (and their comments, votes, bookmarks, reports)
+      // - comments (and their votes)
+      // - votes
+      // - bookmarks
+      // - reports
+      // - notifications
+      // - chats
+      // - blocks
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .delete()
+        .eq("id", currentUserId);
+
+      if (profileError) throw profileError;
+
+      // Sign out the user (auth user will remain but can't log in without profile)
+      // Note: To completely delete the auth user, you'd need admin privileges
+      // For now, deleting the profile is sufficient as it removes all user data
+      await supabase.auth.signOut();
+    },
+    onSuccess: () => {
+      // Clear all queries
+      queryClient.clear();
+      // Navigate to auth screen
+      router.replace("/(auth)");
+      Alert.alert("Success", "Your account has been deleted");
+    },
+    onError: (error: any) => {
+      Alert.alert("Error", error.message || "Failed to delete account. Please try again.");
+    },
+  });
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete Account",
+      "Are you sure you want to delete your account? This action cannot be undone. All your posts, comments, votes, and other data will be permanently deleted.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteAccountMutation.mutate(),
+        },
+      ]
+    );
+  };
+
+  const handleUnblockAll = () => {
+    Alert.alert(
+      "Unblock All Users",
+      "Are you sure you want to unblock all users? You will be able to see all posts and comments again.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Unblock All",
+          onPress: () => unblockAllMutation.mutate(),
+        },
+      ]
+    );
+  };
+
+  // Update profile mutation (for username and avatar)
+  const updateProfileMutation = useMutation({
+    mutationFn: async (updates: { username?: string; avatar_url?: string }) => {
+      const currentUserId = session?.user?.id;
+      if (!currentUserId) throw new Error("User ID missing");
+
+      const { error } = await supabase
+        .from("profiles")
+        .update(updates)
+        .eq("id", currentUserId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      // Invalidate profile query to reflect changes immediately
+      queryClient.invalidateQueries({ queryKey: ["current-user-profile"] });
+      // Also invalidate posts queries since username/avatar might be displayed in feeds
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.invalidateQueries({ queryKey: ["user-posts"] });
+      Alert.alert("Success", "Profile updated successfully");
+    },
+    onError: (error: any) => {
+      Alert.alert("Error", error.message || "Failed to update profile. Please try again.");
+    },
+  });
+
+  // Update password mutation
+  const updatePasswordMutation = useMutation({
+    mutationFn: async (newPassword: string) => {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      Alert.alert("Success", "Password updated successfully");
+    },
+    onError: (error: any) => {
+      Alert.alert("Error", error.message || "Failed to update password. Please try again.");
+    },
+  });
+
+  // Handle avatar update
+  const handleAvatarUpdate = async () => {
+    try {
+      // Launch image picker (permissions are handled automatically by expo-image-picker)
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: 'images',
+        allowsEditing: true,
+        aspect: [1, 1], // Square aspect ratio for avatars
+        quality: 0.8,
+      });
+
+      if (result.canceled) return;
+
+      // Upload image to Supabase Storage
+      const imagePath = await uploadImage(
+        result.assets[0].uri,
+        supabase,
+        "avatars" // Use avatars bucket
+      );
+
+      // Update profile with new avatar URL
+      updateProfileMutation.mutate({ avatar_url: imagePath });
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to update avatar. Please try again.");
+    }
+  };
+
+  // Handle username update
+  const handleUsernameUpdate = (newUsername: string) => {
+    if (!newUsername.trim()) {
+      Alert.alert("Error", "Username cannot be empty");
+      return;
+    }
+    updateProfileMutation.mutate({ username: newUsername.trim() });
+  };
+
+  // Handle password update
+  const handlePasswordUpdate = (newPassword: string, confirmPassword: string) => {
+    if (!newPassword || newPassword.length < 6) {
+      Alert.alert("Error", "Password must be at least 6 characters long");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert("Error", "Passwords do not match");
+      return;
+    }
+    updatePasswordMutation.mutate(newPassword);
+  };
+
   const renderPostItem = ({ item }: { item: Post }) => {
     const postScore = postScoresMap.get(item.id) || 0;
     const commentCount = commentCountsMap.get(item.id) || 0;
     const timeAgo = item.created_at
       ? formatDistanceToNowStrict(new Date(item.created_at), {
-          addSuffix: false,
-        })
+        addSuffix: false,
+      })
       : "";
 
     return (
@@ -266,11 +559,29 @@ export default function ProfileScreen() {
           <>
             {/* USER INFO CARD */}
             <View style={[styles.userCard, { backgroundColor: theme.card }]}>
-              <View style={styles.avatarContainer}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{userInitials}</Text>
-                </View>
-              </View>
+              <Pressable
+                style={styles.avatarContainer}
+                onPress={() => setAvatarPreviewVisible(true)}
+              >
+                {currentUser?.avatar_url ? (
+                  currentUser.avatar_url.startsWith("http") ? (
+                    <Image
+                      source={{ uri: currentUser.avatar_url }}
+                      style={styles.avatar}
+                    />
+                  ) : (
+                    <SupabaseImage
+                      path={currentUser.avatar_url}
+                      bucket="avatars"
+                      style={styles.avatar}
+                    />
+                  )
+                ) : (
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{userInitials}</Text>
+                  </View>
+                )}
+              </Pressable>
               <View style={styles.userInfo}>
                 <Text style={[styles.userName, { color: theme.text }]}>
                   {userDisplayName}
@@ -343,6 +654,31 @@ export default function ProfileScreen() {
                   Anonymous
                 </Text>
               </Pressable>
+              <Pressable
+                style={[
+                  styles.tab,
+                  activeTab === "bookmarked" && styles.activeTab,
+                  {
+                    backgroundColor:
+                      activeTab === "bookmarked" ? theme.card : "transparent",
+                  },
+                ]}
+                onPress={() => setActiveTab("bookmarked")}
+              >
+                <Text
+                  style={[
+                    styles.tabText,
+                    {
+                      color:
+                        activeTab === "bookmarked"
+                          ? theme.text
+                          : theme.secondaryText,
+                    },
+                  ]}
+                >
+                  Bookmarked
+                </Text>
+              </Pressable>
             </View>
           </>
         }
@@ -355,6 +691,9 @@ export default function ProfileScreen() {
             onRefresh={() => {
               refetchProfile();
               refetchPosts();
+              refetchBookmarks();
+              refetchVotes();
+              refetchComments();
             }}
             tintColor={theme.primary}
           />
@@ -465,30 +804,82 @@ export default function ProfileScreen() {
                 />
               </Pressable>
 
-              {/* Logout */}
+              {/* Manage Account */}
               <Pressable
                 style={[styles.settingRow, { borderBottomColor: theme.border }]}
-                onPress={signOut}
+                onPress={() => {
+                  setSettingsVisible(false);
+                  setManageAccountVisible(true);
+                }}
               >
                 <View style={styles.settingLeft}>
-                  <Ionicons name="log-out-outline" size={22} color="#FF6B6B" />
-                  <Text style={[styles.settingLabel, { color: "#FF6B6B" }]}>
-                    Logout
+                  <MaterialCommunityIcons
+                    name="account-cog"
+                    size={22}
+                    color={theme.text}
+                  />
+                  <Text style={[styles.settingLabel, { color: theme.text }]}>
+                    Manage Account
                   </Text>
                 </View>
-              </Pressable>
-
-              {/* Delete Account */}
-              <Pressable style={styles.settingRow}>
-                <View style={styles.settingLeft}>
-                  <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
-                  <Text style={[styles.settingLabel, { color: "#FF6B6B" }]}>
-                    Delete Account
-                  </Text>
-                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={theme.secondaryText}
+                />
               </Pressable>
             </ScrollView>
           </View>
+        </Pressable>
+      </Modal>
+
+      {/* Manage Account Modal */}
+      <ManageAccountModal
+        visible={manageAccountVisible}
+        onClose={() => setManageAccountVisible(false)}
+        onLogout={signOut}
+        onDeleteAccount={handleDeleteAccount}
+        onUnblockAll={handleUnblockAll}
+        onUpdateAvatar={handleAvatarUpdate}
+        onUpdateUsername={handleUsernameUpdate}
+        onUpdatePassword={handlePasswordUpdate}
+        isDeleting={deleteAccountMutation.isPending}
+        isUnblocking={unblockAllMutation.isPending}
+        isUpdating={updateProfileMutation.isPending || updatePasswordMutation.isPending}
+        currentUsername={currentUser?.username || ""}
+      />
+
+      {/* Avatar Preview Modal */}
+      <Modal
+        visible={avatarPreviewVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAvatarPreviewVisible(false)}
+      >
+        <Pressable
+          style={styles.avatarPreviewOverlay}
+          onPress={() => setAvatarPreviewVisible(false)}
+        >
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            {currentUser?.avatar_url ? (
+              currentUser.avatar_url.startsWith("http") ? (
+                <Image
+                  source={{ uri: currentUser.avatar_url }}
+                  style={styles.avatarPreview}
+                />
+              ) : (
+                <SupabaseImage
+                  path={currentUser.avatar_url}
+                  bucket="avatars"
+                  style={styles.avatarPreview}
+                />
+              )
+            ) : (
+              <View style={styles.avatarPreview}>
+                <Text style={styles.avatarPreviewText}>{userInitials}</Text>
+              </View>
+            )}
+          </Pressable>
         </Pressable>
       </Modal>
     </View>
@@ -510,17 +901,18 @@ const styles = StyleSheet.create({
   avatarContainer: {
     alignItems: "center",
     justifyContent: "center",
+    marginRight: 16,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: "#5DBEBC",
     justifyContent: "center",
     alignItems: "center",
   },
   avatarText: {
-    fontSize: 32,
+    fontSize: 40,
     fontFamily: "Poppins_700Bold",
     color: "#FFFFFF",
   },
@@ -651,5 +1043,24 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: 16,
     fontFamily: "Poppins_500Medium",
+  },
+  avatarPreviewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarPreview: {
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: "#5DBEBC",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarPreviewText: {
+    fontSize: 120,
+    fontFamily: "Poppins_700Bold",
+    color: "#FFFFFF",
   },
 });

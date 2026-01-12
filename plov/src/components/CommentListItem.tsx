@@ -9,17 +9,24 @@ import {
   LayoutAnimation,
   UIManager,
   Platform,
+  Modal,
+  Alert,
 } from "react-native";
 import { Entypo, Octicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { formatDistanceToNowStrict } from "date-fns";
 import { useTheme } from "../context/ThemeContext";
-import { Tables } from "../types/database.types";
+import { Database } from "../types/database.types";
 import { useVote } from "../hooks/useVote";
 import nuLogo from "../../assets/images/nu-logo.png";
 import SupabaseImage from "./SupabaseImage";
+import { useAuth } from "../context/AuthContext";
+import { supabase } from "../lib/supabase";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import ReportModal from "./ReportModal";
+import BlockUserModal from "./BlockUserModal";
 
-type Profile = Tables<"profiles">;
-type Comment = Tables<"comments">;
+type Profile = Database['public']['Tables']['profiles']['Row'];
+type Comment = Database['public']['Tables']['comments']['Row'];
 
 type CommentWithReplies = Comment & {
   replies?: CommentWithReplies[];
@@ -41,6 +48,11 @@ const CommentListItem = ({
   parentUser,
 }: CommentListItemProps) => {
   const { theme } = useTheme();
+  const { session } = useAuth();
+  const queryClient = useQueryClient();
+  const currentUserId = session?.user?.id;
+  const isCommentOwner = currentUserId === comment.user_id;
+
   const hasReplies = comment.replies && comment.replies.length > 0;
   const replyCount = comment.replies?.length || 0;
 
@@ -48,9 +60,15 @@ const CommentListItem = ({
   const [showReplies, setShowReplies] = useState(
     replyCount <= 3 && replyCount > 0
   );
+  const [showMenu, setShowMenu] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
 
   // Enable layout animation for Android
-  if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  if (
+    Platform.OS === "android" &&
+    UIManager.setLayoutAnimationEnabledExperimental
+  ) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
   }
 
@@ -65,9 +83,138 @@ const CommentListItem = ({
   }, [replyCount, showReplies]);
 
   // Use vote hook for comment voting
-  const { userVote, score: commentScore, handleUpvote, handleDownvote, isVoting } = useVote({
+  const {
+    userVote,
+    score: commentScore,
+    handleUpvote,
+    handleDownvote,
+    isVoting,
+  } = useVote({
     commentId: comment.id,
   });
+
+  // Delete comment mutation (hard delete with cascade)
+  const deleteCommentMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("comments")
+        .delete()
+        .eq("id", comment.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      // Invalidate all related queries to refresh everywhere
+      queryClient.invalidateQueries({ queryKey: ["comments"] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] }); // Refresh feed
+      queryClient.invalidateQueries({ queryKey: ["user-posts"] }); // Refresh profile posts
+      queryClient.invalidateQueries({ queryKey: ["user-post-comments"] }); // Refresh profile comment counts
+      queryClient.invalidateQueries({ queryKey: ["bookmarked-posts"] }); // Refresh bookmarked
+      Alert.alert("Success", "Comment deleted successfully");
+    },
+    onError: (error: any) => {
+      Alert.alert("Error", error.message || "Failed to delete comment");
+    },
+  });
+
+  const handleDeleteComment = () => {
+    setShowMenu(false);
+
+    Alert.alert(
+      "Delete Comment",
+      "Are you sure you want to delete this comment? This action cannot be undone.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteCommentMutation.mutate(),
+        },
+      ]
+    );
+  };
+
+  // Report comment mutation
+  const reportCommentMutation = useMutation({
+    mutationFn: async (reason: string) => {
+      if (!currentUserId) throw new Error("User ID missing");
+
+      const { error } = await supabase.from("reports").insert({
+        reporter_id: currentUserId,
+        post_id: comment.post_id,
+        comment_id: comment.id,
+        reason: reason,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setShowReportModal(false);
+      setShowMenu(false);
+      // Show block user modal after successful report
+      setShowBlockModal(true);
+    },
+    onError: (error: any) => {
+      Alert.alert("Error", error.message || "Failed to submit report");
+    },
+  });
+
+  // Block user mutation
+  const blockUserMutation = useMutation({
+    mutationFn: async (userIdToBlock: string) => {
+      if (!currentUserId) throw new Error("User ID missing");
+
+      const { error } = await supabase.from("blocks").insert({
+        blocker_id: currentUserId,
+        blocked_id: userIdToBlock,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setShowBlockModal(false);
+      // Invalidate queries to filter out blocked user's content
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.invalidateQueries({ queryKey: ["comments"] });
+
+      Alert.alert("Success", "User blocked successfully");
+    },
+    onError: (error: any) => {
+      Alert.alert("Error", error.message || "Failed to block user");
+    },
+  });
+
+  const handleReportComment = (reason: string) => {
+    reportCommentMutation.mutate(reason);
+  };
+
+  const handleBlockUser = () => {
+    if (!comment.user_id) return;
+
+    Alert.alert(
+      "Block User",
+      "Are you sure you want to block this user? You will no longer see their posts or comments, and they will no longer see yours.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+          onPress: () => setShowBlockModal(false),
+        },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: () => {
+            if (comment.user_id) {
+              blockUserMutation.mutate(comment.user_id);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <View
@@ -81,7 +228,9 @@ const CommentListItem = ({
       {/* User Info */}
       <View style={styles.userRow}>
         <View style={styles.userInfo}>
-          {comment.user?.avatar_url ? (
+          {comment.is_anonymous ? (
+            <Image source={nuLogo} style={styles.avatar} />
+          ) : comment.user?.avatar_url ? (
             comment.user.avatar_url.startsWith("http") ? (
               <Image
                 source={{ uri: comment.user.avatar_url }}
@@ -98,7 +247,9 @@ const CommentListItem = ({
             <Image source={nuLogo} style={styles.avatar} />
           )}
           <Text style={[styles.username, { color: theme.text }]}>
-            {comment.user?.username || "Unknown"}
+            {comment.is_anonymous
+              ? "Anonymous"
+              : comment.user?.username || "Unknown"}
           </Text>
           {parentUser && (
             <>
@@ -122,14 +273,77 @@ const CommentListItem = ({
               : "Recently"}
           </Text>
         </View>
-        <View style={styles.threeDots}>
+        <Pressable style={styles.threeDots} onPress={() => setShowMenu(true)}>
           <Entypo
             name="dots-three-horizontal"
             size={15}
             color={theme.secondaryText}
           />
-        </View>
+        </Pressable>
       </View>
+
+      {/* Menu Modal */}
+      <Modal
+        visible={showMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMenu(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowMenu(false)}
+        >
+          <View style={[styles.menuContainer, { backgroundColor: theme.card }]}>
+            {isCommentOwner ? (
+              <Pressable style={styles.menuItem} onPress={handleDeleteComment}>
+                <MaterialCommunityIcons
+                  name="delete"
+                  size={20}
+                  color="#EF4444"
+                />
+                <Text style={[styles.menuText, { color: "#EF4444" }]}>
+                  Delete Comment
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  setShowReportModal(true);
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="flag"
+                  size={20}
+                  color={theme.text}
+                />
+                <Text style={[styles.menuText, { color: theme.text }]}>
+                  Report Content
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Report Modal */}
+      <ReportModal
+        visible={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={handleReportComment}
+        isLoading={reportCommentMutation.isPending}
+        reportType="comment"
+      />
+
+      {/* Block User Modal */}
+      <BlockUserModal
+        visible={showBlockModal}
+        onClose={() => setShowBlockModal(false)}
+        onBlock={handleBlockUser}
+        isLoading={blockUserMutation.isPending}
+        username={comment.user?.username || "Unknown"}
+      />
 
       {/* Comment Content */}
       <Text style={[styles.content, { color: theme.text }]}>
@@ -148,27 +362,33 @@ const CommentListItem = ({
           </Text>
         </Pressable>
         <View style={styles.votes}>
-          <Pressable
-            onPress={handleUpvote}
-            disabled={isVoting}
-          >
+          <Pressable onPress={handleUpvote} disabled={isVoting}>
             <MaterialCommunityIcons
-              name={userVote === 'upvote' ? 'arrow-up-bold' : 'arrow-up-bold-outline'}
+              name={
+                userVote === "upvote"
+                  ? "arrow-up-bold"
+                  : "arrow-up-bold-outline"
+              }
               size={18}
-              color={userVote === 'upvote' ? theme.primary : theme.secondaryText}
+              color={
+                userVote === "upvote" ? theme.primary : theme.secondaryText
+              }
             />
           </Pressable>
           <Text style={[styles.voteCount, { color: theme.secondaryText }]}>
             {commentScore}
           </Text>
-          <Pressable
-            onPress={handleDownvote}
-            disabled={isVoting}
-          >
+          <Pressable onPress={handleDownvote} disabled={isVoting}>
             <MaterialCommunityIcons
-              name={userVote === 'downvote' ? 'arrow-down-bold' : 'arrow-down-bold-outline'}
+              name={
+                userVote === "downvote"
+                  ? "arrow-down-bold"
+                  : "arrow-down-bold-outline"
+              }
               size={18}
-              color={userVote === 'downvote' ? theme.primary : theme.secondaryText}
+              color={
+                userVote === "downvote" ? theme.primary : theme.secondaryText
+              }
             />
           </Pressable>
         </View>
@@ -327,6 +547,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.5,
     fontWeight: "500",
+    fontFamily: "Poppins_500Medium",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  menuContainer: {
+    borderRadius: 12,
+    padding: 8,
+    minWidth: 200,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    gap: 12,
+  },
+  menuText: {
+    fontSize: 16,
     fontFamily: "Poppins_500Medium",
   },
 });

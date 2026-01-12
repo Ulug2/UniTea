@@ -1,8 +1,8 @@
 // src/utils/votes.ts
 import { supabase } from '../lib/supabase';
-import { Tables, TablesInsert } from '../types/database.types';
+import { Database, TablesInsert } from '../types/database.types';
 
-type Vote = Tables<'votes'>;
+type Vote = Database['public']['Tables']['votes']['Row'];
 
 const calculateScore = (votes: Pick<Vote, 'vote_type'>[]): number =>
     votes.reduce((sum, v) => {

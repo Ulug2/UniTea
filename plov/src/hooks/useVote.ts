@@ -118,6 +118,10 @@ export function useVote({
                     queryKey: ['post', postId],
                     refetchType: 'none' // Don't refetch immediately, just mark stale
                 });
+                // Invalidate profile vote scores
+                queryClient.invalidateQueries({
+                    queryKey: ['user-post-votes']
+                });
             }
             if (commentId) {
                 // Mark comments as stale but don't force immediate refetch

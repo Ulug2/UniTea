@@ -12,15 +12,47 @@ import LostFoundListItem from "../../../components/LostFoundListItem";
 import LostFoundListSkeleton from "../../../components/LostFoundListSkeleton";
 import { router } from "expo-router";
 import { FontAwesome } from "@expo/vector-icons";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useCallback, useMemo } from "react";
 import { PostSummary } from "../../../types/types";
+import { useAuth } from "../../../context/AuthContext";
 
 const POSTS_PER_PAGE = 10;
 
 export default function LostFoundScreen() {
   const { theme } = useTheme();
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id;
+
+  // Fetch blocked users
+  const { data: blocks = [] } = useQuery({
+    queryKey: ["blocks", currentUserId],
+    enabled: Boolean(currentUserId),
+    queryFn: async () => {
+      if (!currentUserId) return [];
+
+      // Get users blocked by me and users who blocked me
+      const [blockedByMe, blockedMe] = await Promise.all([
+        supabase
+          .from("blocks")
+          .select("blocked_id")
+          .eq("blocker_id", currentUserId),
+        supabase
+          .from("blocks")
+          .select("blocker_id")
+          .eq("blocked_id", currentUserId),
+      ]);
+
+      const blockedUserIds = new Set<string>();
+      blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
+      blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
+
+      return Array.from(blockedUserIds);
+    },
+    staleTime: 1000 * 60 * 5, // Blocks stay fresh for 5 minutes
+    gcTime: 1000 * 60 * 30,
+  });
 
   // Fetch lost & found posts using optimized view with pagination
   const {
@@ -61,15 +93,17 @@ export default function LostFoundScreen() {
     retry: 2,
   });
 
-  // Flatten pages into single array and remove duplicates
+  // Flatten pages into single array, remove duplicates, and filter blocked users
   const lostFoundPosts = useMemo(() => {
     const allPosts = postsData?.pages.flat() ?? [];
     // Remove duplicates by post_id
     const uniquePosts = Array.from(
       new Map(allPosts.map(post => [post.post_id, post])).values()
     );
-    return uniquePosts;
-  }, [postsData]);
+
+    // Filter out posts from blocked users
+    return uniquePosts.filter(post => !blocks.includes(post.user_id));
+  }, [postsData, blocks]);
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -118,7 +152,7 @@ export default function LostFoundScreen() {
         maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={50}
         initialNumToRender={10}
-        windowSize={10}
+        windowSize={5}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}

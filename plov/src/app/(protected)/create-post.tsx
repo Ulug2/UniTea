@@ -73,7 +73,7 @@ export default function CreatePostScreen() {
 
     const pickImage = async () => {
         let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
+            mediaTypes: 'images',
             allowsEditing: true,
             quality: 0.8,
         });
@@ -173,11 +173,11 @@ export default function CreatePostScreen() {
     };
 
     // Validation: For feed posts, just content. For L&F posts, content + location. For reposts, content is optional
-    const isPostButtonDisabled = isRepost 
+    const isPostButtonDisabled = isRepost
         ? false // Reposts don't require content
         : isLostFound
-        ? !content.trim() || !location.trim()
-        : !content.trim();
+            ? !content.trim() || !location.trim()
+            : !content.trim();
 
     const isLoading = createPostMutation.isPending;
 
@@ -329,9 +329,9 @@ export default function CreatePostScreen() {
 
                     {/* ORIGINAL POST PREVIEW (for reposts) */}
                     {isRepost && originalPost && (
-                        <View style={[styles.originalPostPreview, { 
-                            backgroundColor: theme.background, 
-                            borderColor: theme.border 
+                        <View style={[styles.originalPostPreview, {
+                            backgroundColor: theme.background,
+                            borderColor: theme.border
                         }]}>
                             <Text style={[styles.originalPostLabel, { color: theme.secondaryText }]}>
                                 Original post

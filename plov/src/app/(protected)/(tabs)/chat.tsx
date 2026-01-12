@@ -10,14 +10,14 @@ import { useTheme } from "../../../context/ThemeContext";
 import ChatListItem from "../../../components/ChatListItem";
 import ChatListSkeleton from "../../../components/ChatListSkeleton";
 import { Ionicons } from "@expo/vector-icons";
-import { Tables } from "../../../types/database.types";
+import { Database } from "../../../types/database.types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
 import { useMemo, useState, useEffect } from "react";
 
-type Chat = Tables<"chats">;
-type User = Tables<"profiles">;
+type Chat = Database['public']['Tables']['chats']['Row'];
+type User = Database['public']['Tables']['profiles']['Row'];
 
 // Type for the optimized view
 type ChatSummary = {

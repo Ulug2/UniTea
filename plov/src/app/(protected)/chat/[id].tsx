@@ -11,20 +11,26 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../../context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 import { format, isToday, isYesterday, startOfDay, isSameDay } from "date-fns";
-import { Tables } from "../../../types/database.types";
-import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { Database } from "../../../types/database.types";
+import {
+  useQuery,
+  useInfiniteQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
 import ChatDetailSkeleton from "../../../components/ChatDetailSkeleton";
+import SupabaseImage from "../../../components/SupabaseImage";
 
-type Chat = Tables<"chats">;
-type ChatMessage = Tables<"chat_messages">;
-type Profile = Tables<"profiles">;
+type Chat = Database['public']['Tables']['chats']['Row'];
+type ChatMessage = Database['public']['Tables']['chat_messages']['Row'];
+type Profile = Database['public']['Tables']['profiles']['Row'];
 
 const MESSAGES_PER_PAGE = 20;
 
@@ -78,25 +84,26 @@ export default function ChatDetailScreen() {
   const isAnonymous = otherUserId?.startsWith("anonymous-");
 
   // Fetch other user profile
-  const { data: otherUser, isLoading: isLoadingUser } = useQuery<Profile | null>({
-    queryKey: ["chat-other-user", otherUserId],
-    queryFn: async () => {
-      if (!otherUserId || isAnonymous) return null;
+  const { data: otherUser, isLoading: isLoadingUser } =
+    useQuery<Profile | null>({
+      queryKey: ["chat-other-user", otherUserId],
+      queryFn: async () => {
+        if (!otherUserId || isAnonymous) return null;
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", otherUserId)
-        .single();
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", otherUserId)
+          .single();
 
-      if (error) throw error;
-      return data;
-    },
-    enabled: Boolean(otherUserId) && !isAnonymous,
-    staleTime: 1000 * 60 * 30, // Profile stays fresh for 30 minutes
-    gcTime: 1000 * 60 * 60, // Cache for 1 hour
-    retry: 2,
-  });
+        if (error) throw error;
+        return data;
+      },
+      enabled: Boolean(otherUserId) && !isAnonymous,
+      staleTime: 1000 * 60 * 30, // Profile stays fresh for 30 minutes
+      gcTime: 1000 * 60 * 60, // Cache for 1 hour
+      retry: 2,
+    });
 
   // Fix anonymous name flickering with deterministic generation
   const otherUserName = useMemo(() => {
@@ -172,25 +179,22 @@ export default function ChatDetailScreen() {
         },
         (payload) => {
           // New message received - add to cache immediately
-          queryClient.setQueryData(
-            ["chat-messages", id],
-            (oldData: any) => {
-              if (!oldData) return oldData;
+          queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
+            if (!oldData) return oldData;
 
-              // Add new message to first page (most recent)
-              const newPages = [...oldData.pages];
-              if (newPages[0]) {
-                newPages[0] = [payload.new, ...newPages[0]];
-              } else {
-                newPages[0] = [payload.new];
-              }
-
-              return {
-                ...oldData,
-                pages: newPages,
-              };
+            // Add new message to first page (most recent)
+            const newPages = [...oldData.pages];
+            if (newPages[0]) {
+              newPages[0] = [payload.new, ...newPages[0]];
+            } else {
+              newPages[0] = [payload.new];
             }
-          );
+
+            return {
+              ...oldData,
+              pages: newPages,
+            };
+          });
         }
       )
       .on(
@@ -260,7 +264,7 @@ export default function ChatDetailScreen() {
       // Refresh chat summaries to update unread counts (don't refetch to preserve scroll)
       queryClient.invalidateQueries({
         queryKey: ["chat-summaries"],
-        refetchType: 'none'
+        refetchType: "none",
       });
     };
 
@@ -285,18 +289,18 @@ export default function ChatDetailScreen() {
 
   /**
    * Determines if a date divider should be shown between messages
-   * 
+   *
    * Context: Messages are stored newest-first and rendered with inverted FlatList
    * - Data: [msg1(today), msg2(yesterday), msg3(yesterday)]
    * - Visual: msg3 (bottom) → msg2 → msg1 (top)
-   * 
+   *
    * Logic: Show divider when current message is from a different day than next (older) message
    * The divider is rendered AFTER the message in JSX, so with inverted list it appears
    * BELOW the message visually, acting as a separator between date groups
-   * 
+   *
    * Timezone handling: Uses isSameDay from date-fns which compares calendar days
    * in the user's local timezone, ensuring consistent behavior across timezones
-   * 
+   *
    * @param currentMsg - The message being rendered
    * @param nextMsg - The next message in the array (older chronologically)
    * @returns true if a date divider should be shown
@@ -422,7 +426,7 @@ export default function ChatDetailScreen() {
       // This ensures data accuracy when user navigates back or refetches
       queryClient.invalidateQueries({
         queryKey: ["chat-summaries"],
-        refetchType: 'none' // Don't refetch now, wait for focus
+        refetchType: "none", // Don't refetch now, wait for focus
       });
     } catch (error) {
       console.error("Error sending message:", error);
@@ -444,7 +448,7 @@ export default function ChatDetailScreen() {
       // Rollback optimistic update for chat summaries - refetch to get correct state
       queryClient.invalidateQueries({
         queryKey: ["chat-summaries", currentUserId],
-        refetchType: 'active' // Force immediate refetch on error
+        refetchType: "active", // Force immediate refetch on error
       });
 
       Alert.alert("Error", "Failed to send message. Please try again.");
@@ -554,10 +558,15 @@ export default function ChatDetailScreen() {
       width: 40,
       height: 40,
       borderRadius: 20,
-      backgroundColor: "#5DBEBC",
+      backgroundColor: isAnonymous ? "#2C3E50" : "#5DBEBC",
       justifyContent: "center",
       alignItems: "center",
       marginRight: 12,
+    },
+    avatarImage: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
     },
     avatarText: {
       fontSize: 18,
@@ -620,9 +629,24 @@ export default function ChatDetailScreen() {
           <Ionicons name="arrow-back" size={24} color={theme.text} />
         </Pressable>
 
-        <View style={dynamicStyles.avatar}>
-          <Text style={dynamicStyles.avatarText}>{otherUserInitial}</Text>
-        </View>
+        {!isAnonymous && otherUser?.avatar_url ? (
+          otherUser.avatar_url.startsWith("http") ? (
+            <Image
+              source={{ uri: otherUser.avatar_url }}
+              style={dynamicStyles.avatarImage}
+            />
+          ) : (
+            <SupabaseImage
+              path={otherUser.avatar_url}
+              bucket="avatars"
+              style={dynamicStyles.avatarImage}
+            />
+          )
+        ) : (
+          <View style={dynamicStyles.avatar}>
+            <Text style={dynamicStyles.avatarText}>{otherUserInitial}</Text>
+          </View>
+        )}
 
         <Text style={dynamicStyles.userName}>{otherUserName}</Text>
 
@@ -673,7 +697,7 @@ export default function ChatDetailScreen() {
             onPress={handleSend}
             style={[
               dynamicStyles.sendButton,
-              { opacity: !message.trim() ? 0.5 : 1 }
+              { opacity: !message.trim() ? 0.5 : 1 },
             ]}
             disabled={!message.trim()}
           >

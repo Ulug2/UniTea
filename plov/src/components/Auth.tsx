@@ -302,8 +302,8 @@ export default function Auth() {
             const { error } = await withTimeout(
                 supabase.auth.signInWithPassword({
                     email: sanitizedEmail,
-                    password: password,
-                })
+            password: password,
+        })
             );
 
             if (error) {
@@ -367,14 +367,14 @@ export default function Auth() {
         logAuthEvent('signup_started', { email: sanitizedEmail });
 
         try {
-            const {
-                data: { session },
-                error,
+        const {
+            data: { session },
+            error,
             } = await withTimeout(
                 supabase.auth.signUp({
                     email: sanitizedEmail,
-                    password: password,
-                })
+            password: password,
+        })
             );
 
             if (error) {
@@ -410,61 +410,61 @@ export default function Auth() {
 
     return (
         <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-            <View style={[styles.screen, { backgroundColor: theme.background }]}>
-                <View style={styles.hero}>
-                    <View style={[styles.logoBadge, { backgroundColor: theme.primary }]}>
-                        <Ionicons name="chatbubble-ellipses-outline" size={28} color="#fff" />
-                    </View>
-                    <Text style={[styles.brandTitle, { color: theme.text }]}>Plov</Text>
-                    <Text style={[styles.brandSubtitle, { color: theme.secondaryText }]}>
-                        Your anonymous university community
-                    </Text>
+        <View style={[styles.screen, { backgroundColor: theme.background }]}>
+            <View style={styles.hero}>
+                <View style={[styles.logoBadge, { backgroundColor: theme.primary }]}>
+                    <Ionicons name="chatbubble-ellipses-outline" size={28} color="#fff" />
                 </View>
+                <Text style={[styles.brandTitle, { color: theme.text }]}>Plov</Text>
+                <Text style={[styles.brandSubtitle, { color: theme.secondaryText }]}>
+                    Your anonymous university community
+                </Text>
+            </View>
 
-                <View style={[styles.card, { backgroundColor: theme.card, shadowColor: theme.border }]}>
-                    <Text style={[styles.cardTitle, { color: theme.text }]}>{headline}</Text>
-                    <Text style={[styles.cardHelper, { color: theme.secondaryText }]}>{helper}</Text>
+            <View style={[styles.card, { backgroundColor: theme.card, shadowColor: theme.border }]}>
+                <Text style={[styles.cardTitle, { color: theme.text }]}>{headline}</Text>
+                <Text style={[styles.cardHelper, { color: theme.secondaryText }]}>{helper}</Text>
 
-                    <CustomInput
-                        label="University Email"
-                        leftIcon={{ type: 'font-awesome', name: 'envelope' }}
+                <CustomInput
+                    label="University Email"
+                    leftIcon={{ type: 'font-awesome', name: 'envelope' }}
                         onChangeText={(text) => {
                             setEmail(text);
                             if (emailError) setEmailError('');
                             if (showResendOption) setShowResendOption(false);
                         }}
-                        value={email}
-                        placeholder="your.name@nu.edu.kz"
-                        autoCapitalize="none"
-                        keyboardType="email-address"
+                    value={email}
+                    placeholder="your.name@nu.edu.kz"
+                    autoCapitalize="none"
+                    keyboardType="email-address"
                         errorMessage={emailError}
                         editable={!isLoading}
-                    />
+                />
 
                     {mode !== 'forgot' && (
-                        <CustomInput
-                            label="Password"
-                            leftIcon={{ type: 'font-awesome', name: 'lock' }}
+                <CustomInput
+                    label="Password"
+                    leftIcon={{ type: 'font-awesome', name: 'lock' }}
                             onChangeText={(text) => {
                                 setPassword(text);
                                 if (passwordError) setPasswordError('');
                             }}
-                            value={password}
-                            secureTextEntry={!showPassword}
-                            placeholder="Enter your password"
-                            autoCapitalize="none"
+                    value={password}
+                    secureTextEntry={!showPassword}
+                    placeholder="Enter your password"
+                    autoCapitalize="none"
                             errorMessage={passwordError}
                             editable={!isLoading}
-                            rightElement={
+                    rightElement={
                                 <Pressable onPress={() => setShowPassword((prev) => !prev)} disabled={isLoading}>
-                                    <Ionicons
-                                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                                        size={20}
-                                        color={theme.secondaryText}
-                                    />
-                                </Pressable>
-                            }
-                        />
+                            <Ionicons
+                                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                                size={20}
+                                color={theme.secondaryText}
+                            />
+                        </Pressable>
+                    }
+                />
                     )}
 
                     {mode === 'login' && (
@@ -501,31 +501,31 @@ export default function Auth() {
                         </View>
                     )}
 
-                    <Pressable
-                        style={[
-                            styles.primaryButton,
-                            { backgroundColor: theme.primary },
+                <Pressable
+                    style={[
+                        styles.primaryButton,
+                        { backgroundColor: theme.primary },
                             isLoading && styles.disabledButton,
-                        ]}
+                    ]}
                         disabled={isLoading}
                         onPress={mode === 'login' ? signInWithEmail : mode === 'signup' ? signUpWithEmail : resetPassword}
-                    >
+                >
                         {(mode === 'login' && loadingState.login) ||
                             (mode === 'signup' && loadingState.signup) ||
                             (mode === 'forgot' && loadingState.forgot) ? (
                             <ActivityIndicator color="#fff" size="small" />
                         ) : (
-                            <Text style={styles.primaryButtonText}>
+                    <Text style={styles.primaryButtonText}>
                                 {mode === 'login' ? 'Log In' : mode === 'signup' ? 'Create account' : 'Send Reset Link'}
-                            </Text>
-                        )}
-                    </Pressable>
-
-                    <Text style={[styles.exclusiveNote, { color: theme.secondaryText }]}>
-                        Only available for Nazarbayev University students
                     </Text>
+                        )}
+                </Pressable>
 
-                    <View style={styles.switchRow}>
+                <Text style={[styles.exclusiveNote, { color: theme.secondaryText }]}>
+                    Only available for Nazarbayev University students
+                </Text>
+
+                <View style={styles.switchRow}>
                         {mode === 'forgot' ? (
                             <Pressable
                                 onPress={() => {
@@ -541,30 +541,30 @@ export default function Auth() {
                             </Pressable>
                         ) : (
                             <>
-                                <Text style={{ color: theme.secondaryText }}>
-                                    {mode === 'login' ? `Don't have an account?` : 'Already a member?'}
-                                </Text>
-                                <Pressable
+                    <Text style={{ color: theme.secondaryText }}>
+                        {mode === 'login' ? `Don't have an account?` : 'Already a member?'}
+                    </Text>
+                    <Pressable
                                     onPress={() => {
                                         setMode(mode === 'login' ? 'signup' : 'login');
                                         setShowResendOption(false);
                                     }}
-                                    style={styles.switchButton}
+                        style={styles.switchButton}
                                     disabled={isLoading}
-                                >
-                                    <Text style={[styles.switchText, { color: theme.primary }]}>
-                                        {mode === 'login' ? 'Sign up' : 'Sign in'}
-                                    </Text>
-                                </Pressable>
+                    >
+                        <Text style={[styles.switchText, { color: theme.primary }]}>
+                            {mode === 'login' ? 'Sign up' : 'Sign in'}
+                        </Text>
+                    </Pressable>
                             </>
                         )}
-                    </View>
                 </View>
-
-                <Text style={[styles.tosText, { color: theme.secondaryText }]}>
-                    By continuing, you agree to our Terms of Service and Privacy Policy
-                </Text>
             </View>
+
+            <Text style={[styles.tosText, { color: theme.secondaryText }]}>
+                By continuing, you agree to our Terms of Service and Privacy Policy
+            </Text>
+        </View>
         </SafeAreaView>
     )
 }

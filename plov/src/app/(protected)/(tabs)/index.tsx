@@ -13,16 +13,48 @@ import PostListItem from "../../../components/PostListItem";
 import PostListSkeleton from "../../../components/PostListSkeleton";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { PostSummary } from "../../../types/types";
 import { useFilterContext } from "./_layout";
+import { useAuth } from "../../../context/AuthContext";
 
 const POSTS_PER_PAGE = 10;
 
 export default function FeedScreen() {
   const { theme } = useTheme();
   const { selectedFilter } = useFilterContext();
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id;
+
+  // Fetch blocked users
+  const { data: blocks = [] } = useQuery({
+    queryKey: ["blocks", currentUserId],
+    enabled: Boolean(currentUserId),
+    queryFn: async () => {
+      if (!currentUserId) return [];
+
+      // Get users blocked by me and users who blocked me
+      const [blockedByMe, blockedMe] = await Promise.all([
+        supabase
+          .from("blocks")
+          .select("blocked_id")
+          .eq("blocker_id", currentUserId),
+        supabase
+          .from("blocks")
+          .select("blocker_id")
+          .eq("blocked_id", currentUserId),
+      ]);
+
+      const blockedUserIds = new Set<string>();
+      blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
+      blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
+
+      return Array.from(blockedUserIds);
+    },
+    staleTime: 1000 * 60 * 5, // Blocks stay fresh for 5 minutes
+    gcTime: 1000 * 60 * 30,
+  });
 
   // Fetch posts using optimized view with pagination
   const {
@@ -88,14 +120,16 @@ export default function FeedScreen() {
     retry: 2,
   });
 
-  // Flatten pages into single array and remove duplicates
+  // Flatten pages into single array, remove duplicates, and filter blocked users
   const posts = useMemo(() => {
     const allPosts = postsData?.pages.flat() ?? [];
     const uniquePosts = Array.from(
       new Map(allPosts.map(post => [post.post_id, post])).values()
     );
-    return uniquePosts;
-  }, [postsData]);
+
+    // Filter out posts from blocked users
+    return uniquePosts.filter(post => !blocks.includes(post.user_id));
+  }, [postsData, blocks]);
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -160,7 +194,7 @@ export default function FeedScreen() {
         maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={50}
         initialNumToRender={10}
-        windowSize={10}
+        windowSize={5}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
