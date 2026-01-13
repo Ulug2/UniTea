@@ -1,8 +1,11 @@
 import { Tabs } from "expo-router";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import { useTheme } from "../../../context/ThemeContext";
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from "react";
 import { View, Pressable, StyleSheet } from "react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "../../../lib/supabase";
+import { useAuth } from "../../../context/AuthContext";
 
 // Create a context for filter state
 type FeedFilter = 'hot' | 'new' | 'top';
@@ -15,6 +18,111 @@ const FilterContext = createContext<{
 });
 
 export const useFilterContext = () => useContext(FilterContext);
+
+// Hook to get global unread count for chat tab badge
+function useGlobalUnreadCount() {
+    const { session } = useAuth();
+    const currentUserId = session?.user?.id;
+    const queryClient = useQueryClient();
+
+    // Debounce refs to prevent cascading invalidations
+    const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
+    const updateDebounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
+
+    const { data: unreadCount = 0 } = useQuery<number>({
+        queryKey: ["global-unread-count", currentUserId],
+        queryFn: async () => {
+            if (!currentUserId) return 0;
+
+            // Fetch all chat summaries and sum unread counts
+            const { data, error } = await (supabase as any)
+                .from("user_chats_summary")
+                .select("unread_count_p1, unread_count_p2, participant_1_id, participant_2_id")
+                .or(
+                    `participant_1_id.eq.${currentUserId},participant_2_id.eq.${currentUserId}`
+                );
+
+            if (error) throw error;
+            if (!data) return 0;
+
+            // Sum up unread counts based on which participant is current user
+            const total = data.reduce((sum: number, chat: any) => {
+                const isP1 = chat.participant_1_id === currentUserId;
+                const unread = isP1 ? (chat.unread_count_p1 || 0) : (chat.unread_count_p2 || 0);
+                return sum + unread;
+            }, 0);
+
+            return total;
+        },
+        enabled: Boolean(currentUserId),
+        staleTime: 1000 * 5, // Stale after 5 seconds (reduced from 0 to prevent over-fetching)
+        gcTime: 1000 * 60 * 5, // Cache for 5 minutes
+        refetchInterval: 1000 * 30, // Refetch every 30 seconds as fallback
+    });
+
+    // Subscribe to real-time changes on chat_messages to update badge with debouncing
+    useEffect(() => {
+        if (!currentUserId) return;
+
+        const channel = supabase
+            .channel("global-unread-count")
+            .on(
+                "postgres_changes",
+                {
+                    event: "INSERT",
+                    schema: "public",
+                    table: "chat_messages",
+                },
+                (payload) => {
+                    // Skip our own messages entirely - they don't affect our unread count
+                    // Don't process, don't debounce, just skip immediately
+                    const newMessage = payload.new as any;
+                    if (newMessage.user_id === currentUserId) {
+                        return; // Exit immediately - no processing needed
+                    }
+
+                    // Only debounce OTHER users' messages to batch rapid sends (500ms)
+                    if (debounceRef.current) {
+                        clearTimeout(debounceRef.current);
+                    }
+                    debounceRef.current = setTimeout(() => {
+                        queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });
+                    }, 500);
+                }
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "UPDATE",
+                    schema: "public",
+                    table: "chat_messages",
+                },
+                () => {
+                    // Debounce message updates (read status changes) - 1 second
+                    if (updateDebounceRef.current) {
+                        clearTimeout(updateDebounceRef.current);
+                    }
+                    updateDebounceRef.current = setTimeout(() => {
+                        queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });
+                    }, 1000);
+                }
+            )
+            .subscribe();
+
+        return () => {
+            // Cleanup timeouts on unmount
+            if (debounceRef.current) {
+                clearTimeout(debounceRef.current);
+            }
+            if (updateDebounceRef.current) {
+                clearTimeout(updateDebounceRef.current);
+            }
+            supabase.removeChannel(channel);
+        };
+    }, [currentUserId, queryClient]);
+
+    return unreadCount;
+}
 
 export function FilterProvider({ children }: { children: ReactNode }) {
     const [selectedFilter, setSelectedFilter] = useState<FeedFilter>('hot');
@@ -76,6 +184,7 @@ function FilterButtons() {
 
 export default function TabLayout() {
     const { theme } = useTheme();
+    const globalUnreadCount = useGlobalUnreadCount();
 
     return (
         <FilterProvider>
@@ -86,6 +195,8 @@ export default function TabLayout() {
                     tabBarStyle: {
                         backgroundColor: theme.card,
                         borderTopColor: theme.border,
+                        borderTopWidth: 1,
+                        height: 80,
                     },
                     headerStyle: {
                         backgroundColor: theme.background,
@@ -125,6 +236,13 @@ export default function TabLayout() {
                         tabBarIcon: ({ color }) => (
                             <Ionicons name="chatbubble-ellipses-outline" size={24} color={color} />
                         ),
+                        tabBarBadge: globalUnreadCount > 0 ? globalUnreadCount : undefined,
+                        tabBarBadgeStyle: {
+                            backgroundColor: "#EF4444",
+                            fontSize: 11,
+                            minWidth: 18,
+                            height: 18,
+                        },
                     }}
                 />
                 <Tabs.Screen

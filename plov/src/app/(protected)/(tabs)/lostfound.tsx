@@ -101,8 +101,14 @@ export default function LostFoundScreen() {
       new Map(allPosts.map(post => [post.post_id, post])).values()
     );
 
-    // Filter out posts from blocked users
-    return uniquePosts.filter(post => !blocks.includes(post.user_id));
+    // Filter out posts from blocked users (including reposted posts from blocked original authors)
+    return uniquePosts.filter(post => {
+      const isPostAuthorBlocked = blocks.includes(post.user_id);
+      const isRepostAuthorBlocked = post.original_user_id
+        ? blocks.includes(post.original_user_id)
+        : false;
+      return !isPostAuthorBlocked && !isRepostAuthorBlocked;
+    });
   }, [postsData, blocks]);
 
   const handleLoadMore = useCallback(() => {

@@ -29,6 +29,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   postId,
   userId,
   content,
+  imageUrl,
   category,
   location,
   isAnonymous,
@@ -183,6 +184,17 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
       fontSize: 16,
       fontFamily: "Poppins_600SemiBold",
     },
+    imageContainer: {
+      marginTop: 12,
+      marginBottom: 8,
+      borderRadius: 12,
+      overflow: "hidden",
+    },
+    postImage: {
+      width: "100%",
+      aspectRatio: 4 / 3,
+      borderRadius: 12,
+    },
   });
 
   // Get user's first initial for avatar
@@ -251,6 +263,25 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
       <Text style={styles.description} numberOfLines={3}>
         {content}
       </Text>
+
+      {/* IMAGE */}
+      {imageUrl && (
+        <View style={styles.imageContainer}>
+          {imageUrl.startsWith("http") ? (
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.postImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <SupabaseImage
+              path={imageUrl}
+              bucket="post-images"
+              style={styles.postImage}
+            />
+          )}
+        </View>
+      )}
 
       {/* CHAT BUTTON - Only show if not own post */}
       {!isOwnPost && (

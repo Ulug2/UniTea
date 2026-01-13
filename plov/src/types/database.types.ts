@@ -83,6 +83,8 @@ export type Database = {
                     chat_id: string
                     content: string
                     created_at: string | null
+                    deleted_by_receiver: boolean | null
+                    deleted_by_sender: boolean | null
                     id: string
                     is_read: boolean | null
                     user_id: string
@@ -91,6 +93,8 @@ export type Database = {
                     chat_id: string
                     content: string
                     created_at?: string | null
+                    deleted_by_receiver?: boolean | null
+                    deleted_by_sender?: boolean | null
                     id?: string
                     is_read?: boolean | null
                     user_id: string
@@ -99,6 +103,8 @@ export type Database = {
                     chat_id?: string
                     content?: string
                     created_at?: string | null
+                    deleted_by_receiver?: boolean | null
+                    deleted_by_sender?: boolean | null
                     id?: string
                     is_read?: boolean | null
                     user_id?: string
@@ -233,6 +239,36 @@ export type Database = {
                         referencedColumns: ["post_id"]
                     },
                 ]
+            }
+            notification_settings: {
+                Row: {
+                    created_at: string
+                    notify_chats: boolean
+                    notify_trending: boolean
+                    notify_upvotes: boolean
+                    push_token: string | null
+                    updated_at: string
+                    user_id: string
+                }
+                Insert: {
+                    created_at?: string
+                    notify_chats?: boolean
+                    notify_trending?: boolean
+                    notify_upvotes?: boolean
+                    push_token?: string | null
+                    updated_at?: string
+                    user_id: string
+                }
+                Update: {
+                    created_at?: string
+                    notify_chats?: boolean
+                    notify_trending?: boolean
+                    notify_upvotes?: boolean
+                    push_token?: string | null
+                    updated_at?: string
+                    user_id?: string
+                }
+                Relationships: []
             }
             notifications: {
                 Row: {
@@ -655,6 +691,7 @@ export type Database = {
             }
         }
         Functions: {
+            delete_user_account: { Args: never; Returns: undefined }
             get_repost_count: { Args: { post_id: string }; Returns: number }
         }
         Enums: {
@@ -679,7 +716,7 @@ export type Tables<
     }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
 }

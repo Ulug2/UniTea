@@ -3,18 +3,16 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  TextInput,
   RefreshControl,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import ChatListItem from "../../../components/ChatListItem";
 import ChatListSkeleton from "../../../components/ChatListSkeleton";
-import { Ionicons } from "@expo/vector-icons";
 import { Database } from "../../../types/database.types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useEffect, useRef } from "react";
 
 type Chat = Database['public']['Tables']['chats']['Row'];
 type User = Database['public']['Tables']['profiles']['Row'];
@@ -36,35 +34,60 @@ export default function ChatScreen() {
   const { theme } = useTheme();
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
-  const [searchQuery, setSearchQuery] = useState("");
   const queryClient = useQueryClient();
 
-  // Fetch chats using optimized view - server-side filtering
+  // Debounce refs to prevent cascading invalidations
+  const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const updateDebounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
+
+  // Fetch blocked users to filter chats
+  const { data: blocks = [] } = useQuery({
+    queryKey: ["blocks", currentUserId],
+    enabled: Boolean(currentUserId),
+    queryFn: async () => {
+      if (!currentUserId) return [];
+
+      // Get users blocked by me and users who blocked me
+      const [blockedByMe, blockedMe] = await Promise.all([
+        supabase
+          .from("blocks")
+          .select("blocked_id")
+          .eq("blocker_id", currentUserId),
+        supabase
+          .from("blocks")
+          .select("blocker_id")
+          .eq("blocked_id", currentUserId),
+      ]);
+
+      const blockedUserIds = new Set<string>();
+      blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
+      blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
+
+      return Array.from(blockedUserIds);
+    },
+    staleTime: 1000 * 60 * 5, // Blocks stay fresh for 5 minutes
+    gcTime: 1000 * 60 * 30,
+  });
+
+  // Fetch chats using optimized view - no search in query key to prevent refetching
   const {
     data: chatSummaries = [],
     refetch: refetchChats,
     isRefetching: isRefetchingChats,
     isLoading: isLoadingChats,
   } = useQuery<ChatSummary[]>({
-    queryKey: ["chat-summaries", currentUserId, searchQuery],
+    queryKey: ["chat-summaries", currentUserId],
     queryFn: async () => {
       if (!currentUserId) return [];
 
       // Type cast needed since view isn't in generated types
-      let query = (supabase as any)
+      const { data, error } = await (supabase as any)
         .from("user_chats_summary")
         .select("*")
         .or(
           `participant_1_id.eq.${currentUserId},participant_2_id.eq.${currentUserId}`
         )
         .order("last_message_at", { ascending: false, nullsFirst: false });
-
-      // Server-side search filtering
-      if (searchQuery.trim()) {
-        query = query.ilike("last_message_content", `%${searchQuery}%`);
-      }
-
-      const { data, error } = await query;
 
       if (error) throw error;
       return (data || []) as ChatSummary[];
@@ -75,7 +98,29 @@ export default function ChatScreen() {
     retry: 2,
   });
 
-  // Real-time subscription for chat updates
+  // Filter out chats with blocked users and ensure deleted chats are removed
+  const filteredChatSummaries = useMemo(() => {
+    return chatSummaries.filter((chat: ChatSummary) => {
+      // Filter out chats with blocked users (both ways)
+      const otherUserId =
+        chat.participant_1_id === currentUserId
+          ? chat.participant_2_id
+          : chat.participant_1_id;
+
+      if (blocks.includes(otherUserId)) {
+        return false;
+      }
+
+      // Additional safety check - ensure chat_id exists
+      if (!chat.chat_id) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [chatSummaries, blocks, currentUserId]);
+
+  // Real-time subscription for chat updates with debouncing to prevent cascading invalidations
   useEffect(() => {
     if (!currentUserId) return;
 
@@ -89,8 +134,13 @@ export default function ChatScreen() {
           table: "chats",
         },
         (payload) => {
-          // Refetch chat summaries when any chat is updated
-          queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+          // Debounce chat updates (less frequent)
+          if (updateDebounceRef.current) {
+            clearTimeout(updateDebounceRef.current);
+          }
+          updateDebounceRef.current = setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+          }, 1000);
         }
       )
       .on(
@@ -101,13 +151,89 @@ export default function ChatScreen() {
           table: "chats",
         },
         (payload) => {
-          // Refetch when new chat is created
+          // New chat created - invalidate immediately (rare event)
           queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+        },
+        (payload) => {
+          // Skip our own messages entirely - they're handled by optimistic updates
+          // Don't process, don't debounce, just skip immediately
+          const newMessage = payload.new as any;
+          if (newMessage.user_id === currentUserId) {
+            return; // Exit immediately - no processing needed
+          }
+
+          // Only debounce OTHER users' messages to batch rapid sends (500ms)
+          if (debounceRef.current) {
+            clearTimeout(debounceRef.current);
+          }
+          debounceRef.current = setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+          }, 500);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "chat_messages",
+        },
+        () => {
+          // Debounce message updates (read status changes)
+          if (updateDebounceRef.current) {
+            clearTimeout(updateDebounceRef.current);
+          }
+          updateDebounceRef.current = setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+          }, 1000);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "chats",
+        },
+        (payload) => {
+          // Chat deleted - optimistically remove from cache immediately
+          const deletedChatId = payload.old?.id;
+          if (deletedChatId) {
+            queryClient.setQueryData<any[]>(["chat-summaries", currentUserId], (oldSummaries: any[] | undefined) => {
+              if (!oldSummaries) return oldSummaries;
+              return oldSummaries.filter((summary: any) => summary.chat_id !== deletedChatId);
+            });
+          }
+
+          // Invalidate to ensure consistency
+          queryClient.invalidateQueries({
+            queryKey: ["chat-summaries", currentUserId],
+            refetchType: "none", // Don't refetch - optimistic update already applied
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["global-unread-count", currentUserId],
+            refetchType: "none",
+          });
         }
       )
       .subscribe();
 
     return () => {
+      // Cleanup timeouts on unmount
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+      if (updateDebounceRef.current) {
+        clearTimeout(updateDebounceRef.current);
+      }
       supabase.removeChannel(channel);
     };
   }, [currentUserId, queryClient]);
@@ -167,54 +293,10 @@ export default function ChatScreen() {
       : chat.unread_count_p2;
   };
 
-  // Client-side username filtering (in addition to server-side message search)
-  const filteredChats = useMemo(() => {
-    const summaries = chatSummaries as ChatSummary[];
-    if (!searchQuery.trim()) return summaries;
-
-    const query = searchQuery.toLowerCase();
-    return summaries.filter((chat: ChatSummary) => {
-      const { user, isAnonymous } = getOtherUser(chat);
-      const username = isAnonymous
-        ? "anonymous"
-        : user?.username?.toLowerCase() || "";
-
-      // Username matching (server already filters messages)
-      return username.includes(query);
-    });
-  }, [chatSummaries, searchQuery, users, currentUserId]);
-
   const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: theme.background,
-    },
-    header: {
-      paddingHorizontal: 20,
-      paddingTop: 10,
-      paddingBottom: 10,
-      backgroundColor: theme.background,
-    },
-    title: {
-      fontSize: 32,
-      fontFamily: "Poppins_700Bold",
-      color: theme.text,
-      marginBottom: 16,
-    },
-    searchContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: theme.card,
-      borderRadius: 12,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      gap: 10,
-    },
-    searchInput: {
-      flex: 1,
-      fontSize: 15,
-      fontFamily: "Poppins_400Regular",
-      color: theme.text,
     },
     emptyContainer: {
       justifyContent: "center",
@@ -227,26 +309,10 @@ export default function ChatScreen() {
     },
   });
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color={theme.secondaryText} />
-        <TextInput
-          placeholder="Search conversations..."
-          placeholderTextColor={theme.secondaryText}
-          style={styles.searchInput}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-    </View>
-  );
-
   // Show skeleton while loading initial data (including users to prevent flicker)
-  if (isLoadingChats || (isLoadingUsers && chatSummaries.length > 0)) {
+  if (isLoadingChats || (isLoadingUsers && filteredChatSummaries.length > 0)) {
     return (
       <View style={styles.container}>
-        {renderHeader()}
         <ChatListSkeleton />
       </View>
     );
@@ -255,9 +321,8 @@ export default function ChatScreen() {
   return (
     <View style={styles.container}>
       <FlatList
-        data={filteredChats}
+        data={filteredChatSummaries}
         keyExtractor={(item) => item.chat_id}
-        ListHeaderComponent={renderHeader}
         renderItem={({ item }) => {
           const { user, isAnonymous } = getOtherUser(item);
           return (
@@ -285,7 +350,7 @@ export default function ChatScreen() {
             </Text>
           </View>
         }
-        contentContainerStyle={filteredChats.length === 0 ? { flexGrow: 1 } : undefined}
+        contentContainerStyle={filteredChatSummaries.length === 0 ? { flexGrow: 1 } : undefined}
         contentInsetAdjustmentBehavior="automatic"
       />
     </View>

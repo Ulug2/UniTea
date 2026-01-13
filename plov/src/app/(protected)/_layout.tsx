@@ -1,9 +1,10 @@
 import { AntDesign, Entypo, MaterialIcons } from "@expo/vector-icons";
-import { Stack, router } from "expo-router";
+import { Stack, router, usePathname, useSegments } from "expo-router";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from '../../context/AuthContext';
 import { ActivityIndicator, View } from 'react-native';
 import { useEffect } from 'react';
+import * as Linking from 'expo-linking';
 
 export default function AppLayout() {
     const { theme } = useTheme();
@@ -14,6 +15,54 @@ export default function AppLayout() {
             router.replace('/(auth)');
         }
     }, [session, loading]);
+
+    // Handle deep links
+    useEffect(() => {
+        // Handle initial URL (app opened via deep link)
+        const handleInitialURL = async () => {
+            const initialUrl = await Linking.getInitialURL();
+            if (initialUrl) {
+                handleDeepLink(initialUrl);
+            }
+        };
+
+        // Handle URL changes (app already open, new deep link received)
+        const subscription = Linking.addEventListener('url', (event) => {
+            handleDeepLink(event.url);
+        });
+
+        handleInitialURL();
+
+        return () => {
+            subscription.remove();
+        };
+    }, [session, loading]);
+
+    const handleDeepLink = (url: string) => {
+        if (!session || loading) {
+            // Wait for auth to complete
+            return;
+        }
+
+        try {
+            // Parse URL: myplov://post/{postId}
+            const parsed = Linking.parse(url);
+            console.log('Deep link parsed:', parsed);
+            
+            // Handle format: myplov://post/{postId}
+            if (parsed.path) {
+                const pathParts = parsed.path.split('/').filter(Boolean);
+                
+                if (pathParts[0] === 'post' && pathParts[1]) {
+                    const postId = pathParts[1];
+                    console.log('Navigating to post:', postId);
+                    router.push(`/post/${postId}`);
+                }
+            }
+        } catch (error) {
+            console.error('Error handling deep link:', error);
+        }
+    };
 
     if (loading) {
         return (

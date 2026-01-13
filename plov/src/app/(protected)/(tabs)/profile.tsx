@@ -25,6 +25,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadImage } from '../../../utils/supabaseImages';
 import SupabaseImage from "../../../components/SupabaseImage";
 import nuLogo from "../../../../assets/images/nu-logo.png";
+import NotificationSettingsModal from "../../../components/NotificationSettingsModal";
+import { usePushNotifications } from "../../../hooks/usePushNotifications";
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type Post = Database['public']['Tables']['posts']['Row'];
@@ -40,6 +42,10 @@ export default function ProfileScreen() {
   const [manageAccountVisible, setManageAccountVisible] = useState(false);
   const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "anonymous" | "bookmarked">("all");
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
+
+  // Register / refresh Expo push token when profile screen is loaded
+  usePushNotifications();
 
   // Fetch blocked users
   const { data: blocks = [] } = useQuery({
@@ -275,6 +281,8 @@ export default function ProfileScreen() {
       return userPosts.filter((p) => p.is_anonymous);
     } else {
       // Filter out bookmarked posts from blocked users
+      // Note: bookmarkedPosts uses Post type (not PostSummary), so we only check the post author
+      // Reposted posts from blocked authors will be filtered when viewing the feed
       return bookmarkedPosts.filter((p) => !blocks.includes(p.user_id));
     }
   }, [activeTab, userPosts, bookmarkedPosts, blocks]);
@@ -282,12 +290,22 @@ export default function ProfileScreen() {
   async function signOut() {
     setSettingsVisible(false);
     setManageAccountVisible(false);
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error("Sign out error:", error.message);
-      return;
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        // Network errors can occur when offline – log but still navigate to auth
+        console.error("Sign out error:", error.message);
+      }
+    } catch (err: any) {
+      console.error(
+        "Unexpected sign out error:",
+        err?.message ? err.message : err
+      );
+    } finally {
+      // Always navigate back to auth, even if the network request failed.
+      // Local session will be cleared on next successful auth call.
+      router.replace("/(auth)");
     }
-    router.replace("/(auth)");
   }
 
   // Unblock all users mutation
@@ -325,26 +343,16 @@ export default function ProfileScreen() {
       const currentUserId = session?.user?.id;
       if (!currentUserId) throw new Error("User ID missing");
 
-      // Delete the user's profile (this will cascade delete all related data)
-      // The cascade deletion will handle:
-      // - posts (and their comments, votes, bookmarks, reports)
-      // - comments (and their votes)
-      // - votes
-      // - bookmarks
-      // - reports
-      // - notifications
-      // - chats
-      // - blocks
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .delete()
-        .eq("id", currentUserId);
+      // Call the database function to delete both profile and auth user
+      // This function uses SECURITY DEFINER to have admin privileges
+      // It will:
+      // 1. Delete the profile (cascades to all related data)
+      // 2. Delete the auth user from auth.users
+      const { error } = await (supabase.rpc as any)("delete_user_account");
 
-      if (profileError) throw profileError;
+      if (error) throw error;
 
-      // Sign out the user (auth user will remain but can't log in without profile)
-      // Note: To completely delete the auth user, you'd need admin privileges
-      // For now, deleting the profile is sufficient as it removes all user data
+      // Sign out the user (session will be invalid anyway, but this ensures clean state)
       await supabase.auth.signOut();
     },
     onSuccess: () => {
@@ -744,6 +752,10 @@ export default function ProfileScreen() {
               {/* Notifications */}
               <Pressable
                 style={[styles.settingRow, { borderBottomColor: theme.border }]}
+                onPress={() => {
+                  setSettingsVisible(false);
+                  setNotificationsVisible(true);
+                }}
               >
                 <View style={styles.settingLeft}>
                   <Ionicons
@@ -847,6 +859,12 @@ export default function ProfileScreen() {
         isUnblocking={unblockAllMutation.isPending}
         isUpdating={updateProfileMutation.isPending || updatePasswordMutation.isPending}
         currentUsername={currentUser?.username || ""}
+      />
+
+      {/* Notification Settings Modal */}
+      <NotificationSettingsModal
+        visible={notificationsVisible}
+        onClose={() => setNotificationsVisible(false)}
       />
 
       {/* Avatar Preview Modal */}

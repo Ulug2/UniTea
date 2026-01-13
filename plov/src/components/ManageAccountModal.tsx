@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   TextInput,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -376,6 +378,10 @@ export default function ManageAccountModal({
       animationType="slide"
       onRequestClose={onClose}
     >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+    >
       <Pressable
         style={styles.modalOverlay}
         onPress={onClose}
@@ -392,6 +398,7 @@ export default function ManageAccountModal({
           {currentView === 'password' && renderPasswordForm()}
         </View>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

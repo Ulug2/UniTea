@@ -142,9 +142,11 @@ const CommentListItem = ({
     mutationFn: async (reason: string) => {
       if (!currentUserId) throw new Error("User ID missing");
 
+      // For comment reports, only set comment_id (not post_id)
+      // The constraint requires exactly one of post_id or comment_id to be set
       const { error } = await supabase.from("reports").insert({
         reporter_id: currentUserId,
-        post_id: comment.post_id,
+        post_id: null, // Don't set post_id for comment reports
         comment_id: comment.id,
         reason: reason,
       });
@@ -176,9 +178,12 @@ const CommentListItem = ({
     },
     onSuccess: () => {
       setShowBlockModal(false);
+      // Invalidate blocks query to refresh blocked users list
+      queryClient.invalidateQueries({ queryKey: ["blocks"] });
       // Invalidate queries to filter out blocked user's content
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       queryClient.invalidateQueries({ queryKey: ["comments"] });
+      queryClient.invalidateQueries({ queryKey: ["chat-summaries"] });
 
       Alert.alert("Success", "User blocked successfully");
     },

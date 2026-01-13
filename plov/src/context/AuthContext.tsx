@@ -10,13 +10,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
+        supabase.auth.getSession().then(({ data: { session }, error }) => {
+            if (error) {
+                // If there's an error getting the session (e.g., invalid refresh token), clear it
+                // This happens when the refresh token is missing or expired
+                if (error.message?.includes('refresh') || error.message?.includes('token')) {
+                    // Silently clear invalid session - user will need to sign in again
+                    supabase.auth.signOut().catch(() => {
+                        // Ignore sign out errors
+                    });
+                }
+                setSession(null);
+            } else {
+                setSession(session);
+            }
             setLoading(false);
         });
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            // Handle all auth state changes, including when refresh token fails
+            if (event === 'SIGNED_OUT' || !session) {
+                // Session is invalid or user signed out - clear session
+                setSession(null);
+            } else {
+                // Valid session - update it
+                setSession(session);
+            }
         });
 
         return () => subscription.unsubscribe();

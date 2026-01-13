@@ -4,6 +4,7 @@
     "slug": "plov",
     "scheme": "myplov",
     "version": "1.0.0",
+    "associatedDomains": ["applinks:plov.app"],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -37,6 +38,11 @@
           "cameraPermission": "The app accesses your camera to let you take photos for your profile picture."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "442168a0-d035-4876-a756-fa43584b4564"
+      }
+    }
   }
 }

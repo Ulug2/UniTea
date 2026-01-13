@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, Text, View, StyleSheet } from 'react-native';
+import { Image, Pressable, Text, View, StyleSheet, Share, Platform, Alert } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Ionicons } from '@expo/vector-icons';
 import { formatDistanceToNowStrict } from 'date-fns';
@@ -97,6 +97,50 @@ const PostListItem = React.memo(function PostListItem({
         // Navigate to create-post with repost ID
         const originalPostId = isRepost ? repostedFromPostId : postId;
         router.push(`/create-post?repostId=${originalPostId}`);
+    };
+
+    // Handle share button click
+    const handleShareClick = async (e: any) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        try {
+            // Create deep link URL
+            // Format: myplov://post/{postId}
+            const deepLink = `myplov://post/${postId}`;
+            
+            // For web/fallback, use a regular URL (you can replace with your actual domain)
+            const webUrl = `https://plov.app/post/${postId}`;
+            
+            // Share message
+            const shareMessage = Platform.select({
+                ios: `Check out this post on Plov!\n${deepLink}`,
+                android: `Check out this post on Plov!\n${deepLink}\n\nOr open: ${webUrl}`,
+                default: `Check out this post on Plov: ${webUrl}`,
+            });
+
+            const result = await Share.share({
+                message: shareMessage,
+                url: Platform.OS === 'ios' ? deepLink : webUrl, // iOS uses url, Android uses message
+                title: 'Share Post',
+            });
+
+            if (result.action === Share.sharedAction) {
+                if (result.activityType) {
+                    // Shared with activity type of result.activityType
+                    console.log('Shared via:', result.activityType);
+                } else {
+                    // Shared
+                    console.log('Post shared successfully');
+                }
+            } else if (result.action === Share.dismissedAction) {
+                // Dismissed
+                console.log('Share dismissed');
+            }
+        } catch (error: any) {
+            console.error('Error sharing post:', error);
+            Alert.alert('Error', 'Failed to share post. Please try again.');
+        }
     };
 
     const styles = StyleSheet.create({
@@ -306,6 +350,11 @@ const PostListItem = React.memo(function PostListItem({
                         <Text style={styles.repostComment}>{content}</Text>
                     )}
 
+                    {/* REPOST IMAGE (if user added image when reposting) */}
+                    {isRepost && imageUrl && (
+                        <SupabaseImage path={imageUrl} bucket="post-images" style={styles.postImage} />
+                    )}
+
                     {/* CONTENT */}
                     <View style={{ marginTop: 1 }}>
                         {isRepost ? (
@@ -402,7 +451,12 @@ const PostListItem = React.memo(function PostListItem({
                             )}
                         </View>
                         <View style={styles.footerRight}>
-                            <MaterialCommunityIcons name="share-outline" size={19} color={theme.text} style={styles.iconBox} />
+                            <Pressable
+                                onPress={handleShareClick}
+                                style={styles.iconBox}
+                            >
+                                <MaterialCommunityIcons name="share-outline" size={19} color={theme.text} />
+                            </Pressable>
                         </View>
                     </View>
                 </Pressable>

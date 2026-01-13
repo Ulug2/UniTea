@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocalSearchParams, router } from "expo-router";
 import {
   View,
@@ -12,6 +12,8 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Keyboard,
+  ActionSheetIOS,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../../context/ThemeContext";
@@ -22,6 +24,7 @@ import {
   useQuery,
   useInfiniteQuery,
   useQueryClient,
+  useMutation,
 } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
@@ -50,9 +53,31 @@ export default function ChatDetailScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const [message, setMessage] = useState("");
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const queryClient = useQueryClient();
+
+  // Track pending message IDs to prevent duplicate processing from real-time
+  const pendingMessageIds = useRef<Set<string>>(new Set());
+
+  // Track keyboard visibility - use "Will" events on iOS for instant effect
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   // Fetch chat data
   const { data: chat, isLoading: isLoadingChat } = useQuery<Chat | null>({
@@ -151,7 +176,7 @@ export default function ChatDetailScreen() {
       return undefined;
     },
     enabled: Boolean(id),
-    staleTime: 1000 * 30,
+    staleTime: 0, // Messages are high-velocity data, always refetch
     gcTime: 1000 * 60 * 15,
     initialPageParam: 0,
     retry: 2,
@@ -163,9 +188,108 @@ export default function ChatDetailScreen() {
     return messagesData.pages.flat();
   }, [messagesData]);
 
-  // Real-time subscription for new messages
+  type DeleteAction = "delete_for_me" | "delete_for_everyone";
+
+  const deleteMessageMutation = useMutation({
+    mutationFn: async ({
+      messageId,
+      action,
+      isSender,
+    }: {
+      messageId: string;
+      action: DeleteAction;
+      isSender: boolean;
+    }) => {
+      if (!currentUserId) {
+        throw new Error("User not authenticated");
+      }
+
+      let update: Partial<ChatMessage> = {};
+
+      if (action === "delete_for_me") {
+        if (isSender) {
+          update = { deleted_by_sender: true as any };
+        } else {
+          update = { deleted_by_receiver: true as any };
+        }
+      } else if (action === "delete_for_everyone") {
+        if (!isSender) {
+          throw new Error("Only the sender can delete a message for everyone");
+        }
+        // Mark as deleted for both sides instead of using non‑existent is_deleted
+        update = {
+          deleted_by_sender: true as any,
+          deleted_by_receiver: true as any,
+        };
+      }
+
+      const { error } = await supabase
+        .from("chat_messages")
+        .update(update)
+        .eq("id", messageId);
+
+      if (error) {
+        throw error;
+      }
+    },
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: ["chat-messages", id] });
+
+      const previousData = queryClient.getQueryData<any>([
+        "chat-messages",
+        id,
+      ]);
+
+      queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
+        if (!oldData) return oldData;
+
+        const newPages = oldData.pages.map((page: ChatMessage[]) => {
+          if (!Array.isArray(page)) return page;
+
+          if (variables.action === "delete_for_me") {
+            // Remove the message for this user only
+            return page.filter((msg) => msg.id !== variables.messageId);
+          }
+
+          if (variables.action === "delete_for_everyone") {
+            // Mark the message as deleted for everyone
+            return page.map((msg) =>
+              msg.id === variables.messageId
+                ? {
+                  ...msg,
+                  is_deleted: true as any,
+                  content: "This message was deleted",
+                }
+                : msg
+            );
+          }
+
+          return page;
+        });
+
+        return {
+          ...oldData,
+          pages: newPages,
+        };
+      });
+
+      return { previousData };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(["chat-messages", id], context.previousData);
+      }
+      Alert.alert("Error", "Failed to delete message. Please try again.");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["chat-messages", id] });
+    },
+  });
+
+  // Real-time subscription for new messages - only listen to OTHER users' messages
+  // REMOVED UPDATE subscription - it was causing cascading invalidations and freezes
   useEffect(() => {
-    if (!id) return;
+    if (!id || !currentUserId) return;
 
     const channel = supabase
       .channel(`chat-${id}`)
@@ -178,16 +302,42 @@ export default function ChatDetailScreen() {
           filter: `chat_id=eq.${id}`,
         },
         (payload) => {
+          const newMessage = payload.new as ChatMessage;
+
+          // Skip our own messages - they're handled by optimistic updates
+          if (newMessage.user_id === currentUserId) {
+            return;
+          }
+
+          // Prevent duplicates: check if message already exists or is pending
+          if (pendingMessageIds.current.has(newMessage.id)) {
+            return;
+          }
+
+          // Mark as pending
+          pendingMessageIds.current.add(newMessage.id);
+
+          // Remove from pending after a delay (cleanup)
+          setTimeout(() => {
+            pendingMessageIds.current.delete(newMessage.id);
+          }, 5000);
+
           // New message received - add to cache immediately
           queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
             if (!oldData) return oldData;
 
+            // Double-check for duplicates in cache
+            const existingMessage = oldData.pages.flat().find((m: ChatMessage) => m.id === newMessage.id);
+            if (existingMessage) {
+              return oldData;
+            }
+
             // Add new message to first page (most recent)
             const newPages = [...oldData.pages];
             if (newPages[0]) {
-              newPages[0] = [payload.new, ...newPages[0]];
+              newPages[0] = [newMessage, ...newPages[0]];
             } else {
-              newPages[0] = [payload.new];
+              newPages[0] = [newMessage];
             }
 
             return {
@@ -195,19 +345,9 @@ export default function ChatDetailScreen() {
               pages: newPages,
             };
           });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "chat_messages",
-          filter: `chat_id=eq.${id}`,
-        },
-        () => {
-          // Message updated (e.g., read status) - invalidate to refetch
-          queryClient.invalidateQueries({ queryKey: ["chat-messages", id] });
+
+          // Invalidate global unread count to update badge (debounced in _layout.tsx)
+          queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });
         }
       )
       .subscribe();
@@ -215,9 +355,9 @@ export default function ChatDetailScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [id, queryClient]);
+  }, [id, currentUserId, queryClient]);
 
-  // Mark messages as read when opening chat - optimized
+  // Mark messages as read when opening chat - optimized with immediate optimistic updates
   useEffect(() => {
     if (!id || !currentUserId || messages.length === 0) return;
 
@@ -229,20 +369,37 @@ export default function ChatDetailScreen() {
 
       if (!hasUnread) return;
 
-      // Mark all unread messages as read (single query)
-      const { error } = await supabase
-        .from("chat_messages")
-        .update({ is_read: true })
-        .eq("chat_id", id)
-        .eq("is_read", false)
-        .neq("user_id", currentUserId);
+      // 1. Optimistically update chat-summaries cache immediately (set unread_count to 0)
+      queryClient.setQueryData<any[]>(["chat-summaries", currentUserId], (oldSummaries: any[] | undefined) => {
+        if (!oldSummaries) return oldSummaries;
 
-      if (error) {
-        console.error("Error marking messages as read:", error);
-        return;
-      }
+        return oldSummaries.map((summary: any) => {
+          if (summary.chat_id === id) {
+            // Update unread count based on which participant is current user
+            const isP1 = summary.participant_1_id === currentUserId;
+            return {
+              ...summary,
+              unread_count_p1: isP1 ? 0 : summary.unread_count_p1,
+              unread_count_p2: !isP1 ? 0 : summary.unread_count_p2,
+            };
+          }
+          return summary;
+        });
+      });
 
-      // Optimistically update cache
+      // 2. Optimistically update global unread count
+      queryClient.setQueryData<number>(["global-unread-count", currentUserId], (oldCount: number | undefined) => {
+        if (oldCount === undefined) return oldCount;
+
+        // Count unread messages in this chat before marking as read
+        const unreadInThisChat = messages.filter(
+          (msg) => !msg.is_read && msg.user_id !== currentUserId
+        ).length;
+
+        return Math.max(0, oldCount - unreadInThisChat);
+      });
+
+      // 3. Optimistically update messages cache
       queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
         if (!oldData) return oldData;
 
@@ -261,9 +418,29 @@ export default function ChatDetailScreen() {
         };
       });
 
-      // Refresh chat summaries to update unread counts (don't refetch to preserve scroll)
+      // 4. Send server request (fire and forget - UI already updated)
+      supabase
+        .from("chat_messages")
+        .update({ is_read: true })
+        .eq("chat_id", id)
+        .eq("is_read", false)
+        .neq("user_id", currentUserId)
+        .then(({ error }) => {
+          if (error) {
+            console.error("Error marking messages as read:", error);
+            // On error, invalidate to refetch correct state
+            queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+            queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });
+          }
+        });
+
+      // 5. Invalidate queries to ensure eventual consistency (but don't refetch immediately)
       queryClient.invalidateQueries({
-        queryKey: ["chat-summaries"],
+        queryKey: ["chat-summaries", currentUserId],
+        refetchType: "none", // Don't refetch now, wait for focus
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["global-unread-count", currentUserId],
         refetchType: "none",
       });
     };
@@ -322,69 +499,16 @@ export default function ChatDetailScreen() {
     return !isSameDay(currentDate, nextDate);
   };
 
-  const handleSend = useCallback(async () => {
-    if (!message.trim() || !id || !currentUserId) return;
-
-    const messageText = message.trim();
-    const tempId = `temp-${Date.now()}`; // Temporary ID for optimistic update
-    const now = new Date().toISOString();
-
-    const optimisticMessage: ChatMessage = {
-      id: tempId,
-      chat_id: id,
-      user_id: currentUserId,
-      content: messageText,
-      created_at: now,
-      is_read: false,
-    };
-
-    setMessage(""); // Clear input immediately
-
-    // 1. Optimistic update - add message to chat detail cache immediately
-    queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
-      if (!oldData) return oldData;
-
-      const newPages = [...oldData.pages];
-      if (newPages[0]) {
-        newPages[0] = [optimisticMessage, ...newPages[0]];
-      } else {
-        newPages[0] = [optimisticMessage];
+  // Send message mutation - uses React Query for proper queuing
+  const sendMessageMutation = useMutation({
+    mutationFn: async (messageText: string) => {
+      if (!id || !currentUserId) {
+        throw new Error("Missing chat ID or user ID");
       }
 
-      return {
-        ...oldData,
-        pages: newPages,
-      };
-    });
+      const now = new Date().toISOString();
 
-    // 2. Optimistic update - update chat list cache (WhatsApp-style instant update!)
-    // Update for empty search query (most common case)
-    queryClient.setQueryData<any[]>(
-      ["chat-summaries", currentUserId, ""],
-      (oldSummaries: any[] | undefined) => {
-        if (!oldSummaries) return oldSummaries;
-
-        // Find the chat and move it to top with new message
-        let updatedChat: any = null;
-        const others = oldSummaries.filter((summary: any) => {
-          if (summary.chat_id === id) {
-            updatedChat = {
-              ...summary,
-              last_message_content: messageText,
-              last_message_at: now,
-            };
-            return false; // Remove from current position
-          }
-          return true;
-        });
-
-        // Put updated chat at the top (most recent first)
-        return updatedChat ? [updatedChat, ...others] : oldSummaries;
-      }
-    );
-
-    try {
-      // 1. Insert message
+      // Insert message and update chat in a single transaction-like operation
       const { data: newMessage, error: messageError } = await supabase
         .from("chat_messages")
         .insert({
@@ -398,17 +522,111 @@ export default function ChatDetailScreen() {
 
       if (messageError) throw messageError;
 
-      // 2. Update chat's last_message_at
-      const { error: chatError } = await supabase
+      // Update chat's last_message_at (non-blocking, fire and forget)
+      supabase
         .from("chats")
-        .update({
-          last_message_at: now,
-        })
-        .eq("id", id);
+        .update({ last_message_at: now })
+        .eq("id", id)
+        .then(() => {
+          // Silently update chat summaries after successful send
+          queryClient.invalidateQueries({
+            queryKey: ["chat-summaries", currentUserId],
+            refetchType: "none",
+          });
+        });
 
-      if (chatError) throw chatError;
+      return { newMessage, now };
+    },
+    onMutate: async (messageText: string) => {
+      if (!id || !currentUserId) return;
 
-      // 3. Replace optimistic message with real one
+      // DON'T await - cancel queries in background, don't block UI
+      queryClient.cancelQueries({ queryKey: ["chat-messages", id] });
+      queryClient.cancelQueries({ queryKey: ["chat-summaries", currentUserId] });
+
+      const tempId = `temp-${Date.now()}-${Math.random()}`;
+      const now = new Date().toISOString();
+
+      const optimisticMessage: ChatMessage = {
+        id: tempId,
+        chat_id: id,
+        user_id: currentUserId,
+        content: messageText,
+        created_at: now,
+        is_read: false,
+        deleted_by_receiver: null,
+        deleted_by_sender: null,
+      };
+
+      // Mark as pending to prevent real-time subscription from adding it
+      pendingMessageIds.current.add(tempId);
+
+      // Snapshot previous values for rollback
+      const previousMessages = queryClient.getQueryData(["chat-messages", id]);
+      const previousSummaries = queryClient.getQueryData(["chat-summaries", currentUserId]);
+
+      // IMMEDIATE optimistic update - messages (no waiting)
+      queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
+        if (!oldData) return oldData;
+
+        const newPages = [...oldData.pages];
+        if (newPages[0]) {
+          newPages[0] = [optimisticMessage, ...newPages[0]];
+        } else {
+          newPages[0] = [optimisticMessage];
+        }
+
+        return {
+          ...oldData,
+          pages: newPages,
+        };
+      });
+
+      // IMMEDIATE optimistic update - chat summaries (no waiting)
+      queryClient.setQueryData<any[]>(["chat-summaries", currentUserId], (oldSummaries: any[] | undefined) => {
+        if (!oldSummaries) return oldSummaries;
+
+        let updatedChat: any = null;
+        const others = oldSummaries.filter((summary: any) => {
+          if (summary.chat_id === id) {
+            updatedChat = {
+              ...summary,
+              last_message_content: messageText,
+              last_message_at: now,
+            };
+            return false;
+          }
+          return true;
+        });
+
+        return updatedChat ? [updatedChat, ...others] : oldSummaries;
+      });
+
+      // IMMEDIATE optimistic update - global unread count (don't change for our own messages)
+      queryClient.setQueryData<number>(["global-unread-count", currentUserId], (oldCount: number | undefined) => {
+        // Don't change unread count for our own messages
+        return oldCount;
+      });
+
+      return { previousMessages, previousSummaries, tempId, optimisticMessage };
+    },
+    onSuccess: (data, messageText, context) => {
+      if (!context || !id) return;
+
+      const { newMessage } = data;
+      const { tempId } = context;
+
+      // Remove temp ID from pending
+      pendingMessageIds.current.delete(tempId);
+      // Add real ID to pending (so real-time doesn't duplicate)
+      pendingMessageIds.current.add(newMessage.id);
+
+      // Cleanup pending after 5 seconds
+      setTimeout(() => {
+        pendingMessageIds.current.delete(newMessage.id);
+      }, 5000);
+
+      // Replace optimistic message with real one (silent update, no invalidation needed)
       queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
         if (!oldData) return oldData;
 
@@ -422,39 +640,420 @@ export default function ChatDetailScreen() {
         };
       });
 
-      // 4. Mark all chat summaries as stale for eventual server sync (preserves scroll)
-      // This ensures data accuracy when user navigates back or refetches
-      queryClient.invalidateQueries({
-        queryKey: ["chat-summaries"],
-        refetchType: "none", // Don't refetch now, wait for focus
-      });
-    } catch (error) {
+      // Don't invalidate - we already updated optimistically, no need to refetch
+    },
+    onError: (error, messageText, context) => {
       console.error("Error sending message:", error);
 
-      // Rollback optimistic update for messages
-      queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
-        if (!oldData) return oldData;
+      if (!context) return;
 
-        const newPages = oldData.pages.map((page: ChatMessage[]) =>
-          page.filter((msg) => msg.id !== tempId)
-        );
+      // Rollback optimistic updates
+      if (context.previousMessages) {
+        queryClient.setQueryData(["chat-messages", id], context.previousMessages);
+      }
+      if (context.previousSummaries) {
+        queryClient.setQueryData(["chat-summaries", currentUserId], context.previousSummaries);
+      }
 
-        return {
-          ...oldData,
-          pages: newPages,
-        };
-      });
-
-      // Rollback optimistic update for chat summaries - refetch to get correct state
-      queryClient.invalidateQueries({
-        queryKey: ["chat-summaries", currentUserId],
-        refetchType: "active", // Force immediate refetch on error
-      });
+      // Remove from pending
+      if (context.tempId) {
+        pendingMessageIds.current.delete(context.tempId);
+      }
 
       Alert.alert("Error", "Failed to send message. Please try again.");
       setMessage(messageText); // Restore message on error
+    },
+  });
+
+  const handleSend = useCallback(() => {
+    const messageText = message.trim();
+    if (!messageText || !id || !currentUserId) {
+      return;
     }
-  }, [message, id, currentUserId, queryClient]);
+
+    setMessage(""); // Clear input IMMEDIATELY - don't wait for anything
+    sendMessageMutation.mutate(messageText); // Fire and forget - UI already updated
+  }, [message, id, currentUserId, sendMessageMutation]);
+
+  // Block user mutation
+  const blockUserMutation = useMutation({
+    mutationFn: async (blockedUserId: string) => {
+      if (!currentUserId) {
+        throw new Error("User not authenticated");
+      }
+
+      const { error } = await supabase
+        .from("blocks")
+        .insert({
+          blocker_id: currentUserId,
+          blocked_id: blockedUserId,
+        });
+
+      if (error) {
+        // If already blocked, ignore the error
+        if (error.code === "23505") {
+          return; // Unique constraint violation means already blocked
+        }
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      // Invalidate all queries to filter out blocked user's content
+      queryClient.invalidateQueries({ queryKey: ["blocks", currentUserId] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.invalidateQueries({ queryKey: ["comments"] });
+      queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+
+      console.log("Success", "User has been blocked");
+      router.back();
+    },
+    onError: (error) => {
+      console.error("Error blocking user:", error);
+      Alert.alert("Error", "Failed to block user. Please try again.");
+    },
+  });
+
+  // Delete chat mutation
+  const deleteChatMutation = useMutation({
+    mutationFn: async () => {
+      if (!id || !currentUserId) {
+        throw new Error("Missing chat ID or user ID");
+      }
+
+      // Verify user is a participant in this chat (for RLS)
+      const { data: chatData, error: chatCheckError } = await supabase
+        .from("chats")
+        .select("participant_1_id, participant_2_id")
+        .eq("id", id)
+        .single();
+
+      if (chatCheckError || !chatData) {
+        throw new Error("Chat not found or you don't have permission to delete it");
+      }
+
+      const isParticipant =
+        chatData.participant_1_id === currentUserId ||
+        chatData.participant_2_id === currentUserId;
+
+      if (!isParticipant) {
+        throw new Error("You are not a participant in this chat");
+      }
+
+      // First, delete all messages in this chat (to avoid FK errors)
+      // Use RLS-friendly delete: only delete messages where user is sender or receiver
+      const { data: deletedMessages, error: messagesError } = await supabase
+        .from("chat_messages")
+        .delete()
+        .eq("chat_id", id)
+        .select();
+
+      if (messagesError) {
+        console.error("Error deleting messages:", messagesError);
+        // If RLS prevents deletion, try a different approach
+        // Mark messages as deleted instead of actually deleting them
+        const { error: softDeleteError } = await supabase
+          .from("chat_messages")
+          .update({
+            deleted_by_sender: true,
+            deleted_by_receiver: true,
+          })
+          .eq("chat_id", id);
+
+        if (softDeleteError) {
+          throw new Error(`Failed to delete messages: ${messagesError.message}`);
+        }
+        console.log("Soft-deleted messages due to RLS restrictions");
+      } else {
+        console.log(`Deleted ${deletedMessages?.length || 0} messages for chat ${id}`);
+      }
+
+      // Then, delete the chat itself
+      // Note: .or() doesn't work with .delete(), so we rely on RLS policies
+      // RLS should allow deletion if user is a participant
+      const { data: deletedChats, error: chatError } = await supabase
+        .from("chats")
+        .delete()
+        .eq("id", id)
+        .select();
+
+      if (chatError) {
+        console.error("Error deleting chat:", chatError);
+        console.error("Chat error code:", chatError.code);
+        console.error("Chat error details:", chatError.details);
+        throw new Error(`Failed to delete chat: ${chatError.message} (Code: ${chatError.code})`);
+      }
+
+      // Check if any rows were actually deleted
+      if (!deletedChats || deletedChats.length === 0) {
+        // No rows deleted - likely RLS blocked it or chat doesn't exist
+        // Verify chat still exists
+        const { data: existingChat } = await supabase
+          .from("chats")
+          .select("id, participant_1_id, participant_2_id")
+          .eq("id", id)
+          .single();
+
+        if (existingChat) {
+          // Chat exists but deletion was blocked - likely RLS issue
+          const isParticipant =
+            existingChat.participant_1_id === currentUserId ||
+            existingChat.participant_2_id === currentUserId;
+
+          if (!isParticipant) {
+            throw new Error("You are not a participant in this chat");
+          } else {
+            throw new Error("Chat deletion was blocked. Please check your RLS policies allow participants to delete chats.");
+          }
+        } else {
+          // Chat doesn't exist - deletion might have succeeded but we can't verify
+          console.log("Chat doesn't exist - assuming deletion succeeded");
+          return { deletedChat: null, deletedMessagesCount: deletedMessages?.length || 0 };
+        }
+      }
+
+      console.log(`Successfully deleted chat ${id}`);
+      return { deletedChat: deletedChats[0], deletedMessagesCount: deletedMessages?.length || 0 };
+    },
+    onMutate: async () => {
+      // Don't await - cancel queries in background, don't block UI
+      queryClient.cancelQueries({ queryKey: ["chat-summaries", currentUserId] });
+
+      const previousSummaries = queryClient.getQueryData<any[]>(["chat-summaries", currentUserId]);
+
+      // Optimistically remove chat from summaries IMMEDIATELY
+      queryClient.setQueryData<any[]>(["chat-summaries", currentUserId], (oldSummaries: any[] | undefined) => {
+        if (!oldSummaries) return oldSummaries;
+        return oldSummaries.filter((summary: any) => summary.chat_id !== id);
+      });
+
+      // Optimistically update global unread count (subtract unread messages from this chat)
+      queryClient.setQueryData<number>(["global-unread-count", currentUserId], (oldCount: number | undefined) => {
+        if (oldCount === undefined || !previousSummaries) return oldCount;
+
+        // Find the chat being deleted and subtract its unread count
+        const deletedChat = previousSummaries.find((s: any) => s.chat_id === id);
+        if (!deletedChat) return oldCount;
+
+        const isP1 = deletedChat.participant_1_id === currentUserId;
+        const unreadInDeletedChat = isP1 ? (deletedChat.unread_count_p1 || 0) : (deletedChat.unread_count_p2 || 0);
+
+        return Math.max(0, oldCount - unreadInDeletedChat);
+      });
+
+      return { previousSummaries };
+    },
+    onSuccess: (data) => {
+      console.log("Chat deletion successful:", data);
+
+      // Remove queries for this chat
+      queryClient.removeQueries({ queryKey: ["chat-messages", id] });
+      queryClient.removeQueries({ queryKey: ["chat", id] });
+
+      // Force refetch to ensure server state is synced
+      // This ensures that if we refresh, the chat won't reappear
+      queryClient.invalidateQueries({
+        queryKey: ["chat-summaries", currentUserId],
+        refetchType: "active", // Force refetch to sync with server
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["global-unread-count", currentUserId],
+        refetchType: "active",
+      });
+
+      // Navigate back immediately after optimistic update
+      router.back();
+
+      // Show success after navigation
+      setTimeout(() => {
+        console.log("Success", "Chat has been deleted");
+      }, 100);
+    },
+    onError: (error, _variables, context) => {
+      console.error("Error deleting chat:", error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
+
+      // Rollback optimistic update
+      if (context?.previousSummaries) {
+        queryClient.setQueryData(["chat-summaries", currentUserId], context.previousSummaries);
+      }
+
+      // Show detailed error message
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete chat. Please try again.";
+      Alert.alert(
+        "Error",
+        errorMessage,
+        [
+          { text: "OK", style: "default" },
+          {
+            text: "Retry",
+            style: "default",
+            onPress: () => deleteChatMutation.mutate(),
+          },
+        ]
+      );
+    },
+  });
+
+  const handleHeaderMenu = useCallback(() => {
+    if (!otherUserId || isAnonymous) return;
+
+    const options: string[] = [];
+    const actions: Array<() => void> = [];
+
+    options.push("Block User", "Delete Chat", "Cancel");
+    actions.push(
+      () => {
+        Alert.alert(
+          "Block User",
+          `Are you sure you want to block ${otherUserName}?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Block",
+              style: "destructive",
+              onPress: () => blockUserMutation.mutate(otherUserId!),
+            },
+          ]
+        );
+      },
+      () => {
+        Alert.alert(
+          "Delete Chat",
+          "Are you sure you want to delete this conversation? This action cannot be undone.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: () => deleteChatMutation.mutate(),
+            },
+          ]
+        );
+      },
+      () => { }
+    );
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options,
+          destructiveButtonIndex: [0, 1], // Both Block and Delete are destructive
+          cancelButtonIndex: 2,
+        },
+        (buttonIndex) => {
+          const action = actions[buttonIndex];
+          if (action) action();
+        }
+      );
+    } else {
+      Alert.alert(
+        "Chat Options",
+        undefined,
+        [
+          {
+            text: "Block User",
+            style: "destructive",
+            onPress: () => {
+              Alert.alert(
+                "Block User",
+                `Are you sure you want to block ${otherUserName}?`,
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Block",
+                    style: "destructive",
+                    onPress: () => blockUserMutation.mutate(otherUserId!),
+                  },
+                ]
+              );
+            },
+          },
+          {
+            text: "Delete Chat",
+            style: "destructive",
+            onPress: () => {
+              Alert.alert(
+                "Delete Chat",
+                "Are you sure you want to delete this conversation? This action cannot be undone.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: () => deleteChatMutation.mutate(),
+                  },
+                ]
+              );
+            },
+          },
+          { text: "Cancel", style: "cancel" },
+        ]
+      );
+    }
+  }, [otherUserId, isAnonymous, otherUserName, blockUserMutation, deleteChatMutation]);
+
+  const handleMessageLongPress = useCallback(
+    (msg: ChatMessage) => {
+      if (!currentUserId) return;
+
+      const isCurrentUser = msg.user_id === currentUserId;
+      const isDeletedForEveryone = (msg as any).is_deleted;
+
+      const options: string[] = [];
+      const actions: Array<() => void> = [];
+
+      const addDeleteForMe = () => {
+        deleteMessageMutation.mutate({
+          messageId: msg.id,
+          action: "delete_for_me",
+          isSender: isCurrentUser,
+        });
+      };
+
+      if (isCurrentUser && !isDeletedForEveryone) {
+        options.push("Delete for me", "Delete for everyone", "Cancel");
+        actions.push(
+          addDeleteForMe,
+          () =>
+            deleteMessageMutation.mutate({
+              messageId: msg.id,
+              action: "delete_for_everyone",
+              isSender: true,
+            }),
+          () => { }
+        );
+      } else {
+        // Receiver or already deleted for everyone
+        options.push("Delete for me", "Cancel");
+        actions.push(addDeleteForMe, () => { });
+      }
+
+      if (Platform.OS === "ios") {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options,
+            destructiveButtonIndex: options.indexOf("Delete for everyone"),
+            cancelButtonIndex: options.indexOf("Cancel"),
+          },
+          (buttonIndex) => {
+            const action = actions[buttonIndex];
+            if (action) action();
+          }
+        );
+      } else {
+        const androidButtons = options.map((label, idx) => {
+          if (label === "Cancel") {
+            return { text: "Cancel", style: "cancel" as const };
+          }
+          const onPress = actions[idx];
+          return { text: label, onPress };
+        });
+
+        Alert.alert("Delete message", undefined, androidButtons);
+      }
+    },
+    [currentUserId, deleteMessageMutation]
+  );
 
   const renderMessage = ({
     item,
@@ -464,6 +1063,18 @@ export default function ChatDetailScreen() {
     index: number;
   }) => {
     const isCurrentUser = item.user_id === currentUserId;
+    const deletedBySender = (item as any).deleted_by_sender;
+    const deletedByReceiver = (item as any).deleted_by_receiver;
+    const isDeletedForEveryone = (item as any).is_deleted;
+
+    // Hide message if it was deleted locally
+    const isHiddenForCurrentUser =
+      (isCurrentUser && deletedBySender) ||
+      (!isCurrentUser && deletedByReceiver);
+
+    if (isHiddenForCurrentUser) {
+      return null;
+    }
     // For inverted list: compare with next item (older message)
     const nextMsg = index < messages.length - 1 ? messages[index + 1] : null;
     const showDateDivider = shouldShowDateDivider(item, nextMsg);
@@ -471,17 +1082,22 @@ export default function ChatDetailScreen() {
     return (
       <>
         {/* Message bubble rendered first in JSX */}
-        <View
+        <Pressable
           style={[
             styles.messageContainer,
             isCurrentUser ? styles.currentUserMessage : styles.otherUserMessage,
           ]}
+          onLongPress={() => handleMessageLongPress(item)}
         >
           <View
             style={[
               styles.messageBubble,
               {
-                backgroundColor: isCurrentUser ? "#5DBEBC" : theme.card,
+                backgroundColor: isDeletedForEveryone
+                  ? theme.card
+                  : isCurrentUser
+                    ? "#5DBEBC"
+                    : theme.card,
                 borderRadius: 20,
               },
             ]}
@@ -490,11 +1106,18 @@ export default function ChatDetailScreen() {
               style={[
                 styles.messageText,
                 {
-                  color: isCurrentUser ? "#FFFFFF" : theme.text,
+                  color: isDeletedForEveryone
+                    ? theme.secondaryText
+                    : isCurrentUser
+                      ? "#FFFFFF"
+                      : theme.text,
+                  fontStyle: isDeletedForEveryone ? "italic" : "normal",
                 },
               ]}
             >
-              {item.content}
+              {isDeletedForEveryone
+                ? "This message was deleted"
+                : item.content}
             </Text>
           </View>
           <Text
@@ -506,7 +1129,7 @@ export default function ChatDetailScreen() {
           >
             {getMessageTime(item.created_at)}
           </Text>
-        </View>
+        </Pressable>
         {/* Date divider rendered AFTER message in JSX
             With inverted={true}, this appears BELOW the message visually,
             creating a proper separator between date groups */}
@@ -561,12 +1184,13 @@ export default function ChatDetailScreen() {
       backgroundColor: isAnonymous ? "#2C3E50" : "#5DBEBC",
       justifyContent: "center",
       alignItems: "center",
-      marginRight: 12,
+      marginRight: 16,
     },
     avatarImage: {
       width: 40,
       height: 40,
       borderRadius: 20,
+      marginRight: 16,
     },
     avatarText: {
       fontSize: 18,
@@ -590,8 +1214,7 @@ export default function ChatDetailScreen() {
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: 16,
-      paddingTop: 12,
-      paddingBottom: Math.max(insets.bottom, 12),
+      paddingTop: 10,
       backgroundColor: theme.card,
       borderTopWidth: 1,
       borderTopColor: theme.border,
@@ -650,16 +1273,18 @@ export default function ChatDetailScreen() {
 
         <Text style={dynamicStyles.userName}>{otherUserName}</Text>
 
-        <Pressable style={dynamicStyles.menuButton}>
-          <Ionicons name="ellipsis-vertical" size={24} color={theme.text} />
-        </Pressable>
+        {!isAnonymous && otherUserId && (
+          <Pressable style={dynamicStyles.menuButton} onPress={handleHeaderMenu}>
+            <Ionicons name="ellipsis-vertical" size={24} color={theme.text} />
+          </Pressable>
+        )}
       </View>
 
       {/* MESSAGES LIST */}
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        keyboardVerticalOffset={0}
       >
         <FlatList
           data={messages}
@@ -683,7 +1308,10 @@ export default function ChatDetailScreen() {
         />
 
         {/* INPUT */}
-        <View style={dynamicStyles.inputContainer}>
+        <View style={[
+          dynamicStyles.inputContainer,
+          { paddingBottom: isKeyboardVisible ? 15 : insets.bottom }
+        ]}>
           <TextInput
             placeholder="Type a message..."
             placeholderTextColor={theme.secondaryText}

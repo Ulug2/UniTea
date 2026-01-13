@@ -1,8 +1,10 @@
+import React from 'react';
 import { View, Text, Pressable, StyleSheet, Image } from "react-native";
 import { Database } from "../types/database.types";
 import { useTheme } from "../context/ThemeContext";
 import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
+import { formatDistanceToNowStrict } from "date-fns";
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -32,107 +34,109 @@ export default function ChatListItem({
 
   const getDisplayName = () => {
     if (isAnonymous) {
-      return `Anonymous User #${Math.floor(Math.random() * 9000) + 1000}`;
+      return `Anonymous User`;
     }
     return otherUser?.username || "Unknown User";
   };
 
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInMs = now.getTime() - date.getTime();
-    const diffInSeconds = Math.floor(diffInMs / 1000);
-    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
+    if (!dateString) return "";
 
-    if (diffInMinutes < 1) {
-      // Show seconds only when less than 1 minute
-      return `${diffInSeconds}s ago`;
-    } else if (diffInHours < 1) {
-      // Show minutes only when less than 1 hour
-      return `${diffInMinutes}m ago`;
-    } else if (diffInHours < 24) {
-      return `${diffInHours}h ago`;
-    } else if (diffInHours < 48) {
-      return "Yesterday";
-    } else {
-      const diffInDays = Math.floor(diffInHours / 24);
-      return `${diffInDays}d ago`;
-    }
+    // formatDistanceToNowStrict with addSuffix: false gives "5 minutes", "2 hours"
+    // We manually abbreviate to "5m", "2h" and ensure "ago" is not included.
+    const distance = formatDistanceToNowStrict(new Date(dateString), { addSuffix: false });
+
+    return distance
+      .replace(" seconds", "s")
+      .replace(" second", "s")
+      .replace(" minutes", "m")
+      .replace(" minute", "m")
+      .replace(" hours", "h")
+      .replace(" hour", "h")
+      .replace(" days", "d")
+      .replace(" day", "d")
+      .replace(" months", "mo")
+      .replace(" month", "mo")
+      .replace(" years", "y")
+      .replace(" year", "y");
   };
 
   const styles = StyleSheet.create({
     container: {
       flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      backgroundColor: theme.card,
-      borderBottomWidth: 0.5,
+      padding: 16,
+      borderBottomWidth: 1,
       borderBottomColor: theme.border,
+      backgroundColor: theme.card,
+      alignItems: "center",
     },
     avatarContainer: {
       position: "relative",
+      marginRight: 12,
     },
     avatar: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: isAnonymous ? "#2C3E50" : "#5DBEBC",
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: theme.primary,
       justifyContent: "center",
       alignItems: "center",
     },
-    avatarText: {
-      fontSize: 24,
-      color: "#FFFFFF",
-      fontFamily: "Poppins_600SemiBold",
-    },
     avatarImage: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: theme.border,
+    },
+    avatarText: {
+      fontSize: 20,
+      color: "#FFFFFF",
+      fontFamily: "Poppins_700Bold",
     },
     unreadBadge: {
       position: "absolute",
       top: -2,
       right: -2,
-      backgroundColor: "#5DBEBC",
-      borderRadius: 12,
-      minWidth: 24,
-      height: 24,
+      backgroundColor: "#EF4444",
+      borderRadius: 10,
+      minWidth: 20,
+      height: 20,
       justifyContent: "center",
       alignItems: "center",
-      paddingHorizontal: 6,
+      paddingHorizontal: 4,
+      borderWidth: 2,
+      borderColor: theme.card,
     },
     unreadText: {
       color: "#FFFFFF",
-      fontSize: 12,
-      fontFamily: "Poppins_600SemiBold",
+      fontSize: 10,
+      fontFamily: "Poppins_700Bold",
     },
     contentContainer: {
       flex: 1,
-      marginLeft: 14,
+      justifyContent: "center",
+      gap: 4,
     },
     header: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 4,
     },
     username: {
-      fontSize: 17,
+      fontSize: 16,
       fontFamily: "Poppins_600SemiBold",
       color: theme.text,
     },
     time: {
-      fontSize: 13,
+      fontSize: 12,
       fontFamily: "Poppins_400Regular",
       color: theme.secondaryText,
     },
     lastMessage: {
-      fontSize: 15,
+      fontSize: 14,
       fontFamily: "Poppins_400Regular",
-      color: theme.secondaryText,
+      color: unreadCount > 0 ? theme.text : theme.secondaryText,
+      fontWeight: unreadCount > 0 ? "600" : "400",
     },
   });
 
@@ -140,6 +144,7 @@ export default function ChatListItem({
     <Pressable
       style={styles.container}
       onPress={() => router.push(`/chat/${chatId}`)}
+      android_ripple={{ color: theme.border }}
     >
       <View style={styles.avatarContainer}>
         {!isAnonymous && otherUser?.avatar_url ? (
@@ -171,7 +176,7 @@ export default function ChatListItem({
         <View style={styles.header}>
           <Text style={styles.username}>{getDisplayName()}</Text>
           <Text style={styles.time}>
-            {lastMessageAt ? formatTime(lastMessageAt) : "No messages"}
+            {lastMessageAt ? formatTime(lastMessageAt) : ""}
           </Text>
         </View>
         <Text style={styles.lastMessage} numberOfLines={1}>

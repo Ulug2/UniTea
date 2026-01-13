@@ -57,6 +57,7 @@ export default function CreatePostScreen() {
     const [content, setContent] = useState<string>('');
     const [image, setImage] = useState<string | null>(null);
     const [isAnonymous, setIsAnonymous] = useState<boolean>(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Lost & Found specific states
     const [category, setCategory] = useState<'lost' | 'found'>('lost');
@@ -68,7 +69,8 @@ export default function CreatePostScreen() {
         setIsAnonymous(false);
         setCategory('lost');
         setLocation('');
-        router.back();
+        // Use replace instead of back to avoid navigation errors
+        router.replace('/(protected)/(tabs)');
     };
 
     const pickImage = async () => {
@@ -140,36 +142,54 @@ export default function CreatePostScreen() {
         onSuccess: () => {
             // Invalidate posts query to refresh the feed
             queryClient.invalidateQueries({ queryKey: ['posts'] });
+            // Also invalidate lost_found posts if this is a lost & found post
+            if (isLostFound) {
+                queryClient.invalidateQueries({ queryKey: ['posts', 'lost_found'] });
+            }
+            setIsSubmitting(false);
             goBack();
         },
         onError: (error: Error) => {
+            setIsSubmitting(false);
             console.error('Error creating post:', error);
             Alert.alert('Error', error.message || 'Failed to create post. Please try again.');
         },
     });
 
     const handlePost = async () => {
-        let imagePath: string | undefined = undefined;
-
-        // Upload image first if present
-        if (image) {
-            try {
-                imagePath = await uploadImage(image, supabase);
-            } catch (error: any) {
-                console.error('Image upload error:', error);
-                Alert.alert('Error', error.message || 'Failed to upload image. Please try again.');
-                return;
-            }
+        // Prevent multiple submissions
+        if (isSubmitting || createPostMutation.isPending) {
+            return;
         }
 
-        // Create post with all necessary data
-        createPostMutation.mutate({
-            imagePath,
-            postContent: content,
-            postLocation: location,
-            postIsAnonymous: isAnonymous,
-            postCategory: category,
-        });
+        setIsSubmitting(true);
+
+        try {
+            let imagePath: string | undefined = undefined;
+
+            // Upload image first if present
+            if (image) {
+                try {
+                    imagePath = await uploadImage(image, supabase);
+                } catch (error: any) {
+                    console.error('Image upload error:', error);
+                    Alert.alert('Error', error.message || 'Failed to upload image. Please try again.');
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
+
+            // Create post with all necessary data
+            createPostMutation.mutate({
+                imagePath,
+                postContent: content,
+                postLocation: location,
+                postIsAnonymous: isAnonymous,
+                postCategory: category,
+            });
+        } catch (error) {
+            setIsSubmitting(false);
+        }
     };
 
     // Validation: For feed posts, just content. For L&F posts, content + location. For reposts, content is optional
@@ -179,7 +199,7 @@ export default function CreatePostScreen() {
             ? !content.trim() || !location.trim()
             : !content.trim();
 
-    const isLoading = createPostMutation.isPending;
+    const isLoading = createPostMutation.isPending || isSubmitting;
 
     return (
         <SafeAreaView

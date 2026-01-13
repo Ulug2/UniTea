@@ -538,9 +538,15 @@ export default function PostDetailed() {
     },
     onSuccess: () => {
       setShowBlockModal(false);
+      // Invalidate blocks query to refresh blocked users list
+      queryClient.invalidateQueries({ queryKey: ["blocks", currentUserId] });
       // Invalidate queries to filter out blocked user's content
       queryClient.invalidateQueries({ queryKey: ["posts"] });
-      queryClient.invalidateQueries({ queryKey: ["comments"] });
+      queryClient.invalidateQueries({ queryKey: ["comments", postId] });
+      queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+
+      // Refetch current post to hide if author is blocked
+      queryClient.invalidateQueries({ queryKey: ["post", postId] });
 
       Alert.alert("Success", "User blocked successfully");
       router.back(); // Go back to feed
@@ -662,6 +668,24 @@ export default function PostDetailed() {
   }
 
   if (!detailedPost) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <Text style={[styles.errorText, { color: theme.text }]}>
+          Post Not Found!
+        </Text>
+      </View>
+    );
+  }
+
+  // Check if post author is blocked
+  const isPostAuthorBlocked = blocks.includes(detailedPost.user_id);
+  // Check if reposted post's original author is blocked
+  const isRepostAuthorBlocked = detailedPost.original_user_id
+    ? blocks.includes(detailedPost.original_user_id)
+    : false;
+
+  // Hide post if author or repost author is blocked
+  if (isPostAuthorBlocked || isRepostAuthorBlocked) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <Text style={[styles.errorText, { color: theme.text }]}>
