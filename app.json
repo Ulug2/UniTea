@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "plov",
-    "slug": "plov",
-    "scheme": "myplov",
+    "name": "UniTea",
+    "slug": "unitea",
+    "scheme": "myunitea",
     "version": "1.0.0",
-    "associatedDomains": ["applinks:plov.app"],
+    "associatedDomains": ["applinks:unitea.app"],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

@@ -1,8 +1,8 @@
-# Plov
+# UniTea
 
 **Your anonymous university community**
 
-Plov is a React Native mobile application built with Expo that serves as an anonymous community platform for university students. Share thoughts, find lost items, connect with peers, and engage in discussions—all while maintaining privacy when you choose.
+UniTea is a React Native mobile application built with Expo that serves as an anonymous community platform for university students. Share thoughts, find lost items, connect with peers, and engage in discussions—all while maintaining privacy when you choose.
 
 ## 🚀 Features
 
@@ -47,7 +47,7 @@ Before you begin, ensure you have the following installed:
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd plov
+   cd unitea
    ```
 
 2. **Install dependencies**
@@ -91,7 +91,7 @@ Before you begin, ensure you have the following installed:
 ## 📱 Project Structure
 
 ```
-plov/
+unitea/
 ├── src/
 │   ├── app/                    # Expo Router pages
 │   │   ├── (auth)/            # Authentication screens
@@ -142,7 +142,7 @@ plov/
 
 ## 🔐 Authentication
 
-Plov uses Supabase Authentication with email/password. Users must sign up with a university email address (e.g., `@nu.edu.kz`).
+UniTea uses Supabase Authentication with email/password. Users must sign up with a university email address (e.g., `@nu.edu.kz`).
 
 ## 🎨 Theming
 
@@ -150,7 +150,7 @@ The app supports light and dark themes through a custom `ThemeContext`. Theme pr
 
 ## 📊 Data Fetching
 
-Plov uses **TanStack Query** for all server state management:
+UniTea uses **TanStack Query** for all server state management:
 
 - Automatic caching and background refetching
 - Optimistic updates
