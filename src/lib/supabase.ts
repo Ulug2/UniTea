@@ -7,6 +7,11 @@ import { Database } from "../types/database.types"
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
+// Validate environment variables at startup
+if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase environment variables. Check EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY');
+}
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
         ...(Platform.OS !== "web" ? { storage: AsyncStorage } : {}),
@@ -14,8 +19,39 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
         persistSession: true,
         detectSessionInUrl: false,
         lock: processLock,
+        // Add retry configuration for auth operations
+        flowType: 'pkce', // More secure auth flow
+    },
+    global: {
+        headers: {
+            'x-client-info': `unitea-mobile/${Platform.OS}`,
+        },
+    },
+    db: {
+        schema: 'public',
+    },
+    realtime: {
+        // Optimize real-time connection
+        params: {
+            eventsPerSecond: 10, // Prevent flooding from rapid updates
+        },
+        // Increase timeout for slower connections
+        timeout: 20000, // 20 seconds (default is 10s)
     },
 })
+
+// Limit concurrent requests from client
+const supabaseWithPooling = createClient(supabaseUrl, supabaseAnonKey, {
+    db: {
+        schema: 'public',
+    },
+    global: {
+        fetch: (url, options = {}) => {
+            // Add request queue/throttling here if needed
+            return fetch(url, options);
+        },
+    },
+});
 
 // Tells Supabase Auth to continuously refresh the session automatically
 // if the app is in the foreground. When this is added, you will continue

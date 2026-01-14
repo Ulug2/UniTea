@@ -25,8 +25,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import ReportModal from "./ReportModal";
 import BlockUserModal from "./BlockUserModal";
 
-type Profile = Database['public']['Tables']['profiles']['Row'];
-type Comment = Database['public']['Tables']['comments']['Row'];
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type Comment = Database["public"]["Tables"]["comments"]["Row"];
 
 type CommentWithReplies = Comment & {
   replies?: CommentWithReplies[];
@@ -63,6 +63,7 @@ const CommentListItem = ({
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
+  const [showAllReplies, setShowAllReplies] = useState(false);
 
   // Enable layout animation for Android
   if (
@@ -417,10 +418,9 @@ const CommentListItem = ({
         </Pressable>
       )}
 
-      {/* Nested Replies */}
+      {/* Nested Replies - Paginated */}
       {showReplies && hasReplies && (
         <>
-          {/* Hide button only shows if more than 3 replies */}
           {replyCount > 3 && (
             <Pressable
               onPress={() => setShowReplies(false)}
@@ -436,27 +436,34 @@ const CommentListItem = ({
               </Text>
             </Pressable>
           )}
-          {/* 
-            SCALABILITY WARNING:
-            scrollEnabled={false} disables virtualization, meaning all child comments
-            are rendered simultaneously. This is fine for shallow threads (3-10 replies),
-            but will cause performance issues if a single comment has 50+ expanded children
-            as they will all render at once. Consider implementing pagination or virtualized
-            scrolling for deeply nested comment threads.
-          */}
-          <FlatList
-            data={comment.replies}
-            keyExtractor={(reply) => reply.id}
-            renderItem={({ item }) => (
+          {/* Limit initial replies shown and add pagination */}
+          {comment
+            .replies!.slice(0, showAllReplies ? undefined : 5)
+            .map((item) => (
               <CommentListItem
+                key={item.id}
                 comment={item}
                 depth={depth + 1}
                 handleReplyPress={handleReplyPress}
                 parentUser={comment.user}
               />
-            )}
-            scrollEnabled={false}
-          />
+            ))}
+          {/* Show "Load More" if more than 5 replies */}
+          {!showAllReplies && comment.replies!.length > 5 && (
+            <Pressable
+              onPress={() => setShowAllReplies(true)}
+              style={[
+                styles.loadMoreButton,
+                { backgroundColor: theme.background },
+              ]}
+            >
+              <Text
+                style={[styles.showRepliesText, { color: theme.secondaryText }]}
+              >
+                Load {comment.replies!.length - 5} more replies
+              </Text>
+            </Pressable>
+          )}
         </>
       )}
     </View>
@@ -547,6 +554,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 5,
     marginBottom: 5,
+  },
+  loadMoreButton: {
+    borderRadius: 6,
+    paddingVertical: 6,
+    alignItems: "center",
+    marginTop: 5,
   },
   showRepliesText: {
     fontSize: 12,
