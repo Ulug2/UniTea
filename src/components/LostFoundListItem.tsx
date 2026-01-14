@@ -1,13 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Image, Alert } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { formatDistanceToNowStrict } from "date-fns";
-import {
-  Ionicons,
-  MaterialCommunityIcons,
-} from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
 
@@ -41,9 +38,45 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const [isCreatingChat, setIsCreatingChat] = useState(false);
-  
+
+  // Prevent duplicate chat creation requests
+  const chatCreationInProgress = useRef(false);
+
   // Check if this is the current user's post
   const isOwnPost = currentUserId === userId;
+
+  /**
+   * Retry helper for database operations
+   */
+  const retryOperation = async <T,>(
+    operation: () => Promise<T>,
+    maxRetries: number = 3,
+    delay: number = 1000
+  ): Promise<T> => {
+    let lastError: any;
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        lastError = error;
+
+        // Don't retry on client errors (400-499)
+        if (error?.code?.startsWith("4")) {
+          throw error;
+        }
+
+        // Wait before retrying (exponential backoff)
+        if (i < maxRetries - 1) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, delay * Math.pow(2, i))
+          );
+        }
+      }
+    }
+
+    throw lastError;
+  };
 
   const handleChatPress = async () => {
     if (!currentUserId) {
@@ -51,46 +84,99 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
       return;
     }
 
+    // Prevent duplicate requests (race condition guard)
+    if (chatCreationInProgress.current) {
+      console.log("[handleChatPress] Chat creation already in progress");
+      return;
+    }
+
+    chatCreationInProgress.current = true;
     setIsCreatingChat(true);
 
     try {
-      // Check if chat already exists between these two users
-      const { data: existingChats, error: searchError } = await supabase
-        .from("chats")
-        .select("*")
-        .or(
-          `and(participant_1_id.eq.${currentUserId},participant_2_id.eq.${userId}),and(participant_1_id.eq.${userId},participant_2_id.eq.${currentUserId})`
-        );
+      // Check if chat already exists with retry logic
+      const existingChat = await retryOperation(async () => {
+        // Use a more reliable query pattern
+        const { data, error } = await supabase
+          .from("chats")
+          .select("id")
+          .or(
+            `and(participant_1_id.eq.${currentUserId},participant_2_id.eq.${userId}),and(participant_1_id.eq.${userId},participant_2_id.eq.${currentUserId})`
+          )
+          .limit(1)
+          .maybeSingle();
 
-      if (searchError) throw searchError;
+        if (error && error.code !== "PGRST116") {
+          // PGRST116 = no rows
+          throw error;
+        }
 
-      if (existingChats && existingChats.length > 0) {
+        return data;
+      });
+
+      if (existingChat) {
         // Chat already exists, navigate to it
-        router.push(`/chat/${existingChats[0].id}`);
+        router.push(`/chat/${existingChat.id}`);
         return;
       }
 
-      // Create new chat
-      const { data: newChat, error: createError } = await supabase
-        .from("chats")
-        .insert({
-          participant_1_id: currentUserId,
-          participant_2_id: userId,
-          post_id: postId,
-          last_message_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+      // Create new chat with retry logic
+      const newChat = await retryOperation(async () => {
+        const { data, error } = await supabase
+          .from("chats")
+          .insert({
+            participant_1_id: currentUserId,
+            participant_2_id: userId,
+            post_id: postId,
+            last_message_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
 
-      if (createError) throw createError;
+        if (error) {
+          // Handle unique constraint violation (chat created by another request)
+          if (error.code === "23505") {
+            // Duplicate chat - fetch and return it instead
+            const { data: existing, error: fetchError } = await supabase
+              .from("chats")
+              .select("id")
+              .or(
+                `and(participant_1_id.eq.${currentUserId},participant_2_id.eq.${userId}),and(participant_1_id.eq.${userId},participant_2_id.eq.${currentUserId})`
+              )
+              .limit(1)
+              .single();
 
-      // Navigate to new chat
+            if (fetchError) throw fetchError;
+            return existing;
+          }
+
+          throw error;
+        }
+
+        return data;
+      });
+
+      // Navigate to chat
       router.push(`/chat/${newChat.id}`);
     } catch (error: any) {
       console.error("Error creating/finding chat:", error);
-      Alert.alert("Error", error.message || "Failed to start chat. Please try again.");
+
+      // Provide user-friendly error messages
+      let errorMessage = "Failed to start chat. Please try again.";
+
+      if (
+        error.message?.includes("network") ||
+        error.message?.includes("timeout")
+      ) {
+        errorMessage = "Network error. Please check your connection.";
+      } else if (error.code === "42501") {
+        errorMessage = "You don't have permission to create a chat.";
+      }
+
+      Alert.alert("Error", errorMessage);
     } finally {
       setIsCreatingChat(false);
+      chatCreationInProgress.current = false;
     }
   };
 
@@ -210,10 +296,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
         <View style={styles.userInfo}>
           {avatarUrl ? (
             avatarUrl.startsWith("http") ? (
-              <Image
-                source={{ uri: avatarUrl }}
-                style={styles.avatarImage}
-              />
+              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
             ) : (
               <SupabaseImage
                 path={avatarUrl}
@@ -227,7 +310,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
             </View>
           )}
           <Text style={styles.username}>
-            {isAnonymous ? 'Anonymous' : username || "Unknown"}
+            {isAnonymous ? "Anonymous" : username || "Unknown"}
           </Text>
         </View>
         <Text style={styles.time}>

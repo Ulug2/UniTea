@@ -15,8 +15,42 @@ import { FontAwesome } from "@expo/vector-icons";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useCallback, useMemo } from "react";
-import { PostSummary } from "../../../types/types";
+import { Database } from "../../../types/database.types";
 import { useAuth } from "../../../context/AuthContext";
+
+type PostSummary = {
+  post_id: string;
+  user_id: string;
+  content: string;
+  image_url: string | null;
+  category: string | null;
+  location: string | null;
+  post_type: string;
+  is_anonymous: boolean | null;
+  is_deleted: boolean | null;
+  is_edited: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+  edited_at: string | null;
+  view_count: number | null;
+  username: string;
+  avatar_url: string | null;
+  is_verified: boolean | null;
+  is_banned: boolean | null;
+  comment_count: number;
+  vote_score: number;
+  user_vote: "upvote" | "downvote" | null;
+  reposted_from_post_id: string | null;
+  repost_comment: string | null;
+  repost_count: number;
+  original_post_id?: string | null;
+  original_content?: string | null;
+  original_user_id?: string | null;
+  original_author_username?: string | null;
+  original_author_avatar?: string | null;
+  original_is_anonymous?: boolean | null;
+  original_created_at?: string | null;
+};
 
 const POSTS_PER_PAGE = 10;
 
@@ -98,11 +132,11 @@ export default function LostFoundScreen() {
     const allPosts = postsData?.pages.flat() ?? [];
     // Remove duplicates by post_id
     const uniquePosts = Array.from(
-      new Map(allPosts.map(post => [post.post_id, post])).values()
+      new Map(allPosts.map((post) => [post.post_id, post])).values()
     );
 
     // Filter out posts from blocked users (including reposted posts from blocked original authors)
-    return uniquePosts.filter(post => {
+    return uniquePosts.filter((post) => {
       const isPostAuthorBlocked = blocks.includes(post.user_id);
       const isRepostAuthorBlocked = post.original_user_id
         ? blocks.includes(post.original_user_id)
@@ -121,21 +155,24 @@ export default function LostFoundScreen() {
   const keyExtractor = useCallback((item: PostSummary) => item.post_id, []);
 
   // Memoize renderItem to prevent unnecessary re-renders
-  const renderItem = useCallback(({ item }: { item: PostSummary }) => (
-    <LostFoundListItem
-      postId={item.post_id}
-      userId={item.user_id}
-      content={item.content}
-      imageUrl={item.image_url}
-      category={item.category}
-      location={item.location}
-      isAnonymous={item.is_anonymous}
-      createdAt={item.created_at}
-      username={item.username}
-      avatarUrl={item.avatar_url}
-      isVerified={item.is_verified}
-    />
-  ), []);
+  const renderItem = useCallback(
+    ({ item }: { item: PostSummary }) => (
+      <LostFoundListItem
+        postId={item.post_id}
+        userId={item.user_id}
+        content={item.content}
+        imageUrl={item.image_url}
+        category={item.category}
+        location={item.location}
+        isAnonymous={item.is_anonymous}
+        createdAt={item.created_at}
+        username={item.username}
+        avatarUrl={item.avatar_url}
+        isVerified={item.is_verified}
+      />
+    ),
+    []
+  );
 
   // Show skeleton while loading initial data
   if (isLoading) {

@@ -1,10 +1,4 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  RefreshControl,
-} from "react-native";
+import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import ChatListItem from "../../../components/ChatListItem";
 import ChatListSkeleton from "../../../components/ChatListSkeleton";
@@ -14,8 +8,8 @@ import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
 import { useMemo, useEffect, useRef } from "react";
 
-type Chat = Database['public']['Tables']['chats']['Row'];
-type User = Database['public']['Tables']['profiles']['Row'];
+type Chat = Database["public"]["Tables"]["chats"]["Row"];
+type User = Database["public"]["Tables"]["profiles"]["Row"];
 
 // Type for the optimized view
 type ChatSummary = {
@@ -100,6 +94,9 @@ export default function ChatScreen() {
 
   // Filter out chats with blocked users and ensure deleted chats are removed
   const filteredChatSummaries = useMemo(() => {
+    if (!chatSummaries || chatSummaries.length === 0) return [];
+    if (!currentUserId) return [];
+
     return chatSummaries.filter((chat: ChatSummary) => {
       // Filter out chats with blocked users (both ways)
       const otherUserId =
@@ -124,6 +121,9 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!currentUserId) return;
 
+    // Track if component is still mounted
+    let isMounted = true;
+
     const channel = supabase
       .channel("chats-realtime")
       .on(
@@ -139,7 +139,11 @@ export default function ChatScreen() {
             clearTimeout(updateDebounceRef.current);
           }
           updateDebounceRef.current = setTimeout(() => {
-            queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+            if (isMounted) {
+              queryClient.invalidateQueries({
+                queryKey: ["chat-summaries", currentUserId],
+              });
+            }
           }, 1000);
         }
       )
@@ -152,7 +156,11 @@ export default function ChatScreen() {
         },
         (payload) => {
           // New chat created - invalidate immediately (rare event)
-          queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+          if (isMounted) {
+            queryClient.invalidateQueries({
+              queryKey: ["chat-summaries", currentUserId],
+            });
+          }
         }
       )
       .on(
@@ -175,7 +183,11 @@ export default function ChatScreen() {
             clearTimeout(debounceRef.current);
           }
           debounceRef.current = setTimeout(() => {
-            queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+            if (isMounted) {
+              queryClient.invalidateQueries({
+                queryKey: ["chat-summaries", currentUserId],
+              });
+            }
           }, 500);
         }
       )
@@ -192,7 +204,11 @@ export default function ChatScreen() {
             clearTimeout(updateDebounceRef.current);
           }
           updateDebounceRef.current = setTimeout(() => {
-            queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+            if (isMounted) {
+              queryClient.invalidateQueries({
+                queryKey: ["chat-summaries", currentUserId],
+              });
+            }
           }, 1000);
         }
       )
@@ -204,13 +220,20 @@ export default function ChatScreen() {
           table: "chats",
         },
         (payload) => {
+          if (!isMounted) return;
+
           // Chat deleted - optimistically remove from cache immediately
           const deletedChatId = payload.old?.id;
           if (deletedChatId) {
-            queryClient.setQueryData<any[]>(["chat-summaries", currentUserId], (oldSummaries: any[] | undefined) => {
-              if (!oldSummaries) return oldSummaries;
-              return oldSummaries.filter((summary: any) => summary.chat_id !== deletedChatId);
-            });
+            queryClient.setQueryData<any[]>(
+              ["chat-summaries", currentUserId],
+              (oldSummaries: any[] | undefined) => {
+                if (!oldSummaries) return oldSummaries;
+                return oldSummaries.filter(
+                  (summary: any) => summary.chat_id !== deletedChatId
+                );
+              }
+            );
           }
 
           // Invalidate to ensure consistency
@@ -227,13 +250,20 @@ export default function ChatScreen() {
       .subscribe();
 
     return () => {
+      // Mark as unmounted FIRST to prevent any queued operations
+      isMounted = false;
+
       // Cleanup timeouts on unmount
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
+        debounceRef.current = undefined;
       }
       if (updateDebounceRef.current) {
         clearTimeout(updateDebounceRef.current);
+        updateDebounceRef.current = undefined;
       }
+
+      // Unsubscribe from channel
       supabase.removeChannel(channel);
     };
   }, [currentUserId, queryClient]);
@@ -350,7 +380,9 @@ export default function ChatScreen() {
             </Text>
           </View>
         }
-        contentContainerStyle={filteredChatSummaries.length === 0 ? { flexGrow: 1 } : undefined}
+        contentContainerStyle={
+          filteredChatSummaries.length === 0 ? { flexGrow: 1 } : undefined
+        }
         contentInsetAdjustmentBehavior="automatic"
       />
     </View>

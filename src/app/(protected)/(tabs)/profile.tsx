@@ -18,20 +18,59 @@ import { router, useNavigation } from "expo-router";
 import { formatDistanceToNowStrict } from "date-fns";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "../../../context/AuthContext";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useInfiniteQuery,
+} from "@tanstack/react-query";
 import { Database } from "../../../types/database.types";
 import ManageAccountModal from "../../../components/ManageAccountModal";
-import * as ImagePicker from 'expo-image-picker';
-import { uploadImage } from '../../../utils/supabaseImages';
+import * as ImagePicker from "expo-image-picker";
+import { uploadImage } from "../../../utils/supabaseImages";
 import SupabaseImage from "../../../components/SupabaseImage";
 import nuLogo from "../../../../assets/images/nu-logo.png";
 import NotificationSettingsModal from "../../../components/NotificationSettingsModal";
 import { usePushNotifications } from "../../../hooks/usePushNotifications";
 
-type Profile = Database['public']['Tables']['profiles']['Row'];
-type Post = Database['public']['Tables']['posts']['Row'];
-type Vote = Database['public']['Tables']['votes']['Row'];
-type Comment = Database['public']['Tables']['comments']['Row'];
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type Post = Database["public"]["Tables"]["posts"]["Row"];
+type Vote = Database["public"]["Tables"]["votes"]["Row"];
+type Comment = Database["public"]["Tables"]["comments"]["Row"];
+
+type PostSummary = {
+  post_id: string;
+  user_id: string;
+  content: string;
+  image_url: string | null;
+  category: string | null;
+  location: string | null;
+  post_type: string;
+  is_anonymous: boolean | null;
+  is_deleted: boolean | null;
+  is_edited: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+  edited_at: string | null;
+  view_count: number | null;
+  username: string;
+  avatar_url: string | null;
+  is_verified: boolean | null;
+  is_banned: boolean | null;
+  comment_count: number;
+  vote_score: number;
+  user_vote: "upvote" | "downvote" | null;
+  reposted_from_post_id: string | null;
+  repost_comment: string | null;
+  repost_count: number;
+  original_post_id?: string | null;
+  original_content?: string | null;
+  original_user_id?: string | null;
+  original_author_username?: string | null;
+  original_author_avatar?: string | null;
+  original_is_anonymous?: boolean | null;
+  original_created_at?: string | null;
+};
 
 export default function ProfileScreen() {
   const { theme, isDark, toggleTheme } = useTheme();
@@ -41,7 +80,9 @@ export default function ProfileScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [manageAccountVisible, setManageAccountVisible] = useState(false);
   const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<"all" | "anonymous" | "bookmarked">("all");
+  const [activeTab, setActiveTab] = useState<
+    "all" | "anonymous" | "bookmarked"
+  >("all");
   const [notificationsVisible, setNotificationsVisible] = useState(false);
 
   // Register / refresh Expo push token when profile screen is loaded
@@ -78,61 +119,78 @@ export default function ProfileScreen() {
   });
 
   // Fetch current user profile
-  const { data: currentUser, refetch: refetchProfile, isLoading: isLoadingProfile } =
-    useQuery<Profile | null>({
-      queryKey: ["current-user-profile"],
-      queryFn: async () => {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userId = sessionData.session?.user.id;
-        if (!userId) return null;
-
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", userId)
-          .single();
-
-        if (error) throw error;
-        return data;
-      },
-      staleTime: 1000 * 60 * 10, // Profile stays fresh for 10 minutes
-      gcTime: 1000 * 60 * 60, // Cache for 1 hour
-      retry: 2,
-    });
-
-  // Fetch user's posts
   const {
-    data: userPosts = [],
-    refetch: refetchPosts,
-    isRefetching,
-  } = useQuery<Post[]>({
-    queryKey: ["user-posts", session?.user?.id],
+    data: currentUser,
+    refetch: refetchProfile,
+    isLoading: isLoadingProfile,
+  } = useQuery<Profile | null>({
+    queryKey: ["current-user-profile"],
     queryFn: async () => {
-      const userId = session?.user?.id;
-      if (!userId) return [];
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user.id;
+      if (!userId) return null;
 
       const { data, error } = await supabase
-        .from("posts")
+        .from("profiles")
         .select("*")
-        .eq("user_id", userId)
-        .eq("post_type", "feed")
-        .eq("is_deleted", false)
-        .order("created_at", { ascending: false });
+        .eq("id", userId)
+        .single();
 
       if (error) throw error;
-      return data || [];
+      return data;
     },
-    enabled: Boolean(session?.user?.id),
-    staleTime: 1000 * 30, // Posts stay fresh for 30 seconds (more responsive)
-    gcTime: 1000 * 60 * 30, // Cache for 30 minutes
+    staleTime: 1000 * 60 * 10, // Profile stays fresh for 10 minutes
+    gcTime: 1000 * 60 * 60, // Cache for 1 hour
     retry: 2,
   });
 
-  // Fetch user's bookmarked posts
+  // Fetch user's posts with infinite scroll
   const {
-    data: bookmarkedPosts = [],
-    refetch: refetchBookmarks,
-  } = useQuery<Post[]>({
+    data: userPostsData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    refetch: refetchPosts,
+    isRefetching,
+  } = useInfiniteQuery<PostSummary[]>({
+    queryKey: ["user-posts", session?.user?.id],
+    queryFn: async ({ pageParam }) => {
+      const from = (pageParam as number) * 10;
+      const to = from + 9;
+      const userId = session?.user?.id;
+
+      if (!userId) return [];
+
+      const { data, error } = await supabase
+        .from("posts_summary_view")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+      return (data || []) as PostSummary[];
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      return lastPage.length === 10 ? allPages.length : undefined;
+    },
+    initialPageParam: 0,
+    enabled: Boolean(session?.user?.id),
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 30,
+    retry: 2,
+  });
+
+  // Flatten pages into single array
+  const userPosts = useMemo(() => {
+    if (!userPostsData?.pages) return [];
+    return userPostsData.pages.flat();
+  }, [userPostsData]);
+
+  // Fetch user's bookmarked posts
+  const { data: bookmarkedPosts = [], refetch: refetchBookmarks } = useQuery<
+    Post[]
+  >({
     queryKey: ["bookmarked-posts", session?.user?.id],
     queryFn: async () => {
       const userId = session?.user?.id;
@@ -148,7 +206,7 @@ export default function ProfileScreen() {
       if (bookmarkError) throw bookmarkError;
       if (!bookmarks || bookmarks.length === 0) return [];
 
-      const bookmarkedPostIds = bookmarks.map(b => b.post_id);
+      const bookmarkedPostIds = bookmarks.map((b) => b.post_id);
 
       // Then get the actual posts (filter out deleted posts)
       const { data, error } = await supabase
@@ -161,9 +219,12 @@ export default function ProfileScreen() {
 
       // Sort by bookmark creation date (most recently bookmarked first)
       const sortedData = data?.sort((a, b) => {
-        const aBookmark = bookmarks.find(bm => bm.post_id === a.id);
-        const bBookmark = bookmarks.find(bm => bm.post_id === b.id);
-        return new Date(bBookmark?.created_at || 0).getTime() - new Date(aBookmark?.created_at || 0).getTime();
+        const aBookmark = bookmarks.find((bm) => bm.post_id === a.id);
+        const bBookmark = bookmarks.find((bm) => bm.post_id === b.id);
+        return (
+          new Date(bBookmark?.created_at || 0).getTime() -
+          new Date(aBookmark?.created_at || 0).getTime()
+        );
       });
 
       return sortedData || [];
@@ -174,9 +235,12 @@ export default function ProfileScreen() {
     retry: 2,
   });
 
-  // Get all post IDs for batch queries (including bookmarked posts)
+  // Get all post IDs for batch queries
   const allPosts = activeTab === "bookmarked" ? bookmarkedPosts : userPosts;
-  const postIds = allPosts.map((p) => p.id);
+  const postIds = allPosts.map((p) => {
+    // Check if it's a PostSummary (has post_id) or Post (has id)
+    return "post_id" in p ? p.post_id : p.id;
+  });
 
   // Fetch votes for all user posts
   const { data: postVotes = [], refetch: refetchVotes } = useQuery<Vote[]>({
@@ -200,7 +264,9 @@ export default function ProfileScreen() {
   });
 
   // Fetch comments for all user posts
-  const { data: postComments = [], refetch: refetchComments } = useQuery<Comment[]>({
+  const { data: postComments = [], refetch: refetchComments } = useQuery<
+    Comment[]
+  >({
     queryKey: ["user-post-comments", postIds],
     queryFn: async () => {
       if (postIds.length === 0) return [];
@@ -252,8 +318,16 @@ export default function ProfileScreen() {
       const voteValue = vote.vote_type === "upvote" ? 1 : -1;
       scoresMap.set(vote.post_id, currentScore + voteValue);
     });
+    // For user posts from summary view, use the pre-calculated vote_score
+    if (activeTab !== "bookmarked") {
+      userPosts.forEach((post) => {
+        if (!scoresMap.has(post.post_id)) {
+          scoresMap.set(post.post_id, post.vote_score || 0);
+        }
+      });
+    }
     return scoresMap;
-  }, [postVotes]);
+  }, [postVotes, userPosts, activeTab]);
 
   // Calculate comment counts per post
   const commentCountsMap = useMemo(() => {
@@ -262,8 +336,16 @@ export default function ProfileScreen() {
       const currentCount = countsMap.get(comment.post_id) || 0;
       countsMap.set(comment.post_id, currentCount + 1);
     });
+    // For user posts from summary view, use the pre-calculated comment_count
+    if (activeTab !== "bookmarked") {
+      userPosts.forEach((post) => {
+        if (!countsMap.has(post.post_id)) {
+          countsMap.set(post.post_id, post.comment_count || 0);
+        }
+      });
+    }
     return countsMap;
-  }, [postComments]);
+  }, [postComments, userPosts, activeTab]);
 
   // Calculate total upvotes
   const totalUpvotes = useMemo(() => {
@@ -363,7 +445,10 @@ export default function ProfileScreen() {
       Alert.alert("Success", "Your account has been deleted");
     },
     onError: (error: any) => {
-      Alert.alert("Error", error.message || "Failed to delete account. Please try again.");
+      Alert.alert(
+        "Error",
+        error.message || "Failed to delete account. Please try again."
+      );
     },
   });
 
@@ -424,7 +509,10 @@ export default function ProfileScreen() {
       Alert.alert("Success", "Profile updated successfully");
     },
     onError: (error: any) => {
-      Alert.alert("Error", error.message || "Failed to update profile. Please try again.");
+      Alert.alert(
+        "Error",
+        error.message || "Failed to update profile. Please try again."
+      );
     },
   });
 
@@ -441,7 +529,10 @@ export default function ProfileScreen() {
       Alert.alert("Success", "Password updated successfully");
     },
     onError: (error: any) => {
-      Alert.alert("Error", error.message || "Failed to update password. Please try again.");
+      Alert.alert(
+        "Error",
+        error.message || "Failed to update password. Please try again."
+      );
     },
   });
 
@@ -450,7 +541,7 @@ export default function ProfileScreen() {
     try {
       // Launch image picker (permissions are handled automatically by expo-image-picker)
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: 'images',
+        mediaTypes: "images",
         allowsEditing: true,
         aspect: [1, 1], // Square aspect ratio for avatars
         quality: 0.8,
@@ -468,7 +559,10 @@ export default function ProfileScreen() {
       // Update profile with new avatar URL
       updateProfileMutation.mutate({ avatar_url: imagePath });
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to update avatar. Please try again.");
+      Alert.alert(
+        "Error",
+        error.message || "Failed to update avatar. Please try again."
+      );
     }
   };
 
@@ -482,7 +576,10 @@ export default function ProfileScreen() {
   };
 
   // Handle password update
-  const handlePasswordUpdate = (newPassword: string, confirmPassword: string) => {
+  const handlePasswordUpdate = (
+    newPassword: string,
+    confirmPassword: string
+  ) => {
     if (!newPassword || newPassword.length < 6) {
       Alert.alert("Error", "Password must be at least 6 characters long");
       return;
@@ -494,13 +591,14 @@ export default function ProfileScreen() {
     updatePasswordMutation.mutate(newPassword);
   };
 
-  const renderPostItem = ({ item }: { item: Post }) => {
-    const postScore = postScoresMap.get(item.id) || 0;
-    const commentCount = commentCountsMap.get(item.id) || 0;
+  const renderPostItem = ({ item }: { item: PostSummary | Post }) => {
+    const postId = "post_id" in item ? item.post_id : item.id;
+    const postScore = postScoresMap.get(postId) || 0;
+    const commentCount = commentCountsMap.get(postId) || 0;
     const timeAgo = item.created_at
       ? formatDistanceToNowStrict(new Date(item.created_at), {
-        addSuffix: false,
-      })
+          addSuffix: false,
+        })
       : "";
 
     return (
@@ -509,7 +607,7 @@ export default function ProfileScreen() {
           styles.postCard,
           { backgroundColor: theme.card, borderBottomColor: theme.border },
         ]}
-        onPress={() => router.push(`/post/${item.id}`)}
+        onPress={() => router.push(`/post/${postId}`)}
       >
         <View style={styles.postHeader}>
           <Text style={[styles.postLabel, { color: theme.secondaryText }]}>
@@ -554,8 +652,19 @@ export default function ProfileScreen() {
   // Show loading while fetching profile to prevent "User" flicker
   if (isLoadingProfile) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={[styles.userName, { color: theme.secondaryText }]}>Loading...</Text>
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: theme.background,
+            justifyContent: "center",
+            alignItems: "center",
+          },
+        ]}
+      >
+        <Text style={[styles.userName, { color: theme.secondaryText }]}>
+          Loading...
+        </Text>
       </View>
     );
   }
@@ -692,7 +801,7 @@ export default function ProfileScreen() {
         }
         data={filteredPosts}
         renderItem={renderPostItem}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => ("post_id" in item ? item.post_id : item.id)}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
@@ -706,6 +815,16 @@ export default function ProfileScreen() {
             tintColor={theme.primary}
           />
         }
+        onEndReached={() => {
+          if (
+            activeTab !== "bookmarked" &&
+            hasNextPage &&
+            !isFetchingNextPage
+          ) {
+            fetchNextPage();
+          }
+        }}
+        onEndReachedThreshold={0.5}
       />
 
       {/* SETTINGS BOTTOM SHEET */}
@@ -857,7 +976,9 @@ export default function ProfileScreen() {
         onUpdatePassword={handlePasswordUpdate}
         isDeleting={deleteAccountMutation.isPending}
         isUnblocking={unblockAllMutation.isPending}
-        isUpdating={updateProfileMutation.isPending || updatePasswordMutation.isPending}
+        isUpdating={
+          updateProfileMutation.isPending || updatePasswordMutation.isPending
+        }
         currentUsername={currentUser?.username || ""}
       />
 

@@ -30,7 +30,8 @@ export function useVote({
         queryKey: ['user-vote', userId, postId, commentId],
         queryFn: async () => {
             if (!userId) return null;
-            return await getUserVote(userId, postId, commentId);
+            const result = await getUserVote(userId, postId, commentId);
+            return result.voteType;
         },
         enabled: !!userId && (!!postId || !!commentId) && initialUserVote === undefined,
         staleTime: 1000 * 30, // 30 seconds
@@ -103,31 +104,27 @@ export function useVote({
                 queryClient.setQueryData(['score', postId, commentId], context.previousScore);
             }
         },
-        onSettled: () => {
-            // Silently refetch in background to sync with server (non-blocking)
-            // The optimistic update already shows the correct UI, so this is just for consistency
-            refetchUserVote();
-            refetchScore();
+        onSettled: async () => {
+            // Add small delay to prevent race conditions
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Refetch in sequence to ensure consistency
+            await Promise.all([refetchUserVote(), refetchScore()]);
 
-            // Only invalidate if we need to ensure list consistency
-            // Since we use optimistic updates, we can be less aggressive with invalidation
-            // This prevents unnecessary full list refetches
             if (postId) {
-                // Mark as stale but don't force immediate refetch
                 queryClient.invalidateQueries({
                     queryKey: ['post', postId],
-                    refetchType: 'none' // Don't refetch immediately, just mark stale
+                    refetchType: 'none'
                 });
-                // Invalidate profile vote scores
                 queryClient.invalidateQueries({
-                    queryKey: ['user-post-votes']
+                    queryKey: ['user-post-votes'],
+                    refetchType: 'none'
                 });
             }
             if (commentId) {
-                // Mark comments as stale but don't force immediate refetch
                 queryClient.invalidateQueries({
                     queryKey: ['comments'],
-                    refetchType: 'none' // Don't refetch immediately, just mark stale
+                    refetchType: 'none'
                 });
             }
 

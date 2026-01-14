@@ -13,11 +13,49 @@ import PostListItem from "../../../components/PostListItem";
 import PostListSkeleton from "../../../components/PostListSkeleton";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
-import { PostSummary } from "../../../types/types";
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useCallback, useMemo, useEffect, useRef } from "react";
+import { Database } from "../../../types/database.types";
 import { useFilterContext } from "./_layout";
 import { useAuth } from "../../../context/AuthContext";
+
+type PostSummary = {
+  post_id: string;
+  user_id: string;
+  content: string;
+  image_url: string | null;
+  category: string | null;
+  location: string | null;
+  post_type: string;
+  is_anonymous: boolean | null;
+  is_deleted: boolean | null;
+  is_edited: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+  edited_at: string | null;
+  view_count: number | null;
+  username: string;
+  avatar_url: string | null;
+  is_verified: boolean | null;
+  is_banned: boolean | null;
+  comment_count: number;
+  vote_score: number;
+  user_vote: "upvote" | "downvote" | null;
+  reposted_from_post_id: string | null;
+  repost_comment: string | null;
+  repost_count: number;
+  original_post_id?: string | null;
+  original_content?: string | null;
+  original_user_id?: string | null;
+  original_author_username?: string | null;
+  original_author_avatar?: string | null;
+  original_is_anonymous?: boolean | null;
+  original_created_at?: string | null;
+};
 
 const POSTS_PER_PAGE = 10;
 
@@ -26,6 +64,10 @@ export default function FeedScreen() {
   const { selectedFilter } = useFilterContext();
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
+  const queryClient = useQueryClient();
+
+  // Debounce ref to prevent cascading invalidations from real-time updates
+  const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   // Fetch blocked users
   const { data: blocks = [] } = useQuery({
@@ -78,12 +120,12 @@ export default function FeedScreen() {
 
       // Apply sorting based on selected filter
       switch (selectedFilter) {
-        case 'new':
+        case "new":
           // Sort by newest first
           query = query.order("created_at", { ascending: false });
           break;
 
-        case 'top':
+        case "top":
           // Sort by highest score in the last 24 hours
           const last24Hours = new Date();
           last24Hours.setHours(last24Hours.getHours() - 24);
@@ -92,7 +134,7 @@ export default function FeedScreen() {
             .order("vote_score", { ascending: false });
           break;
 
-        case 'hot':
+        case "hot":
           // Trending: Posts from last 7 days sorted by score
           const last7Days = new Date();
           last7Days.setDate(last7Days.getDate() - 7);
@@ -122,13 +164,19 @@ export default function FeedScreen() {
 
   // Flatten pages into single array, remove duplicates, and filter blocked users
   const posts = useMemo(() => {
-    const allPosts = postsData?.pages.flat() ?? [];
+    if (!postsData?.pages) return [];
+
+    const allPosts = postsData.pages.flat();
+    if (allPosts.length === 0) return [];
+
     const uniquePosts = Array.from(
-      new Map(allPosts.map(post => [post.post_id, post])).values()
+      new Map(allPosts.map((post) => [post.post_id, post])).values()
     );
 
-    // Filter out posts from blocked users (including reposted posts from blocked original authors)
-    return uniquePosts.filter(post => {
+    // Early return if no blocks
+    if (blocks.length === 0) return uniquePosts;
+
+    return uniquePosts.filter((post) => {
       const isPostAuthorBlocked = blocks.includes(post.user_id);
       const isRepostAuthorBlocked = post.original_user_id
         ? blocks.includes(post.original_user_id)
@@ -146,38 +194,88 @@ export default function FeedScreen() {
   // Memoize keyExtractor
   const keyExtractor = useCallback((item: PostSummary) => item.post_id, []);
 
+  // Real-time subscription for new posts with debouncing
+  useEffect(() => {
+    // Track if component is still mounted
+    let isMounted = true;
+
+    const channel = supabase
+      .channel("posts-feed")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "posts",
+        },
+        (payload) => {
+          // Debounce invalidations to batch rapid posts
+          if (debounceRef.current) {
+            clearTimeout(debounceRef.current);
+          }
+          debounceRef.current = setTimeout(() => {
+            if (isMounted) {
+              // Only invalidate if we're on the feed (not on other filters that might not show new posts)
+              queryClient.invalidateQueries({
+                queryKey: ["posts", "feed"],
+                refetchType: "none", // Mark as stale but don't refetch automatically
+              });
+            }
+          }, 1000);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      // Mark as unmounted FIRST to prevent any queued operations
+      isMounted = false;
+
+      // Cleanup timeout on unmount
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = undefined;
+      }
+
+      // Unsubscribe from channel
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   // Memoize renderItem to prevent unnecessary re-renders
-  const renderItem = useCallback(({ item }: { item: PostSummary }) => (
-    <PostListItem
-      postId={item.post_id}
-      userId={item.user_id}
-      content={item.content}
-      imageUrl={item.image_url}
-      category={item.category}
-      location={item.location}
-      postType={item.post_type}
-      isAnonymous={item.is_anonymous}
-      isEdited={item.is_edited}
-      createdAt={item.created_at}
-      updatedAt={item.updated_at}
-      editedAt={item.edited_at}
-      viewCount={item.view_count}
-      username={item.username}
-      avatarUrl={item.avatar_url}
-      isVerified={item.is_verified}
-      commentCount={item.comment_count}
-      voteScore={item.vote_score}
-      userVote={item.user_vote}
-      repostCount={item.repost_count}
-      repostedFromPostId={item.reposted_from_post_id}
-      repostComment={item.repost_comment}
-      originalContent={item.original_content}
-      originalAuthorUsername={item.original_author_username}
-      originalAuthorAvatar={item.original_author_avatar}
-      originalIsAnonymous={item.original_is_anonymous}
-      originalCreatedAt={item.original_created_at}
-    />
-  ), []);
+  const renderItem = useCallback(
+    ({ item }: { item: PostSummary }) => (
+      <PostListItem
+        postId={item.post_id}
+        userId={item.user_id}
+        content={item.content}
+        imageUrl={item.image_url}
+        category={item.category}
+        location={item.location}
+        postType={item.post_type}
+        isAnonymous={item.is_anonymous}
+        isEdited={item.is_edited}
+        createdAt={item.created_at}
+        updatedAt={item.updated_at}
+        editedAt={item.edited_at}
+        viewCount={item.view_count}
+        username={item.username}
+        avatarUrl={item.avatar_url}
+        isVerified={item.is_verified}
+        commentCount={item.comment_count}
+        voteScore={item.vote_score}
+        userVote={item.user_vote}
+        repostCount={item.repost_count}
+        repostedFromPostId={item.reposted_from_post_id}
+        repostComment={item.repost_comment}
+        originalContent={item.original_content}
+        originalAuthorUsername={item.original_author_username}
+        originalAuthorAvatar={item.original_author_avatar}
+        originalIsAnonymous={item.original_is_anonymous}
+        originalCreatedAt={item.original_created_at}
+      />
+    ),
+    []
+  );
 
   // Show skeleton while loading initial data
   if (isLoading) {

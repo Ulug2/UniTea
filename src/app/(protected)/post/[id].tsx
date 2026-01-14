@@ -33,12 +33,13 @@ import { useAuth } from "../../../context/AuthContext";
 import { Database, TablesInsert } from "../../../types/database.types";
 import { supabase } from "../../../lib/supabase";
 import nuLogo from "../../../../assets/images/nu-logo.png";
+import { ErrorBoundary } from "react-error-boundary";
 
-type Post = Database['public']['Tables']['posts']['Row'];
-type Comment = Database['public']['Tables']['comments']['Row'];
-type Profile = Database['public']['Tables']['profiles']['Row'];
-type Vote = Database['public']['Tables']['votes']['Row'];
-type Bookmark = Database['public']['Tables']['bookmarks']['Row'];
+type Post = Database["public"]["Tables"]["posts"]["Row"];
+type Comment = Database["public"]["Tables"]["comments"]["Row"];
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type Vote = Database["public"]["Tables"]["votes"]["Row"];
+type Bookmark = Database["public"]["Tables"]["bookmarks"]["Row"];
 
 // Extended type to include the joined user profile and nested replies
 type CommentWithReplies = Comment & {
@@ -153,7 +154,7 @@ export default function PostDetailed() {
     refetch: refetchComments,
     isRefetching: isRefetchingComments,
   } = useQuery<CommentWithReplies[]>({
-    queryKey: ["comments", postId],
+    queryKey: ["comments", postId, currentUserId],
     enabled: Boolean(postId),
     queryFn: async () => {
       if (!postId) return [];
@@ -356,52 +357,68 @@ export default function PostDetailed() {
       // Rollback on error
       if (context?.previousComments) {
         queryClient.setQueryData(
-          ["comments", postId],
+          ["comments", postId, currentUserId],
           context.previousComments
         );
       }
+
       console.error("Error posting comment:", error);
-      Alert.alert(
-        "Error",
-        error.message || "Failed to post comment. Please try again."
-      );
+
+      // Show specific error messages
+      let errorMessage = "Failed to post comment. Please try again.";
+
+      if (error.message?.includes("rate limit")) {
+        errorMessage = "You're posting too fast. Please wait a moment.";
+      } else if (
+        error.message?.includes("profanity") ||
+        error.message?.includes("inappropriate")
+      ) {
+        errorMessage = "Your comment contains inappropriate content.";
+      } else if (
+        error.message?.includes("network") ||
+        error.message?.includes("timeout")
+      ) {
+        errorMessage = "Network error. Please check your connection.";
+      }
+
+      Alert.alert("Error", errorMessage);
     },
     onSuccess: async (newComment) => {
       // Replace temp comment with real one from server
       queryClient.setQueryData<CommentWithReplies[]>(
-        ["comments", postId],
+        ["comments", postId, currentUserId],
         (old = []) => {
           return old.map((comment) =>
             comment.id.startsWith("temp-")
               ? {
-                ...comment,
-                id: newComment.id,
-                created_at: newComment.created_at,
-              }
+                  ...comment,
+                  id: newComment.id,
+                  created_at: newComment.created_at,
+                }
               : comment
           );
         }
       );
 
-      // Mark posts queries as stale without refetching (preserves scroll position)
-      queryClient.invalidateQueries({
-        queryKey: ["posts", "feed"],
-        refetchType: "none", // Don't refetch, just mark as stale
-      });
+      // OPTIMIZED: Only invalidate queries that need refetching
+      // Use refetchType: 'none' to just mark as stale without immediate refetch
+
+      // Invalidate current post to update comment count
       queryClient.invalidateQueries({
         queryKey: ["post", postId],
+        refetchType: "active", // Only refetch if currently viewing
+      });
+
+      // Invalidate feed posts (they show comment count)
+      queryClient.invalidateQueries({
+        queryKey: ["posts", "feed"],
+        refetchType: "none", // Don't refetch feed immediately
+      });
+
+      // Invalidate user's own posts/comments
+      queryClient.invalidateQueries({
+        queryKey: ["user-posts", currentUserId],
         refetchType: "none",
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["user-posts"],
-        refetchType: "none", // Update profile posts
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["user-post-comments"], // Update profile comment counts
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["bookmarked-posts"],
-        refetchType: "none", // Update bookmarked posts
       });
 
       // Clear input and reset reply state
@@ -543,7 +560,9 @@ export default function PostDetailed() {
       // Invalidate queries to filter out blocked user's content
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       queryClient.invalidateQueries({ queryKey: ["comments", postId] });
-      queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+      queryClient.invalidateQueries({
+        queryKey: ["chat-summaries", currentUserId],
+      });
 
       // Refetch current post to hide if author is blocked
       queryClient.invalidateQueries({ queryKey: ["post", postId] });
@@ -698,7 +717,7 @@ export default function PostDetailed() {
   // Check if current user owns this post
   const isPostOwner = session?.user?.id === detailedPost?.user_id;
 
-  return (
+  const content = (
     <>
       <Stack.Screen
         options={{
@@ -959,6 +978,64 @@ export default function PostDetailed() {
         </View>
       </KeyboardAvoidingView>
     </>
+  );
+
+  return (
+    <ErrorBoundary
+      FallbackComponent={PostErrorFallback}
+      onReset={() => {
+        // Retry loading post
+        queryClient.invalidateQueries({ queryKey: ["post", postId] });
+        queryClient.invalidateQueries({
+          queryKey: ["comments", postId, currentUserId],
+        });
+      }}
+    >
+      {content}
+    </ErrorBoundary>
+  );
+}
+
+function PostErrorFallback({ error, resetErrorBoundary }: any) {
+  const { theme } = useTheme();
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <Text style={[styles.errorText, { color: theme.text }]}>
+        Something went wrong
+      </Text>
+      <Text
+        style={[
+          styles.errorText,
+          {
+            color: theme.secondaryText,
+            fontSize: 14,
+            marginTop: 10,
+          },
+        ]}
+      >
+        {error.message}
+      </Text>
+      <Pressable
+        onPress={resetErrorBoundary}
+        style={{
+          marginTop: 20,
+          paddingHorizontal: 20,
+          paddingVertical: 10,
+          backgroundColor: theme.primary,
+          borderRadius: 8,
+        }}
+      >
+        <Text
+          style={{
+            color: "white",
+            fontFamily: "Poppins_500Medium",
+          }}
+        >
+          Try Again
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
