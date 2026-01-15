@@ -4,7 +4,6 @@
     "slug": "unitea",
     "scheme": "myunitea",
     "version": "1.0.0",
-    "associatedDomains": ["applinks:unitea.app"],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,15 +14,43 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.unitea.app",
+      "associatedDomains": [
+        "applinks:unitea.app"
+      ],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.unitea.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "unitea.app",
+              "pathPrefix": "/--"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -39,9 +66,11 @@
         }
       ]
     ],
+    "owner": "unitea-team",
     "extra": {
+      "router": {},
       "eas": {
-        "projectId": "442168a0-d035-4876-a756-fa43584b4564"
+        "projectId": "68f6b410-dcf2-4940-b4dd-ae968f2a91e9"
       }
     }
   }

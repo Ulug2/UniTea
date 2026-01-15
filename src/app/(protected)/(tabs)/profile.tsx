@@ -801,7 +801,10 @@ export default function ProfileScreen() {
         }
         data={filteredPosts}
         renderItem={renderPostItem}
-        keyExtractor={(item) => ("post_id" in item ? item.post_id : item.id)}
+        keyExtractor={(item, index) => {
+          const id = "post_id" in item ? item.post_id : item.id;
+          return `${id}-${index}`;
+        }}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
