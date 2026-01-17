@@ -17,7 +17,21 @@ type ChatListItemProps = {
   isAnonymous?: boolean;
 };
 
-export default function ChatListItem({
+// Custom comparison function for better memoization
+const arePropsEqual = (prevProps: ChatListItemProps, nextProps: ChatListItemProps) => {
+  return (
+    prevProps.chatId === nextProps.chatId &&
+    prevProps.lastMessageAt === nextProps.lastMessageAt &&
+    prevProps.lastMessage === nextProps.lastMessage &&
+    prevProps.unreadCount === nextProps.unreadCount &&
+    prevProps.isAnonymous === nextProps.isAnonymous &&
+    prevProps.otherUser?.id === nextProps.otherUser?.id &&
+    prevProps.otherUser?.avatar_url === nextProps.otherUser?.avatar_url &&
+    prevProps.otherUser?.username === nextProps.otherUser?.username
+  );
+};
+
+const ChatListItem = React.memo(function ChatListItem({
   chatId,
   lastMessageAt,
   otherUser,
@@ -185,4 +199,6 @@ export default function ChatListItem({
       </View>
     </Pressable>
   );
-}
+}, arePropsEqual);
+
+export default ChatListItem;

@@ -22,6 +22,23 @@ type LostFoundListItemProps = {
   isVerified: boolean | null;
 };
 
+// Custom comparison function for better memoization (prevents unnecessary re-renders)
+const arePropsEqual = (prevProps: LostFoundListItemProps, nextProps: LostFoundListItemProps) => {
+  return (
+    prevProps.postId === nextProps.postId &&
+    prevProps.userId === nextProps.userId &&
+    prevProps.content === nextProps.content &&
+    prevProps.imageUrl === nextProps.imageUrl &&
+    prevProps.category === nextProps.category &&
+    prevProps.location === nextProps.location &&
+    prevProps.isAnonymous === nextProps.isAnonymous &&
+    prevProps.createdAt === nextProps.createdAt &&
+    prevProps.username === nextProps.username &&
+    prevProps.avatarUrl === nextProps.avatarUrl &&
+    prevProps.isVerified === nextProps.isVerified
+  );
+};
+
 const LostFoundListItem = React.memo(function LostFoundListItem({
   postId,
   userId,
@@ -388,6 +405,6 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
       )}
     </Pressable>
   );
-});
+}, arePropsEqual);
 
 export default LostFoundListItem;

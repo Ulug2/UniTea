@@ -295,10 +295,12 @@ export default function FeedScreen() {
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.5}
         removeClippedSubviews={true}
-        maxToRenderPerBatch={10}
-        updateCellsBatchingPeriod={50}
-        initialNumToRender={10}
-        windowSize={5}
+        maxToRenderPerBatch={6}
+        updateCellsBatchingPeriod={150}
+        initialNumToRender={6}
+        windowSize={10}
+        // Disable auto-scroll to top when data changes (prevents jarring jumps)
+        maintainVisibleContentPosition={undefined}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}

@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { router, useNavigation } from "expo-router";
 import { formatDistanceToNowStrict } from "date-fns";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -591,7 +591,8 @@ export default function ProfileScreen() {
     updatePasswordMutation.mutate(newPassword);
   };
 
-  const renderPostItem = ({ item }: { item: PostSummary | Post }) => {
+  // Memoize renderItem to prevent unnecessary re-renders
+  const renderPostItem = useCallback(({ item }: { item: PostSummary | Post }) => {
     const postId = "post_id" in item ? item.post_id : item.id;
     const postScore = postScoresMap.get(postId) || 0;
     const commentCount = commentCountsMap.get(postId) || 0;
@@ -647,7 +648,7 @@ export default function ProfileScreen() {
         </View>
       </Pressable>
     );
-  };
+  }, [theme, postScoresMap, commentCountsMap]);
 
   // Show loading while fetching profile to prevent "User" flicker
   if (isLoadingProfile) {
@@ -805,6 +806,11 @@ export default function ProfileScreen() {
           const id = "post_id" in item ? item.post_id : item.id;
           return `${id}-${index}`;
         }}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={6}
+        updateCellsBatchingPeriod={150}
+        initialNumToRender={6}
+        windowSize={10}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
