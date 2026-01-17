@@ -26,16 +26,34 @@ export default function RootLayout() {
   useEffect(() => {
     // Handle deep links for email verification
     const handleDeepLink = async (event: { url: string }) => {
-      const { queryParams } = Linking.parse(event.url);
+      console.log("[Deep Link] Received URL:", event.url);
+      const { path, queryParams } = Linking.parse(event.url);
 
-      if (queryParams?.access_token && queryParams?.refresh_token) {
-        try {
-          await supabase.auth.setSession({
-            access_token: queryParams.access_token as string,
-            refresh_token: queryParams.refresh_token as string,
-          });
-        } catch (error) {
-          console.error("Error setting session from deep link:", error);
+      // Handle email verification callback
+      if (path === "auth/callback") {
+        if (queryParams?.access_token && queryParams?.refresh_token) {
+          try {
+            const { error } = await supabase.auth.setSession({
+              access_token: queryParams.access_token as string,
+              refresh_token: queryParams.refresh_token as string,
+            });
+
+            if (error) {
+              console.error("[Deep Link] Error setting session:", error);
+            } else {
+              console.log("[Deep Link] Email verified successfully");
+            }
+          } catch (error) {
+            console.error(
+              "[Deep Link] Error setting session from deep link:",
+              error
+            );
+          }
+        } else if (queryParams?.error_description || queryParams?.error) {
+          console.error(
+            "[Deep Link] Auth error:",
+            queryParams.error_description || queryParams.error
+          );
         }
       }
     };

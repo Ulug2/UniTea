@@ -199,6 +199,9 @@ export default function Auth() {
         supabase.auth.resend({
           type: "signup",
           email: sanitizedEmail,
+          options: {
+            emailRedirectTo: "myunitea://auth/callback",
+          },
         })
       );
 
@@ -404,6 +407,9 @@ export default function Auth() {
         supabase.auth.signUp({
           email: sanitizedEmail,
           password: password,
+          options: {
+            emailRedirectTo: "myunitea://auth/callback",
+          },
         })
       );
 
