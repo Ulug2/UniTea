@@ -61,6 +61,42 @@ type PostListItemProps = {
   onBookmarkPress?: () => void;
 };
 
+// Custom comparison function for better memoization (prevents unnecessary re-renders)
+const arePropsEqual = (prevProps: PostListItemProps, nextProps: PostListItemProps) => {
+  // Compare all props that affect rendering
+  return (
+    prevProps.postId === nextProps.postId &&
+    prevProps.userId === nextProps.userId &&
+    prevProps.content === nextProps.content &&
+    prevProps.imageUrl === nextProps.imageUrl &&
+    prevProps.category === nextProps.category &&
+    prevProps.location === nextProps.location &&
+    prevProps.postType === nextProps.postType &&
+    prevProps.isAnonymous === nextProps.isAnonymous &&
+    prevProps.isEdited === nextProps.isEdited &&
+    prevProps.createdAt === nextProps.createdAt &&
+    prevProps.updatedAt === nextProps.updatedAt &&
+    prevProps.editedAt === nextProps.editedAt &&
+    prevProps.viewCount === nextProps.viewCount &&
+    prevProps.username === nextProps.username &&
+    prevProps.avatarUrl === nextProps.avatarUrl &&
+    prevProps.isVerified === nextProps.isVerified &&
+    prevProps.commentCount === nextProps.commentCount &&
+    prevProps.voteScore === nextProps.voteScore &&
+    prevProps.userVote === nextProps.userVote &&
+    prevProps.repostCount === nextProps.repostCount &&
+    prevProps.repostedFromPostId === nextProps.repostedFromPostId &&
+    prevProps.repostComment === nextProps.repostComment &&
+    prevProps.originalContent === nextProps.originalContent &&
+    prevProps.originalAuthorUsername === nextProps.originalAuthorUsername &&
+    prevProps.originalAuthorAvatar === nextProps.originalAuthorAvatar &&
+    prevProps.originalIsAnonymous === nextProps.originalIsAnonymous &&
+    prevProps.originalCreatedAt === nextProps.originalCreatedAt &&
+    prevProps.isDetailedPost === nextProps.isDetailedPost &&
+    prevProps.isBookmarked === nextProps.isBookmarked
+  );
+};
+
 const PostListItem = React.memo(function PostListItem({
   postId,
   userId,
@@ -499,6 +535,6 @@ const PostListItem = React.memo(function PostListItem({
       </Link>
     </>
   );
-});
+}, arePropsEqual);
 
 export default PostListItem;

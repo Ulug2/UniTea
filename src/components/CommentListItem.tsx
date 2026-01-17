@@ -598,4 +598,25 @@ const styles = StyleSheet.create({
   },
 });
 
-export default memo(CommentListItem);
+// Custom comparison function for better memoization
+const areCommentPropsEqual = (
+  prevProps: CommentListItemProps,
+  nextProps: CommentListItemProps
+) => {
+  // Compare comment ID and key properties
+  if (prevProps.comment.id !== nextProps.comment.id) return false;
+  if (prevProps.depth !== nextProps.depth) return false;
+  if (prevProps.comment.content !== nextProps.comment.content) return false;
+  if (prevProps.comment.is_anonymous !== nextProps.comment.is_anonymous) return false;
+  if (prevProps.comment.is_deleted !== nextProps.comment.is_deleted) return false;
+  if (prevProps.comment.user?.id !== nextProps.comment.user?.id) return false;
+  if (prevProps.comment.user?.avatar_url !== nextProps.comment.user?.avatar_url) return false;
+  if (prevProps.comment.user?.username !== nextProps.comment.user?.username) return false;
+  if (prevProps.comment.score !== nextProps.comment.score) return false;
+  if (prevProps.comment.replies?.length !== nextProps.comment.replies?.length) return false;
+  if (prevProps.parentUser?.id !== nextProps.parentUser?.id) return false;
+  
+  return true;
+};
+
+export default memo(CommentListItem, areCommentPropsEqual);

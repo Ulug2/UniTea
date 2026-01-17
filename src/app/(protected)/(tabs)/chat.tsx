@@ -6,7 +6,7 @@ import { Database } from "../../../types/database.types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, useCallback } from "react";
 
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
 type User = Database["public"]["Tables"]["profiles"]["Row"];
@@ -298,7 +298,7 @@ export default function ChatScreen() {
     retry: 2,
   });
 
-  const getOtherUser = (
+  const getOtherUser = useCallback((
     chat: ChatSummary
   ): { user: User | null; isAnonymous: boolean } => {
     const otherUserId =
@@ -314,14 +314,14 @@ export default function ChatScreen() {
 
     const user = users.find((u) => u.id === otherUserId) || null;
     return { user, isAnonymous: false };
-  };
+  }, [currentUserId, users]);
 
   // Get unread count based on which participant is current user
-  const getUnreadCount = (chat: ChatSummary): number => {
+  const getUnreadCount = useCallback((chat: ChatSummary): number => {
     return chat.participant_1_id === currentUserId
       ? chat.unread_count_p1
       : chat.unread_count_p2;
-  };
+  }, [currentUserId]);
 
   const styles = StyleSheet.create({
     container: {
@@ -353,7 +353,7 @@ export default function ChatScreen() {
       <FlatList
         data={filteredChatSummaries}
         keyExtractor={(item) => item.chat_id}
-        renderItem={({ item }) => {
+        renderItem={useCallback(({ item }) => {
           const { user, isAnonymous } = getOtherUser(item);
           return (
             <ChatListItem
@@ -365,7 +365,7 @@ export default function ChatScreen() {
               isAnonymous={isAnonymous}
             />
           );
-        }}
+        }, [getOtherUser, getUnreadCount])}
         refreshControl={
           <RefreshControl
             refreshing={isRefetchingChats}

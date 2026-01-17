@@ -109,7 +109,7 @@ export default function CreatePostScreen() {
     }
   };
 
-  // Create post mutation
+  // Create post mutation with optimistic UI updates (like Instagram/X)
   const createPostMutation = useMutation({
     mutationFn: async ({
       imagePath,
@@ -162,17 +162,110 @@ export default function CreatePostScreen() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
-      // Invalidate posts query to refresh the feed
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      // Also invalidate lost_found posts if this is a lost & found post
+    // OPTIMISTIC UI: Show post immediately (like Instagram/X/Threads)
+    onMutate: async (variables) => {
+      if (isLostFound) return; // Skip optimistic update for lost & found (different screen)
+
+      // Cancel outgoing refetches to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: ["posts", "feed"] });
+
+      // Snapshot previous value for rollback
+      const previousData = queryClient.getQueryData(["posts", "feed", "new"]);
+
+      // Create optimistic post (will be replaced by real data from server)
+      // Use placeholder data - real-time subscription will update with full data
+      const tempId = `temp-${Date.now()}`;
+      const now = new Date().toISOString();
+
+      const optimisticPost = {
+        post_id: tempId,
+        user_id: session?.user?.id || "",
+        content: variables.postContent.trim(),
+        image_url: variables.imagePath || null,
+        category: null,
+        location: null,
+        post_type: "feed",
+        is_anonymous: variables.postIsAnonymous,
+        is_deleted: false,
+        is_edited: false,
+        created_at: now,
+        updated_at: now,
+        edited_at: null,
+        view_count: 0,
+        username: variables.postIsAnonymous ? "Anonymous" : "You", // Placeholder - will be updated
+        avatar_url: null, // Placeholder - will be updated by real-time
+        is_verified: false,
+        is_banned: false,
+        comment_count: 0,
+        vote_score: 0,
+        user_vote: null,
+        reposted_from_post_id: repostId || null,
+        repost_comment: repostId ? variables.postContent.trim() : null,
+        repost_count: 0,
+        original_post_id: null,
+        original_content: null,
+        original_user_id: null,
+        original_author_username: null,
+        original_author_avatar: null,
+        original_is_anonymous: null,
+        original_created_at: null,
+      };
+
+      // Optimistically update feed - add to beginning of first page
+      queryClient.setQueryData(["posts", "feed", "new"], (old: any) => {
+        if (!old?.pages) return old;
+        
+        const newPages = [...old.pages];
+        if (newPages[0]) {
+          newPages[0] = [optimisticPost, ...newPages[0]];
+        } else {
+          newPages[0] = [optimisticPost];
+        }
+        
+        return { ...old, pages: newPages };
+      });
+
+      return { previousData, tempId };
+    },
+    onSuccess: (data, variables, context) => {
       if (isLostFound) {
+        // For lost & found, just invalidate
         queryClient.invalidateQueries({ queryKey: ["posts", "lost_found"] });
+      } else {
+        // Replace optimistic post with real data from server
+        queryClient.setQueryData(["posts", "feed", "new"], (old: any) => {
+          if (!old?.pages) return old;
+          
+          const newPages = old.pages.map((page: any[]) => 
+            page.map((post: any) => 
+              post.post_id === context?.tempId 
+                ? {
+                    ...post,
+                    post_id: data.id,
+                    created_at: data.created_at,
+                    updated_at: data.updated_at,
+                  }
+                : post
+            )
+          );
+          
+          return { ...old, pages: newPages };
+        });
+        
+        // Mark as stale but don't refetch immediately (let real-time handle it)
+        queryClient.invalidateQueries({ 
+          queryKey: ["posts", "feed"],
+          refetchType: "none" 
+        });
       }
       setIsSubmitting(false);
       goBack();
     },
-    onError: (error: Error) => {
+    onError: (error: Error, variables, context) => {
+      // Rollback optimistic update on error
+      if (context?.previousData && !isLostFound) {
+        queryClient.setQueryData(["posts", "feed", "new"], context.previousData);
+      }
       setIsSubmitting(false);
       console.error("Error creating post:", error);
       Alert.alert(
