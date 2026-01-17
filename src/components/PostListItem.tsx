@@ -291,7 +291,7 @@ const PostListItem = React.memo(function PostListItem({
     },
     footerLeft: {
       flexDirection: "row",
-      gap: 10,
+      gap: 16,
     },
     footerRight: {
       marginLeft: "auto",
@@ -303,10 +303,13 @@ const PostListItem = React.memo(function PostListItem({
       alignItems: "center",
       borderWidth: 0.5,
       borderColor: theme.border,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
       borderRadius: 20,
       backgroundColor: theme.background,
+      marginLeft: -5,
+      minHeight: 40, // Better touch target (accessibility standard is 44x44)
+      minWidth: 40,
     },
     iconText: {
       fontWeight: "500",
@@ -361,29 +364,29 @@ const PostListItem = React.memo(function PostListItem({
                   <View style={styles.avatar} />
                 )
               ) : // Show regular post author
-              isAnonymous ? (
-                <Image source={nuLogo} style={styles.avatar} />
-              ) : avatarUrl ? (
-                avatarUrl.startsWith("http") ? (
-                  <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+                isAnonymous ? (
+                  <Image source={nuLogo} style={styles.avatar} />
+                ) : avatarUrl ? (
+                  avatarUrl.startsWith("http") ? (
+                    <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+                  ) : (
+                    <SupabaseImage
+                      path={avatarUrl}
+                      bucket="avatars"
+                      style={styles.avatar}
+                    />
+                  )
                 ) : (
-                  <SupabaseImage
-                    path={avatarUrl}
-                    bucket="avatars"
-                    style={styles.avatar}
-                  />
-                )
-              ) : (
-                <View style={styles.avatar} />
-              )}
+                  <View style={styles.avatar} />
+                )}
               <Text style={styles.username}>
                 {isRepost
                   ? originalIsAnonymous
                     ? "Anonymous"
                     : originalAuthorUsername
                   : isAnonymous
-                  ? "Anonymous"
-                  : username}
+                    ? "Anonymous"
+                    : username}
               </Text>
             </View>
             <Text style={styles.time}>
@@ -468,7 +471,7 @@ const PostListItem = React.memo(function PostListItem({
                         ? "arrow-up-bold"
                         : "arrow-up-bold-outline"
                     }
-                    size={19}
+                    size={22}
                     color={userVote === "upvote" ? theme.primary : theme.text}
                   />
                 </Pressable>
@@ -488,21 +491,36 @@ const PostListItem = React.memo(function PostListItem({
                         ? "arrow-down-bold"
                         : "arrow-down-bold-outline"
                     }
-                    size={19}
+                    size={22}
                     color={userVote === "downvote" ? theme.primary : theme.text}
                   />
                 </Pressable>
               </View>
-              <View style={styles.iconBox}>
+              <Pressable
+                onPress={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // Navigate to post detail (comment button behavior)
+                  router.push(`/post/${postId}`);
+                }}
+                style={styles.iconBox}
+              >
                 <MaterialCommunityIcons
                   name="comment-outline"
-                  size={19}
+                  size={22}
                   color={theme.text}
                 />
                 <Text style={styles.iconText}>{commentCount || 0}</Text>
-              </View>
-              <Pressable onPress={handleRepostClick} style={styles.iconBox}>
-                <Ionicons name="repeat-outline" size={19} color={theme.text} />
+              </Pressable>
+              <Pressable
+                onPress={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleRepostClick(e);
+                }}
+                style={styles.iconBox}
+              >
+                <Ionicons name="repeat-outline" size={22} color={theme.text} />
                 <Text style={styles.iconText}>{repostCount}</Text>
               </Pressable>
               {isDetailedPost && onBookmarkPress && (
@@ -515,17 +533,24 @@ const PostListItem = React.memo(function PostListItem({
                 >
                   <MaterialCommunityIcons
                     name={isBookmarked ? "bookmark" : "bookmark-outline"}
-                    size={19}
+                    size={22}
                     color={theme.text}
                   />
                 </Pressable>
               )}
             </View>
             <View style={styles.footerRight}>
-              <Pressable onPress={handleShareClick} style={styles.iconBox}>
+              <Pressable
+                onPress={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleShareClick(e);
+                }}
+                style={styles.iconBox}
+              >
                 <MaterialCommunityIcons
                   name="share-outline"
-                  size={19}
+                  size={22}
                   color={theme.text}
                 />
               </Pressable>
