@@ -165,9 +165,9 @@ const PostListItem = React.memo(function PostListItem({
 
       // Share message
       const shareMessage = Platform.select({
-        ios: `Check out this post on UniTea!\n${deepLink}`,
-        android: `Check out this post on UniTea!\n${deepLink}\n\nOr open: ${webUrl}`,
-        default: `Check out this post on UniTea: ${webUrl}`,
+        ios: `Check out this post on UniTee!\n${deepLink}`,
+        android: `Check out this post on UniTee!\n${deepLink}\n\nOr open: ${webUrl}`,
+        default: `Check out this post on UniTee: ${webUrl}`,
       });
 
       const result = await Share.share({
