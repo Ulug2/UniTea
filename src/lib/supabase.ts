@@ -24,7 +24,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     },
     global: {
         headers: {
-            'x-client-info': `unitea-mobile/${Platform.OS}`,
+            'x-client-info': `unitee-mobile/${Platform.OS}`,
         },
     },
     db: {

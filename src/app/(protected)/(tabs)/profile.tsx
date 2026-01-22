@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Alert,
   Image,
+  Linking,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
@@ -84,6 +85,34 @@ export default function ProfileScreen() {
     "all" | "anonymous" | "bookmarked"
   >("all");
   const [notificationsVisible, setNotificationsVisible] = useState(false);
+
+  const openExternalLink = useCallback(async (url: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert("Unable to open link", "Please try again later.");
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (error: any) {
+      Alert.alert(
+        "Unable to open link",
+        error?.message || "Please try again later.",
+      );
+    }
+  }, []);
+
+  const handleOpenTerms = useCallback(() => {
+    openExternalLink(
+      "https://www.notion.so/UniTee-Terms-of-Service-2efa8fe2a0c1809d8243e3d0344fa20c?source=copy_link",
+    );
+  }, [openExternalLink]);
+
+  const handleOpenPrivacy = useCallback(() => {
+    openExternalLink(
+      "https://www.notion.so/UniTee-Privacy-Policy-EN-2efa8fe2a0c180ef8601ed544944df9b?source=copy_link",
+    );
+  }, [openExternalLink]);
 
   // Register / refresh Expo push token when profile screen is loaded
   usePushNotifications();
@@ -351,7 +380,7 @@ export default function ProfileScreen() {
   const totalUpvotes = useMemo(() => {
     return Array.from(postScoresMap.values()).reduce(
       (sum, score) => sum + Math.max(0, score),
-      0
+      0,
     );
   }, [postScoresMap]);
 
@@ -381,7 +410,7 @@ export default function ProfileScreen() {
     } catch (err: any) {
       console.error(
         "Unexpected sign out error:",
-        err?.message ? err.message : err
+        err?.message ? err.message : err,
       );
     } finally {
       // Always navigate back to auth, even if the network request failed.
@@ -447,7 +476,7 @@ export default function ProfileScreen() {
     onError: (error: any) => {
       Alert.alert(
         "Error",
-        error.message || "Failed to delete account. Please try again."
+        error.message || "Failed to delete account. Please try again.",
       );
     },
   });
@@ -466,7 +495,7 @@ export default function ProfileScreen() {
           style: "destructive",
           onPress: () => deleteAccountMutation.mutate(),
         },
-      ]
+      ],
     );
   };
 
@@ -483,7 +512,7 @@ export default function ProfileScreen() {
           text: "Unblock All",
           onPress: () => unblockAllMutation.mutate(),
         },
-      ]
+      ],
     );
   };
 
@@ -511,7 +540,7 @@ export default function ProfileScreen() {
     onError: (error: any) => {
       Alert.alert(
         "Error",
-        error.message || "Failed to update profile. Please try again."
+        error.message || "Failed to update profile. Please try again.",
       );
     },
   });
@@ -531,7 +560,7 @@ export default function ProfileScreen() {
     onError: (error: any) => {
       Alert.alert(
         "Error",
-        error.message || "Failed to update password. Please try again."
+        error.message || "Failed to update password. Please try again.",
       );
     },
   });
@@ -553,7 +582,7 @@ export default function ProfileScreen() {
       const imagePath = await uploadImage(
         result.assets[0].uri,
         supabase,
-        "avatars" // Use avatars bucket
+        "avatars", // Use avatars bucket
       );
 
       // Update profile with new avatar URL
@@ -561,7 +590,7 @@ export default function ProfileScreen() {
     } catch (error: any) {
       Alert.alert(
         "Error",
-        error.message || "Failed to update avatar. Please try again."
+        error.message || "Failed to update avatar. Please try again.",
       );
     }
   };
@@ -578,7 +607,7 @@ export default function ProfileScreen() {
   // Handle password update
   const handlePasswordUpdate = (
     newPassword: string,
-    confirmPassword: string
+    confirmPassword: string,
   ) => {
     if (!newPassword || newPassword.length < 6) {
       Alert.alert("Error", "Password must be at least 6 characters long");
@@ -592,63 +621,70 @@ export default function ProfileScreen() {
   };
 
   // Memoize renderItem to prevent unnecessary re-renders
-  const renderPostItem = useCallback(({ item }: { item: PostSummary | Post }) => {
-    const postId = "post_id" in item ? item.post_id : item.id;
-    const postScore = postScoresMap.get(postId) || 0;
-    const commentCount = commentCountsMap.get(postId) || 0;
-    const timeAgo = item.created_at
-      ? formatDistanceToNowStrict(new Date(item.created_at), {
+  const renderPostItem = useCallback(
+    ({ item }: { item: PostSummary | Post }) => {
+      const postId = "post_id" in item ? item.post_id : item.id;
+      const postScore = postScoresMap.get(postId) || 0;
+      const commentCount = commentCountsMap.get(postId) || 0;
+      const timeAgo = item.created_at
+        ? formatDistanceToNowStrict(new Date(item.created_at), {
           addSuffix: false,
         })
-      : "";
+        : "";
 
-    return (
-      <Pressable
-        style={[
-          styles.postCard,
-          { backgroundColor: theme.card, borderBottomColor: theme.border },
-        ]}
-        onPress={() => router.push(`/post/${postId}`)}
-      >
-        <View style={styles.postHeader}>
-          <Text style={[styles.postLabel, { color: theme.secondaryText }]}>
-            Posted {item.is_anonymous ? "anonymously" : "publicly"}
-          </Text>
-          <Text style={[styles.postTime, { color: theme.secondaryText }]}>
-            {timeAgo}
-          </Text>
-        </View>
-        <Text
-          style={[styles.postContent, { color: theme.text }]}
-          numberOfLines={2}
+      return (
+        <Pressable
+          style={[
+            styles.postCard,
+            { backgroundColor: theme.card, borderBottomColor: theme.border },
+          ]}
+          onPress={() => router.push(`/post/${postId}`)}
         >
-          {item.content}
-        </Text>
-        <View style={styles.postFooter}>
-          <View style={styles.postStat}>
-            <MaterialCommunityIcons
-              name="arrow-up-bold"
-              size={16}
-              color="#51CF66"
-            />
-            <Text style={[styles.postStatText, { color: theme.secondaryText }]}>
-              {postScore}
+          <View style={styles.postHeader}>
+            <Text style={[styles.postLabel, { color: theme.secondaryText }]}>
+              Posted {item.is_anonymous ? "anonymously" : "publicly"}
+            </Text>
+            <Text style={[styles.postTime, { color: theme.secondaryText }]}>
+              {timeAgo}
             </Text>
           </View>
-          <View style={styles.postStat}>
-            <MaterialCommunityIcons
-              name="comment-outline"
-              size={16}
-              color={theme.secondaryText}
-            />
-            <Text style={[styles.postStatText, { color: theme.secondaryText }]}>
-              {commentCount}
-            </Text>
+          <Text
+            style={[styles.postContent, { color: theme.text }]}
+            numberOfLines={2}
+          >
+            {item.content}
+          </Text>
+          <View style={styles.postFooter}>
+            <View style={styles.postStat}>
+              <MaterialCommunityIcons
+                name="arrow-up-bold"
+                size={16}
+                color="#51CF66"
+              />
+              <Text
+                style={[styles.postStatText, { color: theme.secondaryText }]}
+              >
+                {postScore}
+              </Text>
+            </View>
+            <View style={styles.postStat}>
+              <MaterialCommunityIcons
+                name="comment-outline"
+                size={16}
+                color={theme.secondaryText}
+              />
+              <Text
+                style={[styles.postStatText, { color: theme.secondaryText }]}
+              >
+                {commentCount}
+              </Text>
+            </View>
           </View>
-        </View>
-      </Pressable>
-    );
-  }, [theme, postScoresMap, commentCountsMap]);
+        </Pressable>
+      );
+    },
+    [theme, postScoresMap, commentCountsMap],
+  );
 
   // Show loading while fetching profile to prevent "User" flicker
   if (isLoadingProfile) {
@@ -905,6 +941,7 @@ export default function ProfileScreen() {
               {/* Terms of Service */}
               <Pressable
                 style={[styles.settingRow, { borderBottomColor: theme.border }]}
+                onPress={handleOpenTerms}
               >
                 <View style={styles.settingLeft}>
                   <Ionicons
@@ -926,6 +963,7 @@ export default function ProfileScreen() {
               {/* Privacy Policy */}
               <Pressable
                 style={[styles.settingRow, { borderBottomColor: theme.border }]}
+                onPress={handleOpenPrivacy}
               >
                 <View style={styles.settingLeft}>
                   <Ionicons

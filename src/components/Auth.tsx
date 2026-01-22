@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useEffect } from "react";
+import React, { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import {
   Alert,
   Pressable,
@@ -6,6 +6,7 @@ import {
   View,
   Text,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -59,6 +60,8 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [privacyError, setPrivacyError] = useState("");
   const [loadingState, setLoadingState] = useState<LoadingState>({
     login: false,
     signup: false,
@@ -71,6 +74,29 @@ export default function Auth() {
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
   const [showResendOption, setShowResendOption] = useState(false);
   const { theme } = useTheme();
+
+  // Notion URLs
+  const TERMS_URL =
+    "https://www.notion.so/UniTee-Terms-of-Service-2efa8fe2a0c1809d8243e3d0344fa20c?source=copy_link";
+  const PRIVACY_URL =
+    "https://www.notion.so/UniTee-Privacy-Policy-EN-2efa8fe2a0c180ef8601ed544944df9b?source=copy_link";
+
+  // Helper function to open external links
+  const openExternalLink = useCallback(async (url: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert("Unable to open link", "Please try again later.");
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (error: any) {
+      Alert.alert(
+        "Unable to open link",
+        error?.message || "Please try again later.",
+      );
+    }
+  }, []);
 
   // Timeout refs for cleanup
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -91,9 +117,8 @@ export default function Auth() {
     loadingState.forgot ||
     loadingState.resend;
 
-  // const isUniversityEmail = (value: string) =>
-  //     value.trim().toLowerCase().endsWith('@nu.edu.kz')
-  const isUniversityEmail = (value: string) => true;
+  const isUniversityEmail = (value: string) =>
+    value.trim().toLowerCase().endsWith('@nu.edu.kz');
 
   // Email sanitization helper
   const sanitizeEmail = (value: string): string => {
@@ -114,9 +139,8 @@ export default function Auth() {
       const remainingMinutes = Math.ceil((rateLimitUntil - Date.now()) / 60000);
       Alert.alert(
         "Too Many Attempts",
-        `Please wait ${remainingMinutes} minute${
-          remainingMinutes > 1 ? "s" : ""
-        } before trying again.`
+        `Please wait ${remainingMinutes} minute${remainingMinutes > 1 ? "s" : ""
+        } before trying again.`,
       );
       logAuthEvent("rate_limit_hit", { remainingMinutes });
       return false;
@@ -127,7 +151,7 @@ export default function Auth() {
   // Timeout wrapper for async operations
   const withTimeout = async <T,>(
     promise: Promise<T>,
-    timeoutMs: number = AUTH_CONFIG.TIMEOUT_MS
+    timeoutMs: number = AUTH_CONFIG.TIMEOUT_MS,
   ): Promise<T> => {
     return Promise.race([
       promise,
@@ -202,7 +226,7 @@ export default function Auth() {
           options: {
             emailRedirectTo: "myunitea://auth/callback",
           },
-        })
+        }),
       );
 
       if (error) {
@@ -212,7 +236,7 @@ export default function Auth() {
         logAuthEvent("resend_verification_success");
         Alert.alert(
           "Email Sent",
-          "Please check your inbox for the verification link."
+          "Please check your inbox for the verification link.",
         );
         setShowResendOption(false);
       }
@@ -223,7 +247,7 @@ export default function Auth() {
       } else {
         Alert.alert(
           "Connection Error",
-          "Unable to send email. Please check your connection."
+          "Unable to send email. Please check your connection.",
         );
       }
     } finally {
@@ -252,7 +276,7 @@ export default function Auth() {
       const { error } = await withTimeout(
         supabase.auth.resetPasswordForEmail(sanitizedEmail, {
           redirectTo: "myunitea://reset-password",
-        })
+        }),
       );
 
       if (error) {
@@ -262,7 +286,7 @@ export default function Auth() {
         logAuthEvent("password_reset_success");
         Alert.alert(
           "Check Your Email",
-          "We sent you a password reset link. Please check your inbox."
+          "We sent you a password reset link. Please check your inbox.",
         );
         setMode("login");
       }
@@ -273,7 +297,7 @@ export default function Auth() {
       } else {
         Alert.alert(
           "Connection Error",
-          "Unable to connect. Please check your internet connection and try again."
+          "Unable to connect. Please check your internet connection and try again.",
         );
       }
     } finally {
@@ -292,8 +316,8 @@ export default function Auth() {
   const helper = useMemo(() => {
     if (mode === "forgot") return "Enter your email to receive a reset link.";
     return mode === "login"
-      ? "Use your university email to continue."
-      : "Join UniTea with your @nu.edu.kz address.";
+      ? "Sign in to your account."
+      : "Join UniTee with your @nu.edu.kz address.";
   }, [mode]);
 
   async function signInWithEmail() {
@@ -313,11 +337,6 @@ export default function Auth() {
       return;
     }
 
-    if (!isUniversityEmail(sanitizedEmail)) {
-      setEmailError("Use your @nu.edu.kz address to sign in.");
-      return;
-    }
-
     if (!checkRateLimit()) return;
 
     setLoadingState((prev) => ({ ...prev, login: true }));
@@ -328,7 +347,7 @@ export default function Auth() {
         supabase.auth.signInWithPassword({
           email: sanitizedEmail,
           password: password,
-        })
+        }),
       );
 
       if (error) {
@@ -353,7 +372,7 @@ export default function Auth() {
       } else {
         Alert.alert(
           "Connection Error",
-          "Unable to connect. Please check your internet connection and try again."
+          "Unable to connect. Please check your internet connection and try again.",
         );
       }
     } finally {
@@ -369,6 +388,7 @@ export default function Auth() {
     setEmailError("");
     setPasswordError("");
     setShowResendOption(false);
+    setPrivacyError("");
 
     // Validate and sanitize email
     const sanitizedEmail = sanitizeEmail(email);
@@ -381,16 +401,23 @@ export default function Auth() {
       return;
     }
 
+    if (!privacyAccepted) {
+      setPrivacyError(
+        "Please agree to the collection of your personal data and the Privacy Policy.",
+      );
+      return;
+    }
+
     // Password strength validation
     if (password.length < AUTH_CONFIG.MIN_PASSWORD_LENGTH) {
       setPasswordError(
-        `Password must be at least ${AUTH_CONFIG.MIN_PASSWORD_LENGTH} characters long.`
+        `Password must be at least ${AUTH_CONFIG.MIN_PASSWORD_LENGTH} characters long.`,
       );
       return;
     }
 
     if (!isUniversityEmail(sanitizedEmail)) {
-      setEmailError("Sign up with your @nu.edu.kz mailbox to join UniTea.");
+      setEmailError("Sign up with your @nu.edu.kz mailbox to join UniTee.");
       return;
     }
 
@@ -410,7 +437,7 @@ export default function Auth() {
           options: {
             emailRedirectTo: "myunitea://auth/callback",
           },
-        })
+        }),
       );
 
       if (error) {
@@ -429,7 +456,7 @@ export default function Auth() {
         logAuthEvent("signup_success_verification_required");
         Alert.alert(
           "Verify Your Email",
-          "Please check your inbox for email verification!"
+          "Please check your inbox for email verification!",
         );
         setShowResendOption(true);
       } else {
@@ -442,7 +469,7 @@ export default function Auth() {
       } else {
         Alert.alert(
           "Connection Error",
-          "Unable to connect. Please check your internet connection and try again."
+          "Unable to connect. Please check your internet connection and try again.",
         );
       }
     } finally {
@@ -466,7 +493,7 @@ export default function Auth() {
               color="#fff"
             />
           </View>
-          <Text style={[styles.brandTitle, { color: theme.text }]}>UniTea</Text>
+          <Text style={[styles.brandTitle, { color: theme.text }]}>UniTee</Text>
           <Text style={[styles.brandSubtitle, { color: theme.secondaryText }]}>
             Your anonymous university community
           </Text>
@@ -542,6 +569,43 @@ export default function Auth() {
             </Pressable>
           )}
 
+          {mode === "signup" && (
+            <View style={styles.checkboxBlock}>
+              <Pressable
+                style={styles.checkboxRow}
+                onPress={() => {
+                  setPrivacyAccepted((prev) => !prev);
+                  if (privacyError) setPrivacyError("");
+                }}
+                disabled={isLoading}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: privacyAccepted }}
+              >
+                <Ionicons
+                  name={privacyAccepted ? "checkbox" : "square-outline"}
+                  size={22}
+                  color={privacyAccepted ? theme.primary : theme.secondaryText}
+                  style={styles.checkboxIcon}
+                />
+                <Text style={[styles.checkboxText, { color: theme.text }]}>
+                  I agree to the collection of my personal data and the{" "}
+                  <Text
+                    style={[styles.linkText, { color: theme.primary }]}
+                    onPress={() => openExternalLink(PRIVACY_URL)}
+                  >
+                    Privacy Policy
+                  </Text>
+                  .
+                </Text>
+              </Pressable>
+              {!!privacyError && (
+                <Text style={[styles.checkboxError, { color: "#E53935" }]}>
+                  {privacyError}
+                </Text>
+              )}
+            </View>
+          )}
+
           {/* Resend verification email button */}
           {showResendOption && (
             <View style={styles.resendContainer}>
@@ -577,21 +641,21 @@ export default function Auth() {
               mode === "login"
                 ? signInWithEmail
                 : mode === "signup"
-                ? signUpWithEmail
-                : resetPassword
+                  ? signUpWithEmail
+                  : resetPassword
             }
           >
             {(mode === "login" && loadingState.login) ||
-            (mode === "signup" && loadingState.signup) ||
-            (mode === "forgot" && loadingState.forgot) ? (
+              (mode === "signup" && loadingState.signup) ||
+              (mode === "forgot" && loadingState.forgot) ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
               <Text style={styles.primaryButtonText}>
                 {mode === "login"
                   ? "Log In"
                   : mode === "signup"
-                  ? "Create account"
-                  : "Send Reset Link"}
+                    ? "Create account"
+                    : "Send Reset Link"}
               </Text>
             )}
           </Pressable>
@@ -623,8 +687,13 @@ export default function Auth() {
                 </Text>
                 <Pressable
                   onPress={() => {
-                    setMode(mode === "login" ? "signup" : "login");
+                    const nextMode = mode === "login" ? "signup" : "login";
+                    setMode(nextMode);
                     setShowResendOption(false);
+                    if (nextMode !== "signup") {
+                      setPrivacyAccepted(false);
+                      setPrivacyError("");
+                    }
                   }}
                   style={styles.switchButton}
                   disabled={isLoading}
@@ -639,7 +708,20 @@ export default function Auth() {
         </View>
 
         <Text style={[styles.tosText, { color: theme.secondaryText }]}>
-          By continuing, you agree to our Terms of Service and Privacy Policy
+          By continuing, you agree to our{" "}
+          <Text
+            style={[styles.linkText, { color: theme.primary }]}
+            onPress={() => openExternalLink(TERMS_URL)}
+          >
+            Terms of Service
+          </Text>{" "}
+          and{" "}
+          <Text
+            style={[styles.linkText, { color: theme.primary }]}
+            onPress={() => openExternalLink(PRIVACY_URL)}
+          >
+            Privacy Policy
+          </Text>
         </Text>
       </View>
     </SafeAreaView>
@@ -723,6 +805,29 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     fontWeight: "600",
   },
+  checkboxBlock: {
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: SPACING.xs,
+  },
+  checkboxIcon: {
+    marginRight: SPACING.sm,
+    marginTop: 2,
+  },
+  checkboxText: {
+    flex: 1,
+    fontSize: FONT_SIZES.sm,
+    lineHeight: FONT_SIZES.lg,
+  },
+  checkboxError: {
+    fontSize: FONT_SIZES.xs,
+    marginLeft: SPACING.xl,
+  },
   primaryButton: {
     marginTop: SPACING.xs,
     paddingVertical: SPACING.md,
@@ -762,5 +867,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: FONT_SIZES.xs,
     lineHeight: BORDER_RADIUS.lg,
+  },
+  linkText: {
+    textDecorationLine: "underline",
+    fontWeight: "600",
   },
 });

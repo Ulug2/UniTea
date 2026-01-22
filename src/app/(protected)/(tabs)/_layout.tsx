@@ -225,7 +225,7 @@ export default function TabLayout() {
           name="index"
           options={{
             title: "Feed",
-            headerTitle: "UniTea",
+            headerTitle: "UniTee",
             headerTitleAlign: "left",
             headerTitleStyle: {
               fontSize: 28,
