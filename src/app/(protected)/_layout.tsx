@@ -2,7 +2,7 @@ import { AntDesign, Entypo, MaterialIcons } from "@expo/vector-icons";
 import { Stack, router, usePathname, useSegments } from "expo-router";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 import { useEffect } from "react";
 import * as Linking from "expo-linking";
 
@@ -64,19 +64,12 @@ export default function AppLayout() {
     }
   };
 
-  if (loading) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: theme.background,
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <ActivityIndicator color={theme.primary} />
-      </View>
-    );
+  // By the time we get here, auth should already be initialized
+  // (splash screen handles the initial loading)
+  // Just handle routing based on auth state
+  if (!loading && !session) {
+    // This will be handled by the useEffect above, but return null to avoid flash
+    return null;
   }
 
   return (

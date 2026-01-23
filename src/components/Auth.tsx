@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../lib/supabase";
 import CustomInput from "./CustomInput";
 import { useTheme } from "../context/ThemeContext";
+import * as SplashScreen from "expo-splash-screen";
 
 // Design constants (no more magic numbers!)
 const SPACING = {
@@ -342,6 +343,9 @@ export default function Auth() {
     setLoadingState((prev) => ({ ...prev, login: true }));
     logAuthEvent("login_started", { email: sanitizedEmail });
 
+    // Show splash screen during login
+    await SplashScreen.preventAutoHideAsync();
+
     try {
       const { error } = await withTimeout(
         supabase.auth.signInWithPassword({
@@ -362,11 +366,16 @@ export default function Auth() {
         } else {
           setPasswordError(friendlyError);
         }
+        // Hide splash screen on error
+        await SplashScreen.hideAsync();
       } else {
         logAuthEvent("login_success");
+        // Keep splash screen visible - root layout will hide it after prefetch
       }
     } catch (error: any) {
       logAuthEvent("login_error", { error: error.message });
+      // Hide splash screen on error
+      await SplashScreen.hideAsync();
       if (error.message === "Request timeout") {
         Alert.alert("Timeout", "Request timed out. Please try again.");
       } else {
@@ -426,6 +435,9 @@ export default function Auth() {
     setLoadingState((prev) => ({ ...prev, signup: true }));
     logAuthEvent("signup_started", { email: sanitizedEmail });
 
+    // Show splash screen during signup
+    await SplashScreen.preventAutoHideAsync();
+
     try {
       const {
         data: { session },
@@ -452,8 +464,12 @@ export default function Auth() {
         } else {
           setPasswordError(friendlyError);
         }
+        // Hide splash screen on error
+        await SplashScreen.hideAsync();
       } else if (!session) {
         logAuthEvent("signup_success_verification_required");
+        // Hide splash screen if email verification is required
+        await SplashScreen.hideAsync();
         Alert.alert(
           "Verify Your Email",
           "Please check your inbox for email verification!",
@@ -461,9 +477,12 @@ export default function Auth() {
         setShowResendOption(true);
       } else {
         logAuthEvent("signup_success");
+        // Keep splash screen visible - root layout will hide it after prefetch
       }
     } catch (error: any) {
       logAuthEvent("signup_error", { error: error.message });
+      // Hide splash screen on error
+      await SplashScreen.hideAsync();
       if (error.message === "Request timeout") {
         Alert.alert("Timeout", "Request timed out. Please try again.");
       } else {
