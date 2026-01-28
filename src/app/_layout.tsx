@@ -32,7 +32,7 @@ async function prefetchInitialData(userId: string, queryClient: any) {
       .range(0, POSTS_PER_PAGE - 1);
 
     const { data: feedData } = await feedQuery;
-    
+
     if (feedData) {
       queryClient.setQueryData(["posts", "feed", "new"], {
         pages: [feedData],
@@ -82,54 +82,6 @@ function RootLayoutContent() {
   });
   const { loading: authLoading, session } = useAuth();
   const queryClient = useQueryClient();
-
-  useEffect(() => {
-    // Handle deep links for email verification
-    const handleDeepLink = async (event: { url: string }) => {
-      console.log("[Deep Link] Received URL:", event.url);
-      const { path, queryParams } = Linking.parse(event.url);
-
-      // Handle email verification callback
-      if (path === "auth/callback") {
-        if (queryParams?.access_token && queryParams?.refresh_token) {
-          try {
-            const { error } = await supabase.auth.setSession({
-              access_token: queryParams.access_token as string,
-              refresh_token: queryParams.refresh_token as string,
-            });
-
-            if (error) {
-              console.error("[Deep Link] Error setting session:", error);
-            } else {
-              console.log("[Deep Link] Email verified successfully");
-            }
-          } catch (error) {
-            console.error(
-              "[Deep Link] Error setting session from deep link:",
-              error
-            );
-          }
-        } else if (queryParams?.error_description || queryParams?.error) {
-          console.error(
-            "[Deep Link] Auth error:",
-            queryParams.error_description || queryParams.error
-          );
-        }
-      }
-    };
-
-    // Check if app was opened with a deep link
-    Linking.getInitialURL().then((url) => {
-      if (url) handleDeepLink({ url });
-    });
-
-    // Listen for deep links while app is running
-    const subscription = Linking.addEventListener("url", handleDeepLink);
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
 
   // Prefetch data when user is authenticated and fonts are loaded
   useEffect(() => {

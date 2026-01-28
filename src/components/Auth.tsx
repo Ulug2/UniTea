@@ -118,8 +118,10 @@ export default function Auth() {
     loadingState.forgot ||
     loadingState.resend;
 
-  const isUniversityEmail = (value: string) =>
-    value.trim().toLowerCase().endsWith('@nu.edu.kz');
+  // Allow any email domain (NU-only restriction disabled for testing / TestFlight)
+  const isUniversityEmail = (_value: string) => true;
+  // const isUniversityEmail = (value: string) =>
+  //   value.trim().toLowerCase().endsWith('@nu.edu.kz');
 
   // Email sanitization helper
   const sanitizeEmail = (value: string): string => {
@@ -425,11 +427,11 @@ export default function Auth() {
       return;
     }
 
-    if (!isUniversityEmail(sanitizedEmail)) {
-      setEmailError("Sign up with your @nu.edu.kz mailbox to join UniTee.");
-      return;
-    }
-
+    // NU-only email restriction disabled for testing (accept any email domain)
+    // if (!isUniversityEmail(sanitizedEmail)) {
+    //   setEmailError("Sign up with your @nu.edu.kz mailbox to join UniTee.");
+    //   return;
+    // }
     if (!checkRateLimit()) return;
 
     setLoadingState((prev) => ({ ...prev, signup: true }));
@@ -455,6 +457,18 @@ export default function Auth() {
       if (error) {
         logAuthEvent("signup_failed", { error: error.message });
         const friendlyError = getUserFriendlyError(error);
+
+        // If this is a \"user already registered\" type error, show a clear alert
+        if (
+          friendlyError.toLowerCase().includes("already exists") ||
+          friendlyError.toLowerCase().includes("already registered")
+        ) {
+          Alert.alert(
+            "Account already exists",
+            "A user with this email is already registered. Please sign in instead."
+          );
+        }
+
         // Determine if error is email or password related
         if (
           friendlyError.toLowerCase().includes("email") ||
