@@ -16,10 +16,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.unitea.app",
-      // Temporarily disabled due to issue with Apple review
-      // "associatedDomains": [
-      //   "applinks:unitea.app"
-      // ],
+      "associatedDomains": [
+        "applinks:unitea.app"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
