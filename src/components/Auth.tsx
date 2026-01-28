@@ -227,7 +227,8 @@ export default function Auth() {
           type: "signup",
           email: sanitizedEmail,
           options: {
-            emailRedirectTo: "myunitea://auth/callback",
+            // Use /callback route (auth group is not part of URL)
+            emailRedirectTo: "myunitea://callback",
           },
         }),
       );
@@ -449,7 +450,8 @@ export default function Auth() {
           email: sanitizedEmail,
           password: password,
           options: {
-            emailRedirectTo: "myunitea://auth/callback",
+            // Use /callback route (auth group is not part of URL)
+            emailRedirectTo: "myunitea://callback",
           },
         }),
       );

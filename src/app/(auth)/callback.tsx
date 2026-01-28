@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabase";
 
 export default function EmailCallbackScreen() {
   const params = useLocalSearchParams<{
+    code?: string;
     access_token?: string;
     refresh_token?: string;
     error?: string;
@@ -32,6 +33,41 @@ export default function EmailCallbackScreen() {
         return;
       }
 
+      // Newer Supabase links: ?code=...
+      const code = params.code as string | undefined;
+      if (code) {
+        try {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (error) {
+            console.error("[Email Callback] Error exchanging code:", error);
+            setStatus("error");
+            setMessage(
+              "We couldn't complete email verification. Please try again or request a new link."
+            );
+            Alert.alert(
+              "Verification failed",
+              "We couldn't verify your email. Please try again or request a new link."
+            );
+          } else {
+            console.log("[Email Callback] Email verified successfully via code");
+            router.replace("/(protected)/(tabs)");
+          }
+        } catch (err: any) {
+          console.error("[Email Callback] Unexpected error (code):", err);
+          setStatus("error");
+          setMessage(
+            "Unexpected error during verification. Please try again later."
+          );
+          Alert.alert(
+            "Verification error",
+            "Unexpected error during verification. Please try again later."
+          );
+        }
+        return;
+      }
+
+      // Fallback: older style links with access_token + refresh_token
       const accessToken = params.access_token as string | undefined;
       const refreshToken = params.refresh_token as string | undefined;
 
