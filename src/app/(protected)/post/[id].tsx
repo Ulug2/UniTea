@@ -290,23 +290,57 @@ export default function PostDetailed() {
         throw new Error("Post ID is required");
       }
 
-      const commentData: TablesInsert<"comments"> = {
-        post_id: postId,
-        user_id: currentUserId,
+      // Call Edge Function for AI moderation
+      // Use fetch directly to access response body even on 400 status codes
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+      const functionUrl = `${supabaseUrl}/functions/v1/create-comment`;
+      
+      // Get auth token from session
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession?.access_token) {
+        throw new Error("You must be logged in to post a comment.");
+      }
+
+      // Prepare comment payload for Edge Function
+      const commentPayload = {
         content: content.trim(),
-        parent_comment_id: parentId,
-        is_deleted: false,
+        post_id: postId,
+        parent_comment_id: parentId || null,
         is_anonymous: isAnonymous,
       };
 
-      const { data, error } = await supabase
-        .from("comments")
-        .insert(commentData)
-        .select()
-        .single();
+      const response = await fetch(functionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentSession.access_token}`,
+          apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+        },
+        body: JSON.stringify(commentPayload),
+      });
 
-      if (error) throw error;
-      return data;
+      // Parse response body (works for both 200 and 400 status)
+      const responseData = await response.json();
+
+      // Check if response contains an error (Edge Function returns { error: "..." } on failure)
+      if (!response.ok) {
+        // Extract error message from response body
+        const errorMessage = responseData?.error || responseData?.message || "Failed to create comment";
+        throw new Error(errorMessage);
+      }
+
+      // Additional check: if responseData has an error field even on 200 status
+      if (responseData?.error) {
+        throw new Error(responseData.error);
+      }
+
+      // Validate that we received comment data
+      if (!responseData || !responseData.id) {
+        throw new Error("Invalid response from server");
+      }
+
+      // Return the comment data (edge function returns the inserted comment)
+      return responseData;
     },
     onMutate: async ({ content, parentId, isAnonymous }) => {
       // Cancel outgoing refetches
@@ -362,18 +396,18 @@ export default function PostDetailed() {
         );
       }
 
-      console.error("Error posting comment:", error);
+      // Only log to console in development (not visible to users in production)
+      if (__DEV__) {
+        console.error("Error posting comment:", error);
+      }
 
-      // Show specific error messages
-      let errorMessage = "Failed to post comment. Please try again.";
+      // Show the actual error message from Edge Function (already user-friendly)
+      // Edge Function returns: "Comment violates community guidelines"
+      let errorMessage = error.message || "Failed to post comment. Please try again.";
 
+      // Handle specific error cases
       if (error.message?.includes("rate limit")) {
         errorMessage = "You're posting too fast. Please wait a moment.";
-      } else if (
-        error.message?.includes("profanity") ||
-        error.message?.includes("inappropriate")
-      ) {
-        errorMessage = "Your comment contains inappropriate content.";
       } else if (
         error.message?.includes("network") ||
         error.message?.includes("timeout")
@@ -381,6 +415,7 @@ export default function PostDetailed() {
         errorMessage = "Network error. Please check your connection.";
       }
 
+      // This Alert is what users see - console errors are only for developers
       Alert.alert("Error", errorMessage);
     },
     onSuccess: async (newComment) => {

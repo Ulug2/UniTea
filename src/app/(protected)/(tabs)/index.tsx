@@ -110,9 +110,6 @@ export default function FeedScreen() {
   } = useInfiniteQuery({
     queryKey: ["posts", "feed", selectedFilter], // Add filter to query key
     queryFn: async ({ pageParam = 0 }) => {
-      const from = pageParam * POSTS_PER_PAGE;
-      const to = from + POSTS_PER_PAGE - 1;
-
       let query = (supabase as any)
         .from("posts_summary_view")
         .select("*")
@@ -122,35 +119,53 @@ export default function FeedScreen() {
       switch (selectedFilter) {
         case "new":
           // Sort by newest first
-          query = query.order("created_at", { ascending: false });
+          const from = pageParam * POSTS_PER_PAGE;
+          const to = from + POSTS_PER_PAGE - 1;
+          query = query
+            .order("created_at", { ascending: false })
+            .range(from, to);
           break;
 
         case "top":
-          // Sort by highest score in the last 24 hours
-          const last24Hours = new Date();
-          last24Hours.setHours(last24Hours.getHours() - 24);
+          // Sort by highest votes in the last week
+          const lastWeek = new Date();
+          lastWeek.setDate(lastWeek.getDate() - 7);
+          const topFrom = pageParam * POSTS_PER_PAGE;
+          const topTo = topFrom + POSTS_PER_PAGE - 1;
           query = query
-            .gte("created_at", last24Hours.toISOString())
-            .order("vote_score", { ascending: false });
+            .gte("created_at", lastWeek.toISOString())
+            .order("vote_score", { ascending: false })
+            .range(topFrom, topTo);
           break;
 
         case "hot":
-          // Trending: Posts from last 7 days sorted by score
+          // For "hot", fetch posts from last 7 days
+          // We'll fetch a larger batch and sort by engagement score in memory
           const last7Days = new Date();
           last7Days.setDate(last7Days.getDate() - 7);
+          // Fetch 100 posts per page to get better engagement-based sorting
+          const hotFrom = pageParam * 100;
+          const hotTo = hotFrom + 99;
           query = query
             .gte("created_at", last7Days.toISOString())
-            .order("vote_score", { ascending: false });
+            .order("created_at", { ascending: false })
+            .range(hotFrom, hotTo);
           break;
       }
-
-      query = query.range(from, to);
 
       const { data, error } = await query;
       if (error) throw error;
       return (data || []) as PostSummary[];
     },
     getNextPageParam: (lastPage, allPages) => {
+      // For "hot", we fetch 100 at a time for better engagement sorting
+      if (selectedFilter === "hot") {
+        if (lastPage.length === 100) {
+          return allPages.length;
+        }
+        return undefined;
+      }
+      // For other filters, use standard pagination
       if (lastPage.length === POSTS_PER_PAGE) {
         return allPages.length;
       }
@@ -162,7 +177,7 @@ export default function FeedScreen() {
     retry: 2,
   });
 
-  // Flatten pages into single array, remove duplicates, and filter blocked users
+  // Flatten pages into single array, remove duplicates, filter blocked users, and sort by engagement for "hot"
   const posts = useMemo(() => {
     if (!postsData?.pages) return [];
 
@@ -173,17 +188,36 @@ export default function FeedScreen() {
       new Map(allPosts.map((post) => [post.post_id, post])).values()
     );
 
-    // Early return if no blocks
-    if (blocks.length === 0) return uniquePosts;
+    // Filter blocked users
+    let filteredPosts = uniquePosts;
+    if (blocks.length > 0) {
+      filteredPosts = uniquePosts.filter((post) => {
+        const isPostAuthorBlocked = blocks.includes(post.user_id);
+        const isRepostAuthorBlocked = post.original_user_id
+          ? blocks.includes(post.original_user_id)
+          : false;
+        return !isPostAuthorBlocked && !isRepostAuthorBlocked;
+      });
+    }
 
-    return uniquePosts.filter((post) => {
-      const isPostAuthorBlocked = blocks.includes(post.user_id);
-      const isRepostAuthorBlocked = post.original_user_id
-        ? blocks.includes(post.original_user_id)
-        : false;
-      return !isPostAuthorBlocked && !isRepostAuthorBlocked;
-    });
-  }, [postsData, blocks]);
+    // For "hot" filter, sort by engagement score (votes + comments + reposts)
+    if (selectedFilter === "hot") {
+      return filteredPosts.sort((a, b) => {
+        // Calculate engagement score: vote_score + comment_count + repost_count
+        const engagementA =
+          (a.vote_score || 0) +
+          (a.comment_count || 0) +
+          (a.repost_count || 0);
+        const engagementB =
+          (b.vote_score || 0) +
+          (b.comment_count || 0) +
+          (b.repost_count || 0);
+        return engagementB - engagementA; // Sort descending (highest engagement first)
+      });
+    }
+
+    return filteredPosts;
+  }, [postsData, blocks, selectedFilter]);
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {

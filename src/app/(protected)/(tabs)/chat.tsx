@@ -323,6 +323,24 @@ export default function ChatScreen() {
       : chat.unread_count_p2;
   }, [currentUserId]);
 
+  // Render function for FlatList - must be defined at component level (Rules of Hooks)
+  const renderChatItem = useCallback(
+    ({ item }: { item: ChatSummary }) => {
+      const { user, isAnonymous } = getOtherUser(item);
+      return (
+        <ChatListItem
+          chatId={item.chat_id}
+          lastMessageAt={item.last_message_at}
+          otherUser={user}
+          lastMessage={item.last_message_content || ""}
+          unreadCount={getUnreadCount(item)}
+          isAnonymous={isAnonymous}
+        />
+      );
+    },
+    [getOtherUser, getUnreadCount]
+  );
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -353,19 +371,7 @@ export default function ChatScreen() {
       <FlatList
         data={filteredChatSummaries}
         keyExtractor={(item) => item.chat_id}
-        renderItem={useCallback(({ item }) => {
-          const { user, isAnonymous } = getOtherUser(item);
-          return (
-            <ChatListItem
-              chatId={item.chat_id}
-              lastMessageAt={item.last_message_at}
-              otherUser={user}
-              lastMessage={item.last_message_content || ""}
-              unreadCount={getUnreadCount(item)}
-              isAnonymous={isAnonymous}
-            />
-          );
-        }, [getOtherUser, getUnreadCount])}
+        renderItem={renderChatItem}
         refreshControl={
           <RefreshControl
             refreshing={isRefetchingChats}

@@ -137,9 +137,8 @@ export default function CreatePostScreen() {
         throw new Error("Location is required for lost & found posts");
       }
 
-      // Prepare post data
-      const postData: PostInsert = {
-        user_id: session.user.id,
+      // Prepare post data for Edge Function
+      const postPayload = {
         content: postContent.trim() || "", // Allow empty content for reposts
         post_type: isLostFound ? "lost_found" : "feed",
         image_url: imagePath || null,
@@ -153,14 +152,49 @@ export default function CreatePostScreen() {
         }),
       };
 
-      const { data, error } = await supabase
-        .from("posts")
-        .insert(postData)
-        .select()
-        .single();
+      // Call Edge Function for AI moderation
+      // Use fetch directly to access response body even on 400 status codes
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+      const functionUrl = `${supabaseUrl}/functions/v1/create-post`;
+      
+      // Get auth token from session
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession?.access_token) {
+        throw new Error("You must be logged in to create a post.");
+      }
 
-      if (error) throw error;
-      return data;
+      const response = await fetch(functionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentSession.access_token}`,
+          apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+        },
+        body: JSON.stringify(postPayload),
+      });
+
+      // Parse response body (works for both 200 and 400 status)
+      const responseData = await response.json();
+
+      // Check if response contains an error (Edge Function returns { error: "..." } on failure)
+      if (!response.ok) {
+        // Extract error message from response body
+        const errorMessage = responseData?.error || responseData?.message || "Failed to create post";
+        throw new Error(errorMessage);
+      }
+
+      // Additional check: if responseData has an error field even on 200 status
+      if (responseData?.error) {
+        throw new Error(responseData.error);
+      }
+
+      // Validate that we received post data
+      if (!responseData || !responseData.id) {
+        throw new Error("Invalid response from server");
+      }
+
+      // Return the post data (edge function returns the inserted post with 'id' field)
+      return responseData;
     },
     // OPTIMISTIC UI: Show post immediately (like Instagram/X/Threads)
     onMutate: async (variables) => {
@@ -233,6 +267,7 @@ export default function CreatePostScreen() {
         queryClient.invalidateQueries({ queryKey: ["posts", "lost_found"] });
       } else {
         // Replace optimistic post with real data from server
+        // Note: Edge function returns post with 'id' field, but view uses 'post_id'
         queryClient.setQueryData(["posts", "feed", "new"], (old: any) => {
           if (!old?.pages) return old;
           
@@ -241,7 +276,7 @@ export default function CreatePostScreen() {
               post.post_id === context?.tempId 
                 ? {
                     ...post,
-                    post_id: data.id,
+                    post_id: data.id, // Map 'id' from DB to 'post_id' in view
                     created_at: data.created_at,
                     updated_at: data.updated_at,
                   }
@@ -267,11 +302,18 @@ export default function CreatePostScreen() {
         queryClient.setQueryData(["posts", "feed", "new"], context.previousData);
       }
       setIsSubmitting(false);
-      console.error("Error creating post:", error);
-      Alert.alert(
-        "Error",
-        error.message || "Failed to create post. Please try again."
-      );
+      
+      // Only log to console in development (not visible to users in production)
+      if (__DEV__) {
+        console.error("Error creating post:", error);
+      }
+      
+      // Show the actual error message from Edge Function (already user-friendly)
+      // Edge Function returns: "Post violates community guidelines" or "Image violates community guidelines"
+      const errorMessage = error.message || "Failed to create post. Please try again.";
+      
+      // This Alert is what users see - console errors are only for developers
+      Alert.alert("Error", errorMessage);
     },
   });
 

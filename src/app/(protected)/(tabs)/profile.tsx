@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { router, useNavigation } from "expo-router";
 import { formatDistanceToNowStrict } from "date-fns";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -72,6 +72,96 @@ type PostSummary = {
   original_is_anonymous?: boolean | null;
   original_created_at?: string | null;
 };
+
+// Memoized Post Item Component for better performance
+type ProfilePostItemProps = {
+  item: PostSummary | Post;
+  postScore: number;
+  commentCount: number;
+  theme: any;
+};
+
+const ProfilePostItem = memo(({ item, postScore, commentCount, theme }: ProfilePostItemProps) => {
+  const postId = "post_id" in item ? item.post_id : item.id;
+  const timeAgo = useMemo(() => {
+    return item.created_at
+      ? formatDistanceToNowStrict(new Date(item.created_at), {
+          addSuffix: false,
+        })
+      : "";
+  }, [item.created_at]);
+
+  return (
+    <Pressable
+      style={[
+        styles.postCard,
+        { backgroundColor: theme.card, borderBottomColor: theme.border },
+      ]}
+      onPress={() => router.push(`/post/${postId}`)}
+    >
+      <View style={styles.postHeader}>
+        <Text style={[styles.postLabel, { color: theme.secondaryText }]}>
+          Posted {item.is_anonymous ? "anonymously" : "publicly"}
+        </Text>
+        <Text style={[styles.postTime, { color: theme.secondaryText }]}>
+          {timeAgo}
+        </Text>
+      </View>
+      <Text
+        style={[styles.postContent, { color: theme.text }]}
+        numberOfLines={2}
+      >
+        {item.content}
+      </Text>
+      <View style={styles.postFooter}>
+        <View style={styles.postStat}>
+          <MaterialCommunityIcons
+            name="arrow-up-bold"
+            size={16}
+            color="#51CF66"
+          />
+          <Text
+            style={[styles.postStatText, { color: theme.secondaryText }]}
+          >
+            {postScore}
+          </Text>
+        </View>
+        <View style={styles.postStat}>
+          <MaterialCommunityIcons
+            name="comment-outline"
+            size={16}
+            color={theme.secondaryText}
+          />
+          <Text
+            style={[styles.postStatText, { color: theme.secondaryText }]}
+          >
+            {commentCount}
+          </Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison function for React.memo
+  const prevId = "post_id" in prevProps.item 
+    ? (prevProps.item as PostSummary).post_id 
+    : (prevProps.item as Post).id;
+  const nextId = "post_id" in nextProps.item 
+    ? (nextProps.item as PostSummary).post_id 
+    : (nextProps.item as Post).id;
+  
+  return (
+    prevId === nextId &&
+    prevProps.postScore === nextProps.postScore &&
+    prevProps.commentCount === nextProps.commentCount &&
+    prevProps.theme.card === nextProps.theme.card &&
+    prevProps.theme.border === nextProps.theme.border &&
+    prevProps.theme.text === nextProps.theme.text &&
+    prevProps.theme.secondaryText === nextProps.theme.secondaryText
+  );
+});
+
+ProfilePostItem.displayName = "ProfilePostItem";
 
 export default function ProfileScreen() {
   const { theme, isDark, toggleTheme } = useTheme();
@@ -376,10 +466,10 @@ export default function ProfileScreen() {
     return countsMap;
   }, [postComments, userPosts, activeTab]);
 
-  // Calculate total upvotes
-  const totalUpvotes = useMemo(() => {
+  // Calculate total votes (upvotes - downvotes)
+  const totalVotes = useMemo(() => {
     return Array.from(postScoresMap.values()).reduce(
-      (sum, score) => sum + Math.max(0, score),
+      (sum, score) => sum + score,
       0,
     );
   }, [postScoresMap]);
@@ -620,67 +710,20 @@ export default function ProfileScreen() {
     updatePasswordMutation.mutate(newPassword);
   };
 
-  // Memoize renderItem to prevent unnecessary re-renders
+  // Optimized renderItem using memoized component
   const renderPostItem = useCallback(
     ({ item }: { item: PostSummary | Post }) => {
       const postId = "post_id" in item ? item.post_id : item.id;
       const postScore = postScoresMap.get(postId) || 0;
       const commentCount = commentCountsMap.get(postId) || 0;
-      const timeAgo = item.created_at
-        ? formatDistanceToNowStrict(new Date(item.created_at), {
-          addSuffix: false,
-        })
-        : "";
 
       return (
-        <Pressable
-          style={[
-            styles.postCard,
-            { backgroundColor: theme.card, borderBottomColor: theme.border },
-          ]}
-          onPress={() => router.push(`/post/${postId}`)}
-        >
-          <View style={styles.postHeader}>
-            <Text style={[styles.postLabel, { color: theme.secondaryText }]}>
-              Posted {item.is_anonymous ? "anonymously" : "publicly"}
-            </Text>
-            <Text style={[styles.postTime, { color: theme.secondaryText }]}>
-              {timeAgo}
-            </Text>
-          </View>
-          <Text
-            style={[styles.postContent, { color: theme.text }]}
-            numberOfLines={2}
-          >
-            {item.content}
-          </Text>
-          <View style={styles.postFooter}>
-            <View style={styles.postStat}>
-              <MaterialCommunityIcons
-                name="arrow-up-bold"
-                size={16}
-                color="#51CF66"
-              />
-              <Text
-                style={[styles.postStatText, { color: theme.secondaryText }]}
-              >
-                {postScore}
-              </Text>
-            </View>
-            <View style={styles.postStat}>
-              <MaterialCommunityIcons
-                name="comment-outline"
-                size={16}
-                color={theme.secondaryText}
-              />
-              <Text
-                style={[styles.postStatText, { color: theme.secondaryText }]}
-              >
-                {commentCount}
-              </Text>
-            </View>
-          </View>
-        </Pressable>
+        <ProfilePostItem
+          item={item}
+          postScore={postScore}
+          commentCount={commentCount}
+          theme={theme}
+        />
       );
     },
     [theme, postScoresMap, commentCountsMap],
@@ -747,12 +790,15 @@ export default function ProfileScreen() {
                 </Text>
                 <View style={styles.upvotesContainer}>
                   <MaterialCommunityIcons
-                    name="arrow-up-bold"
+                    name={totalVotes >= 0 ? "arrow-up-bold" : "arrow-down-bold"}
                     size={16}
-                    color="#51CF66"
+                    color={totalVotes >= 0 ? "#51CF66" : "#FF6B6B"}
                   />
-                  <Text style={styles.upvotesText}>
-                    {totalUpvotes} total upvotes
+                  <Text style={[
+                    styles.upvotesText,
+                    { color: totalVotes >= 0 ? "#51CF66" : "#FF6B6B" }
+                  ]}>
+                    {totalVotes} total votes
                   </Text>
                 </View>
               </View>
@@ -838,15 +884,15 @@ export default function ProfileScreen() {
         }
         data={filteredPosts}
         renderItem={renderPostItem}
-        keyExtractor={(item, index) => {
+        keyExtractor={(item) => {
           const id = "post_id" in item ? item.post_id : item.id;
-          return `${id}-${index}`;
+          return id;
         }}
         removeClippedSubviews={true}
-        maxToRenderPerBatch={6}
-        updateCellsBatchingPeriod={150}
-        initialNumToRender={6}
-        windowSize={10}
+        maxToRenderPerBatch={5}
+        updateCellsBatchingPeriod={50}
+        initialNumToRender={5}
+        windowSize={5}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}

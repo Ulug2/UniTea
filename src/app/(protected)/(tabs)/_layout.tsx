@@ -21,7 +21,7 @@ const FilterContext = createContext<{
   setSelectedFilter: (filter: FeedFilter) => void;
 }>({
   selectedFilter: "hot",
-  setSelectedFilter: () => {},
+  setSelectedFilter: () => { },
 });
 
 export const useFilterContext = () => useContext(FilterContext);
