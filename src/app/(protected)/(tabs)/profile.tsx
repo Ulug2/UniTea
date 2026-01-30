@@ -86,8 +86,8 @@ const ProfilePostItem = memo(({ item, postScore, commentCount, theme }: ProfileP
   const timeAgo = useMemo(() => {
     return item.created_at
       ? formatDistanceToNowStrict(new Date(item.created_at), {
-          addSuffix: false,
-        })
+        addSuffix: false,
+      })
       : "";
   }, [item.created_at]);
 
@@ -143,13 +143,13 @@ const ProfilePostItem = memo(({ item, postScore, commentCount, theme }: ProfileP
   );
 }, (prevProps, nextProps) => {
   // Custom comparison function for React.memo
-  const prevId = "post_id" in prevProps.item 
-    ? (prevProps.item as PostSummary).post_id 
+  const prevId = "post_id" in prevProps.item
+    ? (prevProps.item as PostSummary).post_id
     : (prevProps.item as Post).id;
-  const nextId = "post_id" in nextProps.item 
-    ? (nextProps.item as PostSummary).post_id 
+  const nextId = "post_id" in nextProps.item
+    ? (nextProps.item as PostSummary).post_id
     : (nextProps.item as Post).id;
-  
+
   return (
     prevId === nextId &&
     prevProps.postScore === nextProps.postScore &&
@@ -474,18 +474,25 @@ export default function ProfileScreen() {
     );
   }, [postScoresMap]);
 
-  // Filter posts based on active tab (and filter blocked users from bookmarked posts)
+  // Filter posts based on active tab (and filter blocked users from bookmarked posts).
+  // Dedupe by post id so FlatList never sees duplicate keys.
   const filteredPosts = useMemo(() => {
+    const getId = (p: PostSummary | Post) => ("post_id" in p ? p.post_id : p.id);
+    let list: (PostSummary | Post)[];
     if (activeTab === "all") {
-      return userPosts;
+      list = userPosts;
     } else if (activeTab === "anonymous") {
-      return userPosts.filter((p) => p.is_anonymous);
+      list = userPosts.filter((p) => p.is_anonymous);
     } else {
-      // Filter out bookmarked posts from blocked users
-      // Note: bookmarkedPosts uses Post type (not PostSummary), so we only check the post author
-      // Reposted posts from blocked authors will be filtered when viewing the feed
-      return bookmarkedPosts.filter((p) => !blocks.includes(p.user_id));
+      list = bookmarkedPosts.filter((p) => !blocks.includes(p.user_id));
     }
+    const seen = new Set<string>();
+    return list.filter((p) => {
+      const id = getId(p);
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
   }, [activeTab, userPosts, bookmarkedPosts, blocks]);
 
   async function signOut() {
@@ -524,11 +531,17 @@ export default function ProfileScreen() {
       if (error) throw error;
     },
     onSuccess: () => {
+      const currentUserId = session?.user?.id;
+      if (!currentUserId) return;
+
       // Invalidate blocks query to refresh the list
       queryClient.invalidateQueries({ queryKey: ["blocks"] });
       // Invalidate all content queries to show unblocked users' content
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       queryClient.invalidateQueries({ queryKey: ["comments"] });
+      queryClient.invalidateQueries({ queryKey: ["chat-messages"] }); // Show previously hidden messages
+      queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+      queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] }); // Update unread count
 
       Alert.alert("Success", "All users have been unblocked");
       setManageAccountVisible(false);
@@ -619,15 +632,51 @@ export default function ProfileScreen() {
 
       if (error) throw error;
     },
-    onSuccess: () => {
-      // Invalidate profile query to reflect changes immediately
+    onMutate: async (updates: { username?: string; avatar_url?: string }) => {
+      // Cancel outgoing refetches to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: ["current-user-profile"] });
+
+      // Snapshot previous value
+      const previousProfile = queryClient.getQueryData<Profile | null>(["current-user-profile"]);
+
+      // Optimistically update profile cache
+      if (previousProfile) {
+        queryClient.setQueryData<Profile | null>(["current-user-profile"], {
+          ...previousProfile,
+          ...updates,
+        });
+      }
+
+      return { previousProfile };
+    },
+    onSuccess: (_, updates) => {
+      // Invalidate all relevant queries to ensure consistency
       queryClient.invalidateQueries({ queryKey: ["current-user-profile"] });
-      // Also invalidate posts queries since username/avatar might be displayed in feeds
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       queryClient.invalidateQueries({ queryKey: ["user-posts"] });
+      queryClient.invalidateQueries({ queryKey: ["chat-summaries"] });
+      queryClient.invalidateQueries({ queryKey: ["chat-users"] });
+      queryClient.invalidateQueries({ queryKey: ["chat-other-user"] });
+
+      // Also update any cached profile data directly
+      const currentUserId = session?.user?.id;
+      if (currentUserId) {
+        queryClient.setQueryData<Profile | null>(["current-user-profile"], (old) => {
+          if (!old) return old;
+          return { ...old, ...updates };
+        });
+      }
+
+      // Close manage account modal after successful update
+      setManageAccountVisible(false);
+
       Alert.alert("Success", "Profile updated successfully");
     },
-    onError: (error: any) => {
+    onError: (error: any, updates, context) => {
+      // Rollback optimistic update on error
+      if (context?.previousProfile) {
+        queryClient.setQueryData(["current-user-profile"], context.previousProfile);
+      }
       Alert.alert(
         "Error",
         error.message || "Failed to update profile. Please try again.",
@@ -884,9 +933,9 @@ export default function ProfileScreen() {
         }
         data={filteredPosts}
         renderItem={renderPostItem}
-        keyExtractor={(item) => {
+        keyExtractor={(item, index) => {
           const id = "post_id" in item ? item.post_id : item.id;
-          return id;
+          return id ? `${id}` : `post-${index}`;
         }}
         removeClippedSubviews={true}
         maxToRenderPerBatch={5}

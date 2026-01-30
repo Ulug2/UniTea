@@ -9,6 +9,7 @@ import {
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { Alert } from "react-native";
+import { logger } from "../utils/logger";
 
 type AuthContextValue = {
   session: Session | null;
@@ -41,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isMounted) return;
 
         if (sessionError) {
-          console.error("[AuthContext] Session error:", sessionError);
+          logger.error("[AuthContext] Session error", sessionError as Error);
 
           // Check if it's a refresh token issue
           const isTokenError =
@@ -65,14 +66,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           setError(sessionError);
           setSession(null);
+          logger.clearUser();
         } else {
           setSession(initialSession);
           setError(null);
+          // Set user context in Sentry when session is available
+          if (initialSession?.user) {
+            logger.setUser(
+              initialSession.user.id,
+              initialSession.user.email,
+              undefined
+            );
+          }
         }
       } catch (err) {
-        console.error("[AuthContext] Fatal auth error:", err);
+        logger.error("[AuthContext] Fatal auth error", err as Error);
         setError(err as Error);
         setSession(null);
+        logger.clearUser();
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -88,31 +99,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!isMounted) return;
 
-      console.log("[AuthContext] Auth event:", event);
+      logger.breadcrumb(`Auth event: ${event}`, "auth", {
+        event,
+        hasSession: !!newSession,
+      });
 
       // Handle different auth events
       switch (event) {
         case "SIGNED_OUT":
           setSession(null);
           setError(null);
+          logger.clearUser();
           break;
 
         case "SIGNED_IN":
         case "TOKEN_REFRESHED":
           setSession(newSession);
           setError(null);
+          // Set user context in Sentry
+          if (newSession?.user) {
+            logger.setUser(
+              newSession.user.id,
+              newSession.user.email,
+              undefined
+            );
+          }
           break;
 
         case "USER_UPDATED":
           // Update session with new user data
           if (newSession) {
             setSession(newSession);
+            // Update Sentry user context
+            logger.setUser(
+              newSession.user.id,
+              newSession.user.email,
+              undefined
+            );
           }
           break;
 
         case "PASSWORD_RECOVERY":
           // Handle password reset flow
-          console.log("[AuthContext] Password recovery initiated");
+          logger.info("[AuthContext] Password recovery initiated");
           break;
 
         default:
@@ -120,6 +149,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(newSession);
           if (newSession) {
             setError(null);
+            // Set user context if session exists
+            logger.setUser(
+              newSession.user.id,
+              newSession.user.email,
+              undefined
+            );
           }
       }
     });

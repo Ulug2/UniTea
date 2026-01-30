@@ -30,6 +30,7 @@ import { uploadImage, getImageUrl } from "../../utils/supabaseImages";
 import { formatDistanceToNowStrict } from "date-fns";
 import nuLogo from "../../../assets/images/nu-logo.png";
 import SupabaseImage from "../../components/SupabaseImage";
+import { logger } from "../../utils/logger";
 
 type PostInsert = Database["public"]["Tables"]["posts"]["Insert"];
 
@@ -104,7 +105,7 @@ export default function CreatePostScreen() {
         setImage(manipResult.uri);
       }
     } catch (error) {
-      console.error("Error processing image:", error);
+      logger.error("Error processing image", error as Error);
       Alert.alert("Error", "Failed to process image. Please try again.");
     }
   };
@@ -156,7 +157,7 @@ export default function CreatePostScreen() {
       // Use fetch directly to access response body even on 400 status codes
       const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
       const functionUrl = `${supabaseUrl}/functions/v1/create-post`;
-      
+
       // Get auth token from session
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       if (!currentSession?.access_token) {
@@ -248,14 +249,14 @@ export default function CreatePostScreen() {
       // Optimistically update feed - add to beginning of first page
       queryClient.setQueryData(["posts", "feed", "new"], (old: any) => {
         if (!old?.pages) return old;
-        
+
         const newPages = [...old.pages];
         if (newPages[0]) {
           newPages[0] = [optimisticPost, ...newPages[0]];
         } else {
           newPages[0] = [optimisticPost];
         }
-        
+
         return { ...old, pages: newPages };
       });
 
@@ -270,27 +271,27 @@ export default function CreatePostScreen() {
         // Note: Edge function returns post with 'id' field, but view uses 'post_id'
         queryClient.setQueryData(["posts", "feed", "new"], (old: any) => {
           if (!old?.pages) return old;
-          
-          const newPages = old.pages.map((page: any[]) => 
-            page.map((post: any) => 
-              post.post_id === context?.tempId 
+
+          const newPages = old.pages.map((page: any[]) =>
+            page.map((post: any) =>
+              post.post_id === context?.tempId
                 ? {
-                    ...post,
-                    post_id: data.id, // Map 'id' from DB to 'post_id' in view
-                    created_at: data.created_at,
-                    updated_at: data.updated_at,
-                  }
+                  ...post,
+                  post_id: data.id, // Map 'id' from DB to 'post_id' in view
+                  created_at: data.created_at,
+                  updated_at: data.updated_at,
+                }
                 : post
             )
           );
-          
+
           return { ...old, pages: newPages };
         });
-        
+
         // Mark as stale but don't refetch immediately (let real-time handle it)
-        queryClient.invalidateQueries({ 
+        queryClient.invalidateQueries({
           queryKey: ["posts", "feed"],
-          refetchType: "none" 
+          refetchType: "none"
         });
       }
       setIsSubmitting(false);
@@ -302,16 +303,17 @@ export default function CreatePostScreen() {
         queryClient.setQueryData(["posts", "feed", "new"], context.previousData);
       }
       setIsSubmitting(false);
-      
-      // Only log to console in development (not visible to users in production)
-      if (__DEV__) {
-        console.error("Error creating post:", error);
-      }
-      
+
+      // Log error to Sentry (logger handles dev vs prod automatically)
+      logger.error("Error creating post", error as Error, {
+        isLostFound,
+        hasImage: !!context?.imagePath,
+      });
+
       // Show the actual error message from Edge Function (already user-friendly)
       // Edge Function returns: "Post violates community guidelines" or "Image violates community guidelines"
       const errorMessage = error.message || "Failed to create post. Please try again.";
-      
+
       // This Alert is what users see - console errors are only for developers
       Alert.alert("Error", errorMessage);
     },
@@ -333,7 +335,7 @@ export default function CreatePostScreen() {
         try {
           imagePath = await uploadImage(image, supabase);
         } catch (error: any) {
-          console.error("Image upload error:", error);
+          logger.error("Image upload error", error as Error);
           Alert.alert(
             "Error",
             error.message || "Failed to upload image. Please try again."
@@ -360,8 +362,8 @@ export default function CreatePostScreen() {
   const isPostButtonDisabled = isRepost
     ? false // Reposts don't require content
     : isLostFound
-    ? !content.trim() || !location.trim()
-    : !content.trim();
+      ? !content.trim() || !location.trim()
+      : !content.trim();
 
   const isLoading = createPostMutation.isPending || isSubmitting;
 
@@ -387,8 +389,8 @@ export default function CreatePostScreen() {
           {isRepost
             ? "Repost"
             : isLostFound
-            ? "Post Lost/Found Item"
-            : "Create Post"}
+              ? "Post Lost/Found Item"
+              : "Create Post"}
         </Text>
         <Pressable
           disabled={isPostButtonDisabled || isLoading}
@@ -531,8 +533,8 @@ export default function CreatePostScreen() {
                 isRepost
                   ? "Say something about this..."
                   : isLostFound
-                  ? "Describe the item..."
-                  : "What's on your mind?"
+                    ? "Describe the item..."
+                    : "What's on your mind?"
               }
               placeholderTextColor={theme.secondaryText}
               style={[styles.contentInput, { color: theme.text }]}

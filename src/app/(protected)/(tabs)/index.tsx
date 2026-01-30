@@ -188,14 +188,29 @@ export default function FeedScreen() {
       new Map(allPosts.map((post) => [post.post_id, post])).values()
     );
 
-    // Filter blocked users
+    // Filter blocked users (but keep anonymous posts visible)
     let filteredPosts = uniquePosts;
     if (blocks.length > 0) {
       filteredPosts = uniquePosts.filter((post) => {
+        // If post is anonymous, always show it (even if author is blocked)
+        if (post.is_anonymous) {
+          // For reposts, check if original post is anonymous
+          if (post.original_is_anonymous) {
+            return true; // Show anonymous reposts
+          }
+          // Original post is anonymous, show it
+          return true;
+        }
+
+        // For non-anonymous posts, check if author is blocked
         const isPostAuthorBlocked = blocks.includes(post.user_id);
-        const isRepostAuthorBlocked = post.original_user_id
+
+        // For reposts, check if original author is blocked (but keep if original is anonymous)
+        const isRepostAuthorBlocked = post.original_user_id && !post.original_is_anonymous
           ? blocks.includes(post.original_user_id)
           : false;
+
+        // Show post if neither author is blocked (or if original is anonymous)
         return !isPostAuthorBlocked && !isRepostAuthorBlocked;
       });
     }
@@ -270,7 +285,8 @@ export default function FeedScreen() {
         debounceRef.current = undefined;
       }
 
-      // Unsubscribe from channel
+      // Unsubscribe and remove channel properly
+      channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
@@ -302,6 +318,7 @@ export default function FeedScreen() {
         repostedFromPostId={item.reposted_from_post_id}
         repostComment={item.repost_comment}
         originalContent={item.original_content}
+        originalUserId={item.original_user_id}
         originalAuthorUsername={item.original_author_username}
         originalAuthorAvatar={item.original_author_avatar}
         originalIsAnonymous={item.original_is_anonymous}

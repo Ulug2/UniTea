@@ -1,12 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Image,
   Pressable,
   Text,
   View,
   StyleSheet,
-  Share,
-  Platform,
+  // Share,
+  // Platform,
   Alert,
 } from "react-native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
@@ -18,6 +18,8 @@ import nuLogo from "../../assets/images/nu-logo.png";
 import { useTheme } from "../context/ThemeContext";
 import { useVote } from "../hooks/useVote";
 import SupabaseImage from "./SupabaseImage";
+import UserProfileModal from "./UserProfileModal";
+import { useAuth } from "../context/AuthContext";
 
 type PostListItemProps = {
   // Post data from view
@@ -50,6 +52,7 @@ type PostListItemProps = {
   repostedFromPostId?: string | null;
   repostComment?: string | null;
   originalContent?: string | null;
+  originalUserId?: string | null;
   originalAuthorUsername?: string | null;
   originalAuthorAvatar?: string | null;
   originalIsAnonymous?: boolean | null;
@@ -115,6 +118,7 @@ const PostListItem = React.memo(function PostListItem({
   repostedFromPostId,
   repostComment,
   originalContent,
+  originalUserId,
   originalAuthorUsername,
   originalAuthorAvatar,
   originalIsAnonymous,
@@ -124,9 +128,24 @@ const PostListItem = React.memo(function PostListItem({
   onBookmarkPress,
 }: PostListItemProps) {
   const { theme } = useTheme();
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id;
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   // Check if this is a repost
   const isRepost = !!repostedFromPostId;
+
+  // Handle profile view - only for other users, not yourself
+  const handleProfilePress = (e: any, targetUserId: string, isAnon: boolean) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only show modal for other users (not current user) and non-anonymous users
+    if (!isAnon && targetUserId && targetUserId !== currentUserId) {
+      setSelectedUserId(targetUserId);
+      setProfileModalVisible(true);
+    }
+  };
 
   // Use voting hook for optimistic updates (still handles local state)
   const {
@@ -150,49 +169,34 @@ const PostListItem = React.memo(function PostListItem({
     router.push(`/create-post?repostId=${originalPostId}`);
   };
 
-  // Handle share button click
-  const handleShareClick = async (e: any) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    try {
-      // Create deep link URL
-      // Format: myunitea://post/{postId}
-      const deepLink = `myunitea://post/${postId}`;
-
-      // For web/fallback, use a regular URL (you can replace with your actual domain)
-      const webUrl = `https://unitea.app/post/${postId}`;
-
-      // Share message
-      const shareMessage = Platform.select({
-        ios: `Check out this post on UniTee!\n${deepLink}`,
-        android: `Check out this post on UniTee!\n${deepLink}\n\nOr open: ${webUrl}`,
-        default: `Check out this post on UniTee: ${webUrl}`,
-      });
-
-      const result = await Share.share({
-        message: shareMessage,
-        url: Platform.OS === "ios" ? deepLink : webUrl, // iOS uses url, Android uses message
-        title: "Share Post",
-      });
-
-      if (result.action === Share.sharedAction) {
-        if (result.activityType) {
-          // Shared with activity type of result.activityType
-          console.log("Shared via:", result.activityType);
-        } else {
-          // Shared
-          console.log("Post shared successfully");
-        }
-      } else if (result.action === Share.dismissedAction) {
-        // Dismissed
-        console.log("Share dismissed");
-      }
-    } catch (error: any) {
-      console.error("Error sharing post:", error);
-      Alert.alert("Error", "Failed to share post. Please try again.");
-    }
-  };
+  // Share functionality commented out for now (does not work)
+  // const handleShareClick = async (e: any) => {
+  //   e.preventDefault();
+  //   e.stopPropagation();
+  //   try {
+  //     const deepLink = `myunitea://post/${postId}`;
+  //     const webUrl = `https://unitea.app/post/${postId}`;
+  //     if (Platform.OS === "ios") {
+  //       const result = await Share.share({
+  //         message: "Check out this post on UniTee!",
+  //         url: deepLink,
+  //         title: "Share Post",
+  //       });
+  //       if (result.action === Share.sharedAction) {
+  //         if (result.activityType) console.log("Shared via:", result.activityType);
+  //         else console.log("Post shared successfully");
+  //       } else if (result.action === Share.dismissedAction) console.log("Share dismissed");
+  //     } else {
+  //       const shareMessage = `Check out this post on UniTee!\n\n${deepLink}\n\nOr open: ${webUrl}`;
+  //       const result = await Share.share({ message: shareMessage, title: "Share Post" });
+  //       if (result.action === Share.sharedAction) console.log("Post shared successfully");
+  //       else if (result.action === Share.dismissedAction) console.log("Share dismissed");
+  //     }
+  //   } catch (error: any) {
+  //     console.error("Error sharing post:", error);
+  //     Alert.alert("Error", "Failed to share post. Please try again.");
+  //   }
+  // };
 
   const styles = StyleSheet.create({
     link: {
@@ -342,7 +346,21 @@ const PostListItem = React.memo(function PostListItem({
 
           {/* HEADER */}
           <View style={styles.header}>
-            <View style={styles.userInfo}>
+            <Pressable
+              style={styles.userInfo}
+              onPress={(e) => {
+                if (isRepost && originalUserId && !originalIsAnonymous) {
+                  handleProfilePress(e, originalUserId, false);
+                } else if (!isAnonymous && userId) {
+                  handleProfilePress(e, userId, false);
+                }
+              }}
+              disabled={
+                isRepost
+                  ? originalIsAnonymous || !originalUserId || originalUserId === currentUserId
+                  : isAnonymous || !userId || userId === currentUserId
+              }
+            >
               {isRepost ? (
                 // Show original author for reposts
                 originalIsAnonymous ? (
@@ -388,7 +406,7 @@ const PostListItem = React.memo(function PostListItem({
                     ? "Anonymous"
                     : username}
               </Text>
-            </View>
+            </Pressable>
             <Text style={styles.time}>
               <AntDesign
                 name="clock-circle"
@@ -539,7 +557,8 @@ const PostListItem = React.memo(function PostListItem({
                 </Pressable>
               )}
             </View>
-            <View style={styles.footerRight}>
+            {/* Share button commented out for now (does not work) */}
+            {/* <View style={styles.footerRight}>
               <Pressable
                 onPress={(e) => {
                   e.preventDefault();
@@ -554,10 +573,22 @@ const PostListItem = React.memo(function PostListItem({
                   color={theme.text}
                 />
               </Pressable>
-            </View>
+            </View> */}
           </View>
         </Pressable>
       </Link>
+
+      {/* User Profile Modal */}
+      {selectedUserId && (
+        <UserProfileModal
+          visible={profileModalVisible}
+          onClose={() => {
+            setProfileModalVisible(false);
+            setSelectedUserId(null);
+          }}
+          userId={selectedUserId}
+        />
+      )}
     </>
   );
 }, arePropsEqual);

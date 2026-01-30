@@ -12,6 +12,13 @@ import { useEffect } from "react";
 import * as Linking from "expo-linking";
 import { supabase } from "../lib/supabase";
 import * as SplashScreen from "expo-splash-screen";
+import { hideSplashSafe } from "../utils/splash";
+import { initSentry } from "../utils/sentry";
+import { logger } from "../utils/logger";
+import ErrorBoundary from "../components/ErrorBoundary";
+
+// Initialize Sentry before anything else
+initSentry();
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -69,7 +76,7 @@ async function prefetchInitialData(userId: string, queryClient: any) {
       queryClient.setQueryData(["profile", userId], profileData);
     }
   } catch (error) {
-    console.error("[Prefetch] Error prefetching initial data:", error);
+    logger.error("[Prefetch] Error prefetching initial data", error as Error);
     // Don't throw - prefetch failures shouldn't block app startup
   }
 }
@@ -90,11 +97,16 @@ function RootLayoutContent() {
       (async () => {
         await prefetchInitialData(session.user.id, queryClient);
         // Hide splash screen after prefetch completes
-        await SplashScreen.hideAsync();
+        await hideSplashSafe();
       })();
     } else if (fontsLoaded && !authLoading && !session) {
       // No user session - hide splash screen immediately
-      SplashScreen.hideAsync();
+      // Wrap in IIFE to ensure promise is handled even if called without await
+      (async () => {
+        await hideSplashSafe();
+      })().catch(() => {
+        // Error already handled in hideSplashSafe, just prevent unhandled rejection
+      });
     }
   }, [fontsLoaded, authLoading, session, queryClient]);
 
@@ -108,12 +120,14 @@ function RootLayoutContent() {
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AuthProvider>
-          <RootLayoutContent />
-        </AuthProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AuthProvider>
+            <RootLayoutContent />
+          </AuthProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

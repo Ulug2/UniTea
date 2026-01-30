@@ -7,6 +7,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
+import UserProfileModal from "./UserProfileModal";
 
 type LostFoundListItemProps = {
   postId: string;
@@ -55,6 +56,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
 
   // Prevent duplicate chat creation requests
   const chatCreationInProgress = useRef(false);
@@ -310,7 +312,15 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
     <Pressable style={styles.card}>
       {/* HEADER */}
       <View style={styles.header}>
-        <View style={styles.userInfo}>
+        <Pressable
+          style={styles.userInfo}
+          onPress={() => {
+            if (!isAnonymous && userId && userId !== currentUserId) {
+              setProfileModalVisible(true);
+            }
+          }}
+          disabled={isAnonymous || !userId || userId === currentUserId}
+        >
           {avatarUrl ? (
             avatarUrl.startsWith("http") ? (
               <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
@@ -329,7 +339,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
           <Text style={styles.username}>
             {isAnonymous ? "Anonymous" : username || "Unknown"}
           </Text>
-        </View>
+        </Pressable>
         <Text style={styles.time}>
           {createdAt
             ? `${formatDistanceToNowStrict(new Date(createdAt))} ago`
@@ -402,6 +412,15 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
             {isCreatingChat ? "Loading..." : "Chat"}
           </Text>
         </Pressable>
+      )}
+
+      {/* User Profile Modal */}
+      {!isAnonymous && userId && userId !== currentUserId && (
+        <UserProfileModal
+          visible={profileModalVisible}
+          onClose={() => setProfileModalVisible(false)}
+          userId={userId}
+        />
       )}
     </Pressable>
   );

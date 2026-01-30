@@ -36,8 +36,37 @@ function useGlobalUnreadCount() {
   const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const updateDebounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
+  // Fetch blocked users
+  const { data: blocks = [] } = useQuery({
+    queryKey: ["blocks", currentUserId],
+    enabled: Boolean(currentUserId),
+    queryFn: async () => {
+      if (!currentUserId) return [];
+
+      // Get users blocked by me and users who blocked me
+      const [blockedByMe, blockedMe] = await Promise.all([
+        supabase
+          .from("blocks")
+          .select("blocked_id")
+          .eq("blocker_id", currentUserId),
+        supabase
+          .from("blocks")
+          .select("blocker_id")
+          .eq("blocked_id", currentUserId),
+      ]);
+
+      const blockedUserIds = new Set<string>();
+      blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
+      blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
+
+      return Array.from(blockedUserIds);
+    },
+    staleTime: 1000 * 60 * 5, // Blocks stay fresh for 5 minutes
+    gcTime: 1000 * 60 * 30,
+  });
+
   const { data: unreadCount = 0 } = useQuery<number>({
-    queryKey: ["global-unread-count", currentUserId],
+    queryKey: ["global-unread-count", currentUserId, blocks],
     queryFn: async () => {
       if (!currentUserId) return 0;
 
@@ -55,7 +84,18 @@ function useGlobalUnreadCount() {
       if (!data) return 0;
 
       // Sum up unread counts based on which participant is current user
+      // Exclude chats with blocked users
       const total = data.reduce((sum: number, chat: any) => {
+        const otherUserId =
+          chat.participant_1_id === currentUserId
+            ? chat.participant_2_id
+            : chat.participant_1_id;
+
+        // Skip chats with blocked users
+        if (blocks.includes(otherUserId)) {
+          return sum;
+        }
+
         const isP1 = chat.participant_1_id === currentUserId;
         const unread = isP1
           ? chat.unread_count_p1 || 0
@@ -99,6 +139,7 @@ function useGlobalUnreadCount() {
           debounceRef.current = setTimeout(() => {
             queryClient.invalidateQueries({
               queryKey: ["global-unread-count", currentUserId],
+              exact: false, // Match all variants (with or without blocks)
             });
           }, 500);
         }
@@ -111,15 +152,12 @@ function useGlobalUnreadCount() {
           table: "chat_messages",
         },
         () => {
-          // Debounce message updates (read status changes) - 1 second
-          if (updateDebounceRef.current) {
-            clearTimeout(updateDebounceRef.current);
-          }
-          updateDebounceRef.current = setTimeout(() => {
-            queryClient.invalidateQueries({
-              queryKey: ["global-unread-count", currentUserId],
-            });
-          }, 1000);
+          // Message read status changed - update immediately (no debounce for read status)
+          // This ensures badge updates instantly when messages are marked as read
+          queryClient.invalidateQueries({
+            queryKey: ["global-unread-count", currentUserId],
+            exact: false, // Match all variants (with or without blocks)
+          });
         }
       )
       .subscribe();
@@ -132,6 +170,8 @@ function useGlobalUnreadCount() {
       if (updateDebounceRef.current) {
         clearTimeout(updateDebounceRef.current);
       }
+      // Unsubscribe and remove channel properly
+      channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [currentUserId, queryClient]);

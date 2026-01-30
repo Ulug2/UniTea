@@ -24,6 +24,7 @@ import { supabase } from "../lib/supabase";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import ReportModal from "./ReportModal";
 import BlockUserModal from "./BlockUserModal";
+import UserProfileModal from "./UserProfileModal";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Comment = Database["public"]["Tables"]["comments"]["Row"];
@@ -64,6 +65,8 @@ const CommentListItem = ({
   const [showReportModal, setShowReportModal] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [showAllReplies, setShowAllReplies] = useState(false);
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   // Enable layout animation for Android
   if (
@@ -233,32 +236,53 @@ const CommentListItem = ({
     >
       {/* User Info */}
       <View style={styles.userRow}>
-        <View style={styles.userInfo}>
-          {comment.is_anonymous ? (
-            <Image source={nuLogo} style={styles.avatar} />
-          ) : comment.user?.avatar_url ? (
-            comment.user.avatar_url.startsWith("http") ? (
-              <Image
-                source={{ uri: comment.user.avatar_url }}
-                style={styles.avatar}
-              />
+        <View style={styles.userInfoRow}>
+          <Pressable
+            style={styles.userInfo}
+            onPress={() => {
+              // Only show modal for other users (not current user) and non-anonymous users
+              if (!comment.is_anonymous && comment.user_id && comment.user_id !== currentUserId) {
+                setSelectedUserId(comment.user_id);
+                setProfileModalVisible(true);
+              }
+            }}
+            disabled={comment.is_anonymous || !comment.user_id || comment.user_id === currentUserId}
+          >
+            {comment.is_anonymous ? (
+              <Image source={nuLogo} style={styles.avatar} />
+            ) : comment.user?.avatar_url ? (
+              comment.user.avatar_url.startsWith("http") ? (
+                <Image
+                  source={{ uri: comment.user.avatar_url }}
+                  style={styles.avatar}
+                />
+              ) : (
+                <SupabaseImage
+                  path={comment.user.avatar_url}
+                  bucket="avatars"
+                  style={styles.avatar}
+                />
+              )
             ) : (
-              <SupabaseImage
-                path={comment.user.avatar_url}
-                bucket="avatars"
-                style={styles.avatar}
-              />
-            )
-          ) : (
-            <Image source={nuLogo} style={styles.avatar} />
-          )}
-          <Text style={[styles.username, { color: theme.text }]}>
-            {comment.is_anonymous
-              ? "Anonymous"
-              : comment.user?.username || "Unknown"}
-          </Text>
+              <Image source={nuLogo} style={styles.avatar} />
+            )}
+            <Text style={[styles.username, { color: theme.text }]}>
+              {comment.is_anonymous
+                ? "Anonymous"
+                : comment.user?.username || "Unknown"}
+            </Text>
+          </Pressable>
           {parentUser && (
-            <>
+            <Pressable
+              onPress={() => {
+                if (parentUser.id && parentUser.id !== currentUserId) {
+                  setSelectedUserId(parentUser.id);
+                  setProfileModalVisible(true);
+                }
+              }}
+              disabled={!parentUser.id || parentUser.id === currentUserId}
+              style={{ flexDirection: "row", alignItems: "center" }}
+            >
               <MaterialCommunityIcons
                 name="play"
                 size={12}
@@ -270,7 +294,7 @@ const CommentListItem = ({
               >
                 {parentUser.username}
               </Text>
-            </>
+            </Pressable>
           )}
           <Text style={[styles.dot, { color: theme.secondaryText }]}>•</Text>
           <Text style={[styles.time, { color: theme.secondaryText }]}>
@@ -466,6 +490,18 @@ const CommentListItem = ({
           )}
         </>
       )}
+
+      {/* User Profile Modal */}
+      {selectedUserId && (
+        <UserProfileModal
+          visible={profileModalVisible}
+          onClose={() => {
+            setProfileModalVisible(false);
+            setSelectedUserId(null);
+          }}
+          userId={selectedUserId}
+        />
+      )}
     </View>
   );
 };
@@ -481,6 +517,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  userInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flex: 1,
   },
   userInfo: {
     flexDirection: "row",
@@ -615,7 +657,7 @@ const areCommentPropsEqual = (
   if (prevProps.comment.score !== nextProps.comment.score) return false;
   if (prevProps.comment.replies?.length !== nextProps.comment.replies?.length) return false;
   if (prevProps.parentUser?.id !== nextProps.parentUser?.id) return false;
-  
+
   return true;
 };
 

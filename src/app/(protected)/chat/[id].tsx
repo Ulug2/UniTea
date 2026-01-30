@@ -14,6 +14,8 @@ import {
   Image,
   Keyboard,
   ActionSheetIOS,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../../context/ThemeContext";
@@ -30,10 +32,23 @@ import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
 import ChatDetailSkeleton from "../../../components/ChatDetailSkeleton";
 import SupabaseImage from "../../../components/SupabaseImage";
+import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
+import { uploadImage } from "../../../utils/supabaseImages";
+import { logger } from "../../../utils/logger";
+import UserProfileModal from "../../../components/UserProfileModal";
 
 type Chat = Database['public']['Tables']['chats']['Row'];
-type ChatMessage = Database['public']['Tables']['chat_messages']['Row'];
+type ChatMessage = Database['public']['Tables']['chat_messages']['Row'] & {
+  image_url?: string | null;
+};
 type Profile = Database['public']['Tables']['profiles']['Row'];
+
+// Type for React Query infinite query pages
+type MessagesQueryData = {
+  pages: ChatMessage[][];
+  pageParams: number[];
+};
 
 const MESSAGES_PER_PAGE = 20;
 
@@ -54,12 +69,25 @@ export default function ChatDetailScreen() {
   const insets = useSafeAreaInsets();
   const [message, setMessage] = useState("");
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [fullScreenImagePath, setFullScreenImagePath] = useState<string | null>(null);
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const queryClient = useQueryClient();
 
   // Track pending message IDs to prevent duplicate processing from real-time
   const pendingMessageIds = useRef<Set<string>>(new Set());
+  // Track local image URIs for optimistic messages (tempId -> localUri)
+  const optimisticImageUris = useRef<Map<string, string>>(new Map());
+
+  // Cleanup optimistic image URIs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      optimisticImageUris.current.clear();
+      pendingMessageIds.current.clear();
+    };
+  }, []);
 
   // Track keyboard visibility - use "Will" events on iOS for instant effect
   useEffect(() => {
@@ -107,6 +135,35 @@ export default function ChatDetailScreen() {
       : chat?.participant_1_id;
 
   const isAnonymous = otherUserId?.startsWith("anonymous-");
+
+  // Fetch blocked users
+  const { data: blocks = [] } = useQuery({
+    queryKey: ["blocks", currentUserId],
+    enabled: Boolean(currentUserId),
+    queryFn: async () => {
+      if (!currentUserId) return [];
+
+      // Get users blocked by me and users who blocked me
+      const [blockedByMe, blockedMe] = await Promise.all([
+        supabase
+          .from("blocks")
+          .select("blocked_id")
+          .eq("blocker_id", currentUserId),
+        supabase
+          .from("blocks")
+          .select("blocker_id")
+          .eq("blocked_id", currentUserId),
+      ]);
+
+      const blockedUserIds = new Set<string>();
+      blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
+      blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
+
+      return Array.from(blockedUserIds);
+    },
+    staleTime: 1000 * 60 * 5, // Blocks stay fresh for 5 minutes
+    gcTime: 1000 * 60 * 30,
+  });
 
   // Fetch other user profile
   const { data: otherUser, isLoading: isLoadingUser } =
@@ -182,11 +239,18 @@ export default function ChatDetailScreen() {
     retry: 2,
   });
 
-  // Flatten messages (keep newest first for inverted list)
+  // Flatten messages and filter out blocked users' messages
   const messages = useMemo(() => {
     if (!messagesData) return [];
-    return messagesData.pages.flat();
-  }, [messagesData]);
+    const allMessages = messagesData.pages.flat();
+
+    // Filter out messages from blocked users
+    if (blocks.length > 0) {
+      return allMessages.filter((msg) => !blocks.includes(msg.user_id));
+    }
+
+    return allMessages;
+  }, [messagesData, blocks]);
 
   type DeleteAction = "delete_for_me" | "delete_for_everyone";
 
@@ -291,6 +355,8 @@ export default function ChatDetailScreen() {
   useEffect(() => {
     if (!id || !currentUserId) return;
 
+    let isMounted = true;
+
     const channel = supabase
       .channel(`chat-${id}`)
       .on(
@@ -323,8 +389,14 @@ export default function ChatDetailScreen() {
           }, 5000);
 
           // New message received - add to cache immediately
-          queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
-            if (!oldData) return oldData;
+          const updateSuccess = queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
+            if (!oldData) {
+              // If no old data, create new structure
+              return {
+                pages: [[newMessage]],
+                pageParams: [0],
+              };
+            }
 
             // Double-check for duplicates in cache
             const existingMessage = oldData.pages.flat().find((m: ChatMessage) => m.id === newMessage.id);
@@ -346,13 +418,42 @@ export default function ChatDetailScreen() {
             };
           });
 
+          // If cache update failed or returned undefined, force refetch
+          if (!updateSuccess && isMounted) {
+            // Fallback: invalidate to force refetch (with minimal delay to batch rapid messages)
+            setTimeout(() => {
+              if (isMounted) {
+                queryClient.invalidateQueries({
+                  queryKey: ["chat-messages", id],
+                  refetchType: "active", // Only refetch if screen is active
+                });
+              }
+            }, 300); // Reduced debounce from 1000ms to 300ms for faster updates
+          }
+
           // Invalidate global unread count to update badge (debounced in _layout.tsx)
           queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        // Verify subscription is active
+        if (status === "SUBSCRIBED" && isMounted) {
+          console.log(`[Chat ${id}] Real-time subscription active`);
+        } else if (status === "CHANNEL_ERROR" && isMounted) {
+          console.error(`[Chat ${id}] Real-time subscription error, attempting reconnect...`);
+          // Channel will auto-retry, but we can also manually invalidate as fallback
+          setTimeout(() => {
+            if (isMounted) {
+              queryClient.invalidateQueries({ queryKey: ["chat-messages", id] });
+            }
+          }, 1000);
+        }
+      });
 
     return () => {
+      isMounted = false;
+      // Unsubscribe and remove channel properly
+      channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [id, currentUserId, queryClient]);
@@ -387,17 +488,21 @@ export default function ChatDetailScreen() {
         });
       });
 
-      // 2. Optimistically update global unread count
-      queryClient.setQueryData<number>(["global-unread-count", currentUserId], (oldCount: number | undefined) => {
-        if (oldCount === undefined) return oldCount;
+      // 2. Optimistically update global unread count (immediate, no delay)
+      // Note: Query key may include blocks, so we invalidate all variants to ensure update
+      queryClient.setQueriesData<number>(
+        { queryKey: ["global-unread-count", currentUserId], exact: false },
+        (oldCount: number | undefined) => {
+          if (oldCount === undefined) return oldCount;
 
-        // Count unread messages in this chat before marking as read
-        const unreadInThisChat = messages.filter(
-          (msg) => !msg.is_read && msg.user_id !== currentUserId
-        ).length;
+          // Count unread messages in this chat before marking as read
+          const unreadInThisChat = messages.filter(
+            (msg) => !msg.is_read && msg.user_id !== currentUserId
+          ).length;
 
-        return Math.max(0, oldCount - unreadInThisChat);
-      });
+          return Math.max(0, oldCount - unreadInThisChat);
+        }
+      );
 
       // 3. Optimistically update messages cache
       queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
@@ -439,8 +544,10 @@ export default function ChatDetailScreen() {
         queryKey: ["chat-summaries", currentUserId],
         refetchType: "none", // Don't refetch now, wait for focus
       });
+      // Invalidate all variants of global-unread-count (including those with blocks dependency)
       queryClient.invalidateQueries({
         queryKey: ["global-unread-count", currentUserId],
+        exact: false, // Match all variants (with or without blocks)
         refetchType: "none",
       });
     };
@@ -500,23 +607,33 @@ export default function ChatDetailScreen() {
   };
 
   // Send message mutation - uses React Query for proper queuing
-  const sendMessageMutation = useMutation({
-    mutationFn: async (messageText: string) => {
+  const sendMessageMutation = useMutation<
+    { newMessage: ChatMessage; now: string },
+    Error,
+    { messageText: string; imageUrl?: string | null; localImageUri?: string | null },
+    { previousMessages: MessagesQueryData | undefined; previousSummaries: any[] | undefined; tempId: string; optimisticMessage: ChatMessage } | undefined
+  >({
+    mutationFn: async ({ messageText, imageUrl }) => {
       if (!id || !currentUserId) {
         throw new Error("Missing chat ID or user ID");
       }
 
       const now = new Date().toISOString();
 
-      // Insert message and update chat in a single transaction-like operation
+      // Only include image_url when present so text-only messages work if migration not run yet
+      const insertPayload: Database['public']['Tables']['chat_messages']['Insert'] = {
+        chat_id: id,
+        user_id: currentUserId,
+        content: messageText || "",
+        is_read: false,
+      };
+      if (imageUrl != null && imageUrl !== "") {
+        insertPayload.image_url = imageUrl;
+      }
+
       const { data: newMessage, error: messageError } = await supabase
         .from("chat_messages")
-        .insert({
-          chat_id: id,
-          user_id: currentUserId,
-          content: messageText,
-          is_read: false,
-        })
+        .insert(insertPayload)
         .select()
         .single();
 
@@ -537,8 +654,10 @@ export default function ChatDetailScreen() {
 
       return { newMessage, now };
     },
-    onMutate: async (messageText: string) => {
-      if (!id || !currentUserId) return;
+    onMutate: async ({ messageText, imageUrl, localImageUri }: { messageText: string; imageUrl?: string | null; localImageUri?: string | null }) => {
+      if (!id || !currentUserId) {
+        throw new Error("Missing chat ID or user ID");
+      }
 
       // DON'T await - cancel queries in background, don't block UI
       queryClient.cancelQueries({ queryKey: ["chat-messages", id] });
@@ -547,11 +666,17 @@ export default function ChatDetailScreen() {
       const tempId = `temp-${Date.now()}-${Math.random()}`;
       const now = new Date().toISOString();
 
+      // Store local image URI for optimistic display if available
+      if (localImageUri && imageUrl) {
+        optimisticImageUris.current.set(tempId, localImageUri);
+      }
+
       const optimisticMessage: ChatMessage = {
         id: tempId,
         chat_id: id,
         user_id: currentUserId,
-        content: messageText,
+        content: messageText || "",
+        image_url: imageUrl || null,
         created_at: now,
         is_read: false,
         deleted_by_receiver: null,
@@ -562,11 +687,11 @@ export default function ChatDetailScreen() {
       pendingMessageIds.current.add(tempId);
 
       // Snapshot previous values for rollback
-      const previousMessages = queryClient.getQueryData(["chat-messages", id]);
-      const previousSummaries = queryClient.getQueryData(["chat-summaries", currentUserId]);
+      const previousMessages = queryClient.getQueryData<MessagesQueryData>(["chat-messages", id]);
+      const previousSummaries = queryClient.getQueryData<any[]>(["chat-summaries", currentUserId]);
 
       // IMMEDIATE optimistic update - messages (no waiting)
-      queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
+      queryClient.setQueryData<MessagesQueryData>(["chat-messages", id], (oldData) => {
         if (!oldData) return oldData;
 
         const newPages = [...oldData.pages];
@@ -618,6 +743,8 @@ export default function ChatDetailScreen() {
 
       // Remove temp ID from pending
       pendingMessageIds.current.delete(tempId);
+      // Remove local image URI mapping (no longer needed)
+      optimisticImageUris.current.delete(tempId);
       // Add real ID to pending (so real-time doesn't duplicate)
       pendingMessageIds.current.add(newMessage.id);
 
@@ -627,10 +754,10 @@ export default function ChatDetailScreen() {
       }, 5000);
 
       // Replace optimistic message with real one (silent update, no invalidation needed)
-      queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
+      queryClient.setQueryData<MessagesQueryData>(["chat-messages", id], (oldData) => {
         if (!oldData) return oldData;
 
-        const newPages = oldData.pages.map((page: ChatMessage[]) =>
+        const newPages = oldData.pages.map((page) =>
           page.map((msg) => (msg.id === tempId ? newMessage : msg))
         );
 
@@ -642,7 +769,7 @@ export default function ChatDetailScreen() {
 
       // Don't invalidate - we already updated optimistically, no need to refetch
     },
-    onError: (error, messageText, context) => {
+    onError: (error: any, variables, context) => {
       console.error("Error sending message:", error);
 
       if (!context) return;
@@ -655,25 +782,82 @@ export default function ChatDetailScreen() {
         queryClient.setQueryData(["chat-summaries", currentUserId], context.previousSummaries);
       }
 
-      // Remove from pending
+      // Remove from pending and cleanup optimistic image
       if (context.tempId) {
         pendingMessageIds.current.delete(context.tempId);
+        optimisticImageUris.current.delete(context.tempId);
       }
 
-      Alert.alert("Error", "Failed to send message. Please try again.");
-      setMessage(messageText); // Restore message on error
+      const isPgrst204 = error?.code === "PGRST204" || String(error?.message || "").includes("Could not find");
+      const message = isPgrst204
+        ? "Chat images require a database update. Run sql/add_chat_message_image.sql in Supabase SQL Editor, then reload schema (NOTIFY pgrst, 'reload schema')."
+        : "Failed to send message. Please try again.";
+      Alert.alert("Error", message);
+      if (variables) {
+        setMessage(variables.messageText); // Restore message on error
+        if (variables.imageUrl) {
+          setSelectedImage(variables.imageUrl); // Restore image on error
+        }
+      }
     },
   });
 
-  const handleSend = useCallback(() => {
+  // Pick image from library
+  const pickImage = useCallback(async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images",
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        // Compress and resize image
+        const manipResult = await ImageManipulator.manipulateAsync(
+          result.assets[0].uri,
+          [{ resize: { width: 1080 } }],
+          {
+            compress: 0.7,
+            format: ImageManipulator.SaveFormat.WEBP,
+          }
+        );
+        setSelectedImage(manipResult.uri);
+      }
+    } catch (error) {
+      logger.error("Error picking image", error as Error);
+      Alert.alert("Error", "Failed to pick image. Please try again.");
+    }
+  }, []);
+
+  const handleSend = useCallback(async () => {
     const messageText = message.trim();
-    if (!messageText || !id || !currentUserId) {
+    if (!id || !currentUserId) {
       return;
     }
 
-    setMessage(""); // Clear input IMMEDIATELY - don't wait for anything
-    sendMessageMutation.mutate(messageText); // Fire and forget - UI already updated
-  }, [message, id, currentUserId, sendMessageMutation]);
+    // Require either text or image
+    if (!messageText && !selectedImage) {
+      return;
+    }
+
+    let imageUrl: string | null = null;
+    const localImageUri = selectedImage; // Store local URI before upload
+
+    // Upload image if selected
+    if (selectedImage) {
+      try {
+        imageUrl = await uploadImage(selectedImage, supabase, "chat-images");
+        setSelectedImage(null); // Clear selected image
+      } catch (error) {
+        logger.error("Error uploading image", error as Error);
+        Alert.alert("Error", "Failed to upload image. Please try again.");
+        return;
+      }
+    }
+
+    setMessage(""); // Clear input IMMEDIATELY
+    sendMessageMutation.mutate({ messageText, imageUrl, localImageUri }); // Fire and forget
+  }, [message, selectedImage, id, currentUserId, sendMessageMutation]);
 
   // Block user mutation
   const blockUserMutation = useMutation({
@@ -703,6 +887,8 @@ export default function ChatDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       queryClient.invalidateQueries({ queryKey: ["comments"] });
       queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+      queryClient.invalidateQueries({ queryKey: ["chat-messages", id] }); // Refresh messages to filter blocked user
+      queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] }); // Update unread count
 
       console.log("Success", "User has been blocked");
       router.back();
@@ -1099,26 +1285,63 @@ export default function ChatDetailScreen() {
                     ? "#5DBEBC"
                     : theme.card,
                 borderRadius: 20,
+                paddingHorizontal: item.image_url && !isDeletedForEveryone ? 0 : 16,
+                paddingVertical: item.image_url && !isDeletedForEveryone ? 0 : 12,
               },
             ]}
           >
-            <Text
-              style={[
-                styles.messageText,
-                {
-                  color: isDeletedForEveryone
-                    ? theme.secondaryText
-                    : isCurrentUser
-                      ? "#FFFFFF"
-                      : theme.text,
-                  fontStyle: isDeletedForEveryone ? "italic" : "normal",
-                },
-              ]}
-            >
-              {isDeletedForEveryone
-                ? "This message was deleted"
-                : item.content}
-            </Text>
+            {/* Show image if present - rounded top only when text below; tappable for full-screen */}
+            {item.image_url && !isDeletedForEveryone && (
+              <Pressable
+                style={[
+                  styles.messageImageContainer,
+                  item.content ? styles.messageImageContainerWithText : undefined,
+                ]}
+                onPress={() => setFullScreenImagePath(item.image_url!)}
+              >
+                {/* Use local image URI for optimistic messages, SupabaseImage for real messages */}
+                {item.id.startsWith("temp-") && optimisticImageUris.current.has(item.id) ? (
+                  <Image
+                    source={{ uri: optimisticImageUris.current.get(item.id)! }}
+                    style={styles.messageImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <SupabaseImage
+                    path={item.image_url}
+                    bucket="chat-images"
+                    style={styles.messageImage}
+                  />
+                )}
+              </Pressable>
+            )}
+            {/* Show text content if present - bottom area, start-aligned, vertically centered */}
+            {item.content && (
+              <View
+                style={[
+                  styles.messageTextWrap,
+                  item.image_url && !isDeletedForEveryone && styles.messageTextWrapWithImage,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.messageText,
+                    {
+                      color: isDeletedForEveryone
+                        ? theme.secondaryText
+                        : isCurrentUser
+                          ? "#FFFFFF"
+                          : theme.text,
+                      fontStyle: isDeletedForEveryone ? "italic" : "normal",
+                    },
+                  ]}
+                >
+                  {isDeletedForEveryone
+                    ? "This message was deleted"
+                    : item.content}
+                </Text>
+              </View>
+            )}
           </View>
           <Text
             style={[
@@ -1239,6 +1462,32 @@ export default function ChatDetailScreen() {
       justifyContent: "center",
       alignItems: "center",
     },
+    imagePickerButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    imagePreviewContainer: {
+      position: "relative",
+      marginHorizontal: 16,
+      marginBottom: 8,
+      alignSelf: "flex-start",
+    },
+    imagePreview: {
+      width: 200,
+      height: 200,
+      borderRadius: 12,
+      resizeMode: "cover",
+    },
+    removeImageButton: {
+      position: "absolute",
+      top: -8,
+      right: -8,
+      backgroundColor: "rgba(0, 0, 0, 0.6)",
+      borderRadius: 12,
+    },
   });
 
   return (
@@ -1252,26 +1501,36 @@ export default function ChatDetailScreen() {
           <Ionicons name="arrow-back" size={24} color={theme.text} />
         </Pressable>
 
-        {!isAnonymous && otherUser?.avatar_url ? (
-          otherUser.avatar_url.startsWith("http") ? (
-            <Image
-              source={{ uri: otherUser.avatar_url }}
-              style={dynamicStyles.avatarImage}
-            />
+        <Pressable
+          style={{ flexDirection: "row", alignItems: "center", flex: 1 }}
+          onPress={() => {
+            if (!isAnonymous && otherUserId && otherUserId !== currentUserId) {
+              setProfileModalVisible(true);
+            }
+          }}
+          disabled={isAnonymous || !otherUserId || otherUserId === currentUserId}
+        >
+          {!isAnonymous && otherUser?.avatar_url ? (
+            otherUser.avatar_url.startsWith("http") ? (
+              <Image
+                source={{ uri: otherUser.avatar_url }}
+                style={dynamicStyles.avatarImage}
+              />
+            ) : (
+              <SupabaseImage
+                path={otherUser.avatar_url}
+                bucket="avatars"
+                style={dynamicStyles.avatarImage}
+              />
+            )
           ) : (
-            <SupabaseImage
-              path={otherUser.avatar_url}
-              bucket="avatars"
-              style={dynamicStyles.avatarImage}
-            />
-          )
-        ) : (
-          <View style={dynamicStyles.avatar}>
-            <Text style={dynamicStyles.avatarText}>{otherUserInitial}</Text>
-          </View>
-        )}
+            <View style={dynamicStyles.avatar}>
+              <Text style={dynamicStyles.avatarText}>{otherUserInitial}</Text>
+            </View>
+          )}
 
-        <Text style={dynamicStyles.userName}>{otherUserName}</Text>
+          <Text style={dynamicStyles.userName}>{otherUserName}</Text>
+        </Pressable>
 
         {!isAnonymous && otherUserId && (
           <Pressable style={dynamicStyles.menuButton} onPress={handleHeaderMenu}>
@@ -1307,11 +1566,30 @@ export default function ChatDetailScreen() {
           }
         />
 
+        {/* SELECTED IMAGE PREVIEW */}
+        {selectedImage && (
+          <View style={dynamicStyles.imagePreviewContainer}>
+            <Image source={{ uri: selectedImage }} style={dynamicStyles.imagePreview} />
+            <Pressable
+              style={dynamicStyles.removeImageButton}
+              onPress={() => setSelectedImage(null)}
+            >
+              <Ionicons name="close-circle" size={24} color="#FFFFFF" />
+            </Pressable>
+          </View>
+        )}
+
         {/* INPUT */}
         <View style={[
           dynamicStyles.inputContainer,
           { paddingBottom: isKeyboardVisible ? 15 : insets.bottom }
         ]}>
+          <Pressable
+            onPress={pickImage}
+            style={dynamicStyles.imagePickerButton}
+          >
+            <Ionicons name="image-outline" size={24} color={theme.text} />
+          </Pressable>
           <TextInput
             placeholder="Type a message..."
             placeholderTextColor={theme.secondaryText}
@@ -1325,17 +1603,74 @@ export default function ChatDetailScreen() {
             onPress={handleSend}
             style={[
               dynamicStyles.sendButton,
-              { opacity: !message.trim() ? 0.5 : 1 },
+              { opacity: (!message.trim() && !selectedImage) ? 0.5 : 1 },
             ]}
-            disabled={!message.trim()}
+            disabled={!message.trim() && !selectedImage}
           >
             <Ionicons name="send" size={20} color="#FFFFFF" />
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      {/* User Profile Modal */}
+      {!isAnonymous && otherUserId && otherUserId !== currentUserId && (
+        <UserProfileModal
+          visible={profileModalVisible}
+          onClose={() => setProfileModalVisible(false)}
+          userId={otherUserId}
+        />
+      )}
+
+      {/* Full-screen image modal - tap image in chat to open */}
+      <Modal
+        visible={Boolean(fullScreenImagePath)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFullScreenImagePath(null)}
+      >
+        <Pressable
+          style={fullScreenImageStyles.overlay}
+          onPress={() => setFullScreenImagePath(null)}
+        >
+          {fullScreenImagePath && (
+            <Pressable
+              style={fullScreenImageStyles.imageWrap}
+              onPress={() => setFullScreenImagePath(null)}
+            >
+              <Image
+                source={{
+                  uri: supabase.storage.from("chat-images").getPublicUrl(fullScreenImagePath).data.publicUrl,
+                }}
+                style={fullScreenImageStyles.fullScreenImage}
+                resizeMode="contain"
+              />
+            </Pressable>
+          )}
+        </Pressable>
+      </Modal>
     </View>
   );
 }
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const fullScreenImageStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.92)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageWrap: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullScreenImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+  },
+});
 
 const styles = StyleSheet.create({
   dateDividerContainer: {
@@ -1366,11 +1701,33 @@ const styles = StyleSheet.create({
   messageBubble: {
     paddingHorizontal: 16,
     paddingVertical: 12,
+    overflow: "hidden",
+  },
+  messageTextWrap: {},
+  messageTextWrapWithImage: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    justifyContent: "center",
+    alignItems: "flex-start",
   },
   messageText: {
     fontSize: 15,
     fontFamily: "Poppins_400Regular",
     lineHeight: 20,
+  },
+  messageImageContainer: {
+    overflow: "hidden",
+    borderRadius: 20,
+    borderWidth: 0,
+    borderColor: "rgba(0, 0, 0, 0.1)",
+  },
+  messageImageContainerWithText: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  messageImage: {
+    width: 250,
+    height: 250,
   },
   messageTime: {
     fontSize: 12,

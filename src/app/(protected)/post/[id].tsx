@@ -34,6 +34,7 @@ import { Database, TablesInsert } from "../../../types/database.types";
 import { supabase } from "../../../lib/supabase";
 import nuLogo from "../../../../assets/images/nu-logo.png";
 import { ErrorBoundary } from "react-error-boundary";
+import { logger } from "../../../utils/logger";
 
 type Post = Database["public"]["Tables"]["posts"]["Row"];
 type Comment = Database["public"]["Tables"]["comments"]["Row"];
@@ -294,7 +295,7 @@ export default function PostDetailed() {
       // Use fetch directly to access response body even on 400 status codes
       const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
       const functionUrl = `${supabaseUrl}/functions/v1/create-comment`;
-      
+
       // Get auth token from session
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       if (!currentSession?.access_token) {
@@ -396,10 +397,8 @@ export default function PostDetailed() {
         );
       }
 
-      // Only log to console in development (not visible to users in production)
-      if (__DEV__) {
-        console.error("Error posting comment:", error);
-      }
+      // Log error to Sentry (logger handles dev vs prod automatically)
+      logger.error("Error posting comment", error as Error);
 
       // Show the actual error message from Edge Function (already user-friendly)
       // Edge Function returns: "Comment violates community guidelines"
@@ -426,10 +425,10 @@ export default function PostDetailed() {
           return old.map((comment) =>
             comment.id.startsWith("temp-")
               ? {
-                  ...comment,
-                  id: newComment.id,
-                  created_at: newComment.created_at,
-                }
+                ...comment,
+                id: newComment.id,
+                created_at: newComment.created_at,
+              }
               : comment
           );
         }
@@ -709,9 +708,11 @@ export default function PostDetailed() {
   }
 
   if (postError || userError || commentsError) {
-    console.log("post error:", postError);
-    console.log("user error: ", userError);
-    console.log("comments error: ", commentsError);
+    // Log errors to Sentry
+    if (postError) logger.error("Failed to load post", postError as Error, { postId });
+    if (userError) logger.error("Failed to load post user", userError as Error, { postId });
+    if (commentsError) logger.error("Failed to load comments", commentsError as Error, { postId });
+
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <Text style={[styles.errorText, { color: theme.text }]}>
@@ -879,6 +880,7 @@ export default function PostDetailed() {
                 repostedFromPostId={detailedPost.reposted_from_post_id}
                 repostComment={detailedPost.repost_comment}
                 originalContent={detailedPost.original_content}
+                originalUserId={detailedPost.original_user_id}
                 originalAuthorUsername={detailedPost.original_author_username}
                 originalAuthorAvatar={detailedPost.original_author_avatar}
                 originalIsAnonymous={detailedPost.original_is_anonymous}

@@ -103,7 +103,7 @@ export const uploadImage = async (
         // Fetch file with retry and timeout
         const uploadOperation = async () => {
             const fileRes = await fetch(localUri);
-            
+
             if (!fileRes.ok) {
                 throw new Error(`Failed to fetch file: ${fileRes.statusText}`);
             }
@@ -134,21 +134,38 @@ export const uploadImage = async (
         return await uploadWithTimeout(retryUpload(uploadOperation), UPLOAD_TIMEOUT_MS);
     } catch (error: any) {
         console.error('[uploadImage] Upload failed:', error);
-        
+
+        const msg = error?.message ?? '';
+        const isBucketNotFound = msg.includes('Bucket not found') || msg.includes('StorageApiError');
+        const isRlsViolation = msg.includes('row-level security') || msg.includes('violates row-level security');
+
         // Provide user-friendly error messages
-        if (error.message?.includes('timeout')) {
-            throw new Error('Upload timed out. Please check your connection and try again.');
-        } else if (error.message?.includes('too large')) {
-            throw error; // Already user-friendly
-        } else if (error.message?.includes('Invalid file type')) {
-            throw error; // Already user-friendly
-        } else if (error.statusCode === 413) {
-            throw new Error(`File too large. Maximum size is ${MAX_FILE_SIZE_MB}MB`);
-        } else if (error.statusCode === 429) {
-            throw new Error('Too many uploads. Please wait a moment and try again.');
-        } else {
-            throw new Error('Failed to upload image. Please try again.');
+        if (isBucketNotFound) {
+            throw new Error(
+                `Storage bucket "${bucket}" does not exist. Create it in Supabase Dashboard → Storage → New bucket. See sql/STORAGE_BUCKETS_SETUP.md.`
+            );
         }
+        if (isRlsViolation) {
+            throw new Error(
+                `Upload denied by storage policy. Add RLS policies for bucket "${bucket}". Run sql/storage_rls_policies.sql in Supabase SQL Editor.`
+            );
+        }
+        if (msg.includes('timeout')) {
+            throw new Error('Upload timed out. Please check your connection and try again.');
+        }
+        if (msg.includes('too large')) {
+            throw error; // Already user-friendly
+        }
+        if (msg.includes('Invalid file type')) {
+            throw error; // Already user-friendly
+        }
+        if (error.statusCode === 413) {
+            throw new Error(`File too large. Maximum size is ${MAX_FILE_SIZE_MB}MB`);
+        }
+        if (error.statusCode === 429) {
+            throw new Error('Too many uploads. Please wait a moment and try again.');
+        }
+        throw new Error('Failed to upload image. Please try again.');
     }
 };
 
@@ -186,17 +203,17 @@ export const downloadImage = async (
 
             const fr = new FileReader();
             fr.readAsDataURL(data);
-            
+
             fr.onload = () => {
                 resolve(fr.result as string);
             };
-            
+
             fr.onerror = () => {
                 reject(new Error("Failed to read file"));
             };
         } catch (error: any) {
             console.error('[downloadImage] Download failed:', error);
-            
+
             if (error.message?.includes('timeout')) {
                 reject(new Error('Download timed out. Please check your connection.'));
             } else {

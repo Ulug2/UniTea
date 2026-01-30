@@ -98,6 +98,11 @@ export default function ChatScreen() {
     if (!currentUserId) return [];
 
     return chatSummaries.filter((chat: ChatSummary) => {
+      // Hide chats with no messages - check both last_message_at and last_message_content
+      if (!chat.last_message_at || !chat.last_message_content || chat.last_message_content.trim() === "") {
+        return false;
+      }
+
       // Filter out chats with blocked users (both ways)
       const otherUserId =
         chat.participant_1_id === currentUserId
@@ -263,7 +268,8 @@ export default function ChatScreen() {
         updateDebounceRef.current = undefined;
       }
 
-      // Unsubscribe from channel
+      // Unsubscribe and remove channel properly
+      channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [currentUserId, queryClient]);

@@ -5,6 +5,7 @@ import { useTheme } from "../context/ThemeContext";
 import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
 import { formatDistanceToNowStrict } from "date-fns";
+import { useAuth } from "../context/AuthContext";
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -155,49 +156,51 @@ const ChatListItem = React.memo(function ChatListItem({
   });
 
   return (
-    <Pressable
-      style={styles.container}
-      onPress={() => router.push(`/chat/${chatId}`)}
-      android_ripple={{ color: theme.border }}
-    >
-      <View style={styles.avatarContainer}>
-        {!isAnonymous && otherUser?.avatar_url ? (
-          otherUser.avatar_url.startsWith("http") ? (
-            <Image
-              source={{ uri: otherUser.avatar_url }}
-              style={styles.avatarImage}
-            />
+    <>
+      <Pressable
+        style={styles.container}
+        onPress={() => router.push(`/chat/${chatId}`)}
+        android_ripple={{ color: theme.border }}
+      >
+        <View style={styles.avatarContainer}>
+          {!isAnonymous && otherUser?.avatar_url ? (
+            otherUser.avatar_url.startsWith("http") ? (
+              <Image
+                source={{ uri: otherUser.avatar_url }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <SupabaseImage
+                path={otherUser.avatar_url}
+                bucket="avatars"
+                style={styles.avatarImage}
+              />
+            )
           ) : (
-            <SupabaseImage
-              path={otherUser.avatar_url}
-              bucket="avatars"
-              style={styles.avatarImage}
-            />
-          )
-        ) : (
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{getInitial()}</Text>
-          </View>
-        )}
-        {unreadCount > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadText}>{unreadCount}</Text>
-          </View>
-        )}
-      </View>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{getInitial()}</Text>
+            </View>
+          )}
+          {unreadCount > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadText}>{unreadCount}</Text>
+            </View>
+          )}
+        </View>
 
-      <View style={styles.contentContainer}>
-        <View style={styles.header}>
-          <Text style={styles.username}>{getDisplayName()}</Text>
-          <Text style={styles.time}>
-            {lastMessageAt ? formatTime(lastMessageAt) : ""}
+        <View style={styles.contentContainer}>
+          <View style={styles.header}>
+            <Text style={styles.username}>{getDisplayName()}</Text>
+            <Text style={styles.time}>
+              {lastMessageAt ? formatTime(lastMessageAt) : ""}
+            </Text>
+          </View>
+          <Text style={styles.lastMessage} numberOfLines={1}>
+            {lastMessage || "No messages yet"}
           </Text>
         </View>
-        <Text style={styles.lastMessage} numberOfLines={1}>
-          {lastMessage || "No messages yet"}
-        </Text>
-      </View>
-    </Pressable>
+      </Pressable>
+    </>
   );
 }, arePropsEqual);
 

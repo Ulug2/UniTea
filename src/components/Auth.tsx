@@ -14,6 +14,8 @@ import { supabase } from "../lib/supabase";
 import CustomInput from "./CustomInput";
 import { useTheme } from "../context/ThemeContext";
 import * as SplashScreen from "expo-splash-screen";
+import { hideSplashSafe } from "../utils/splash";
+import { logger } from "../utils/logger";
 
 // Design constants (no more magic numbers!)
 const SPACING = {
@@ -130,10 +132,7 @@ export default function Auth() {
 
   // Analytics/logging helper
   const logAuthEvent = (event: string, details?: any) => {
-    const timestamp = new Date().toISOString();
-    console.log(`[AUTH] ${timestamp} - ${event}`, details || "");
-    // TODO: Add analytics service (Mixpanel, Amplitude, etc.)
-    // analytics.track(event, details);
+    logger.breadcrumb(event, "auth", details);
   };
 
   // Rate limiting check
@@ -347,7 +346,12 @@ export default function Auth() {
     logAuthEvent("login_started", { email: sanitizedEmail });
 
     // Show splash screen during login
-    await SplashScreen.preventAutoHideAsync();
+    try {
+      await SplashScreen.preventAutoHideAsync();
+    } catch (e) {
+      // Ignore errors - splash screen might already be prevented or not available
+      logger.warn("[Auth] Could not prevent auto-hide splash", e as Error);
+    }
 
     try {
       const { error } = await withTimeout(
@@ -370,7 +374,7 @@ export default function Auth() {
           setPasswordError(friendlyError);
         }
         // Hide splash screen on error
-        await SplashScreen.hideAsync();
+        await hideSplashSafe();
       } else {
         logAuthEvent("login_success");
         // Keep splash screen visible - root layout will hide it after prefetch
@@ -378,7 +382,7 @@ export default function Auth() {
     } catch (error: any) {
       logAuthEvent("login_error", { error: error.message });
       // Hide splash screen on error
-      await SplashScreen.hideAsync();
+      await hideSplashSafe();
       if (error.message === "Request timeout") {
         Alert.alert("Timeout", "Request timed out. Please try again.");
       } else {
@@ -439,7 +443,12 @@ export default function Auth() {
     logAuthEvent("signup_started", { email: sanitizedEmail });
 
     // Show splash screen during signup
-    await SplashScreen.preventAutoHideAsync();
+    try {
+      await SplashScreen.preventAutoHideAsync();
+    } catch (e) {
+      // Ignore errors - splash screen might already be prevented or not available
+      logger.warn("[Auth] Could not prevent auto-hide splash", e as Error);
+    }
 
     try {
       const {
@@ -481,11 +490,11 @@ export default function Auth() {
           setPasswordError(friendlyError);
         }
         // Hide splash screen on error
-        await SplashScreen.hideAsync();
+        await hideSplashSafe();
       } else if (!session) {
         logAuthEvent("signup_success_verification_required");
         // Hide splash screen if email verification is required
-        await SplashScreen.hideAsync();
+        await hideSplashSafe();
         Alert.alert(
           "Verify Your Email",
           "Please check your inbox for email verification!",
@@ -498,7 +507,7 @@ export default function Auth() {
     } catch (error: any) {
       logAuthEvent("signup_error", { error: error.message });
       // Hide splash screen on error
-      await SplashScreen.hideAsync();
+      await hideSplashSafe();
       if (error.message === "Request timeout") {
         Alert.alert("Timeout", "Request timed out. Please try again.");
       } else {

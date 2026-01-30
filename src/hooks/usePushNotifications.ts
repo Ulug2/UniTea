@@ -4,6 +4,7 @@ import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import { logger } from "../utils/logger";
 
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -17,7 +18,7 @@ Notifications.setNotificationHandler({
 
 async function registerForPushNotificationsAsync() {
     if (!Device.isDevice) {
-        console.log("Must use physical device for Push Notifications");
+        logger.info("Must use physical device for Push Notifications");
         return null;
     }
 
@@ -26,9 +27,7 @@ async function registerForPushNotificationsAsync() {
         Constants?.easConfig?.projectId;
 
     if (!expoProjectId) {
-        console.warn(
-            "Expo projectId is missing. Make sure it is set in app.json / app.config."
-        );
+        logger.warn("Expo projectId is missing. Make sure it is set in app.json / app.config.");
         return null; // Return early if projectId is missing
     }
 
@@ -42,7 +41,7 @@ async function registerForPushNotificationsAsync() {
     }
 
     if (finalStatus !== "granted") {
-        console.log("Failed to get push token for push notification!");
+        logger.warn("Failed to get push token for push notification!");
         return null;
     }
 
@@ -50,9 +49,10 @@ async function registerForPushNotificationsAsync() {
         const token = await Notifications.getExpoPushTokenAsync({
             projectId: expoProjectId,
         });
+        logger.info("Push notification token obtained successfully");
         return token.data;
     } catch (error) {
-        console.error("Error getting Expo push token", error);
+        logger.error("Error getting Expo push token", error as Error);
         return null;
     }
 }
@@ -90,17 +90,24 @@ export function usePushNotifications() {
                 const result = await Promise.race([supabasePromise, timeoutPromise]) as any;
 
                 if (result?.error) {
-                    console.error(
-                        "Error saving push token to notification_settings:",
-                        result.error
+                    logger.error(
+                        "Error saving push token to notification_settings",
+                        result.error as Error,
+                        { userId }
                     );
+                } else {
+                    logger.info("Push token saved successfully", { userId });
                 }
             } catch (error: any) {
                 // Silently handle timeout/network errors - don't crash the app
                 if (error?.message === 'Request timeout') {
-                    console.warn("Push token save timed out - will retry on next app open");
+                    logger.warn("Push token save timed out - will retry on next app open", {
+                        userId,
+                    });
                 } else {
-                    console.error("Error in push notification setup:", error);
+                    logger.error("Error in push notification setup", error as Error, {
+                        userId,
+                    });
                 }
             }
         };
