@@ -15,6 +15,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { Link, router } from "expo-router";
 import { AntDesign } from "@expo/vector-icons";
 import nuLogo from "../../assets/images/nu-logo.png";
+import { DEFAULT_AVATAR } from "../constants/images";
 import { useTheme } from "../context/ThemeContext";
 import { useVote } from "../hooks/useVote";
 import SupabaseImage from "./SupabaseImage";
@@ -132,6 +133,8 @@ const PostListItem = React.memo(function PostListItem({
   const currentUserId = session?.user?.id;
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [contentExpanded, setContentExpanded] = useState(false);
+  const [originalContentExpanded, setOriginalContentExpanded] = useState(false);
 
   // Check if this is a repost
   const isRepost = !!repostedFromPostId;
@@ -379,7 +382,7 @@ const PostListItem = React.memo(function PostListItem({
                     />
                   )
                 ) : (
-                  <View style={styles.avatar} />
+                  <Image source={DEFAULT_AVATAR} style={styles.avatar} />
                 )
               ) : // Show regular post author
                 isAnonymous ? (
@@ -395,7 +398,7 @@ const PostListItem = React.memo(function PostListItem({
                     />
                   )
                 ) : (
-                  <View style={styles.avatar} />
+                  <Image source={DEFAULT_AVATAR} style={styles.avatar} />
                 )}
               <Text style={styles.username}>
                 {isRepost
@@ -437,11 +440,36 @@ const PostListItem = React.memo(function PostListItem({
               // Show original post content in a card
               <View style={styles.originalPostCard}>
                 <Text
-                  numberOfLines={isDetailedPost ? undefined : 4}
-                  style={styles.originalContent}
+                  numberOfLines={
+                    isDetailedPost || originalContentExpanded ? undefined : 4
+                  }
+                  style={[styles.originalContent, { color: theme.text }]}
                 >
                   {originalContent}
                 </Text>
+                {originalContent &&
+                  !isDetailedPost &&
+                  (originalContent.length > 200 ||
+                    (originalContent.match(/\n/g)?.length ?? 0) >= 4) && (
+                    <Pressable
+                      onPress={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setOriginalContentExpanded((prev) => !prev);
+                      }}
+                      style={{ marginTop: 4 }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontFamily: "Poppins_500Medium",
+                          color: theme.primary,
+                        }}
+                      >
+                        {originalContentExpanded ? "show less" : "... read more"}
+                      </Text>
+                    </Pressable>
+                  )}
                 {originalCreatedAt && (
                   <Text style={styles.originalDate}>
                     Original post:{" "}
@@ -460,12 +488,38 @@ const PostListItem = React.memo(function PostListItem({
                   />
                 )}
                 {content && (
-                  <Text
-                    numberOfLines={isDetailedPost ? undefined : 4}
-                    style={styles.contentText}
-                  >
-                    {content}
-                  </Text>
+                  <View>
+                    <Text
+                      numberOfLines={
+                        isDetailedPost || contentExpanded ? undefined : 4
+                      }
+                      style={[styles.contentText, { color: theme.text }]}
+                    >
+                      {content}
+                    </Text>
+                    {!isDetailedPost &&
+                      (content.length > 200 ||
+                        (content.match(/\n/g)?.length ?? 0) >= 4) && (
+                        <Pressable
+                          onPress={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setContentExpanded((prev) => !prev);
+                          }}
+                          style={{ marginTop: 4 }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 15,
+                              fontFamily: "Poppins_500Medium",
+                              color: theme.primary,
+                            }}
+                          >
+                            {contentExpanded ? "show less" : "... read more"}
+                          </Text>
+                        </Pressable>
+                      )}
+                  </View>
                 )}
               </>
             )}

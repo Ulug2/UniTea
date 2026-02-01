@@ -17,6 +17,7 @@ import { MaterialCommunityIcons, Ionicons, AntDesign } from '@expo/vector-icons'
 import { useTheme } from '../../../context/ThemeContext';
 import { formatDistanceToNowStrict } from 'date-fns';
 import nuLogo from "../../../../assets/images/nu-logo.png";
+import { DEFAULT_AVATAR } from "../../../constants/images";
 
 export default function LostFoundPostDetailed() {
     const { id } = useLocalSearchParams();
@@ -249,14 +250,20 @@ export default function LostFoundPostDetailed() {
 <View style={dynamicStyles.header}>
     <View style={dynamicStyles.userInfo}>
         {postUser?.avatar_url ? (
-            <Image
-                source={{ uri: postUser.avatar_url }}
-                style={dynamicStyles.avatarImage}
-            />
+            postUser.avatar_url.startsWith('http') ? (
+                <Image
+                    source={{ uri: postUser.avatar_url }}
+                    style={dynamicStyles.avatarImage}
+                />
+            ) : (
+                <SupabaseImage
+                    path={postUser.avatar_url}
+                    bucket="avatars"
+                    style={dynamicStyles.avatarImage}
+                />
+            )
         ) : (
-            <View style={dynamicStyles.avatar}>
-                <Text style={dynamicStyles.avatarText}>{getInitial()}</Text>
-            </View>
+            <Image source={DEFAULT_AVATAR} style={dynamicStyles.avatarImage} />
         )}
         <View style={dynamicStyles.userDetails}>
             <Text style={dynamicStyles.username}>{postUser?.username || 'Unknown'}</Text>

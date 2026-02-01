@@ -16,53 +16,41 @@ export default function AppLayout() {
     }
   }, [session, loading]);
 
-  // Handle deep links
+  // Handle deep links (deferred so tabs mount first; avoids error flash)
   useEffect(() => {
-    // Handle initial URL (app opened via deep link)
-    const handleInitialURL = async () => {
-      const initialUrl = await Linking.getInitialURL();
-      if (initialUrl) {
-        handleDeepLink(initialUrl);
+    if (!session || loading) return;
+
+    const handleDeepLink = (url: string) => {
+      try {
+        const parsed = Linking.parse(url);
+        if (!parsed.path) return;
+
+        const pathParts = parsed.path.split("/").filter(Boolean);
+        if (pathParts[0] === "post" && pathParts[1]) {
+          const postId = pathParts[1];
+          router.push(`/post/${postId}?fromDeeplink=1`);
+        }
+      } catch {
+        // Silently ignore parse/navigation errors so user never sees alerts
       }
     };
 
-    // Handle URL changes (app already open, new deep link received)
+    // Handle URL when app is already open
     const subscription = Linking.addEventListener("url", (event) => {
       handleDeepLink(event.url);
     });
 
-    handleInitialURL();
+    // Handle initial URL after a short delay so feed/tabs render first
+    const t = setTimeout(async () => {
+      const initialUrl = await Linking.getInitialURL();
+      if (initialUrl) handleDeepLink(initialUrl);
+    }, 100);
 
     return () => {
+      clearTimeout(t);
       subscription.remove();
     };
   }, [session, loading]);
-
-  const handleDeepLink = (url: string) => {
-    if (!session || loading) {
-      // Wait for auth to complete
-      return;
-    }
-
-    try {
-      // Parse URL: myunitea://post/{postId}
-      const parsed = Linking.parse(url);
-      console.log("Deep link parsed:", parsed);
-
-      // Handle format: myunitea://post/{postId}
-      if (parsed.path) {
-        const pathParts = parsed.path.split("/").filter(Boolean);
-
-        if (pathParts[0] === "post" && pathParts[1]) {
-          const postId = pathParts[1];
-          console.log("Navigating to post:", postId);
-          router.push(`/post/${postId}`);
-        }
-      }
-    } catch (error) {
-      console.error("Error handling deep link:", error);
-    }
-  };
 
   // By the time we get here, auth should already be initialized
   // (splash screen handles the initial loading)

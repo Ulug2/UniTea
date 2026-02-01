@@ -18,6 +18,7 @@ import { useTheme } from "../context/ThemeContext";
 import { Database } from "../types/database.types";
 import { useVote } from "../hooks/useVote";
 import nuLogo from "../../assets/images/nu-logo.png";
+import { DEFAULT_AVATAR } from "../constants/images";
 import SupabaseImage from "./SupabaseImage";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -264,7 +265,7 @@ const CommentListItem = ({
                 />
               )
             ) : (
-              <Image source={nuLogo} style={styles.avatar} />
+              <Image source={DEFAULT_AVATAR} style={styles.avatar} />
             )}
             <Text style={[styles.username, { color: theme.text }]}>
               {comment.is_anonymous

@@ -8,7 +8,6 @@ import {
 } from "react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { Alert } from "react-native";
 import { logger } from "../utils/logger";
 
 type AuthContextValue = {
@@ -44,26 +43,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (sessionError) {
           logger.error("[AuthContext] Session error", sessionError as Error);
 
-          // Check if it's a refresh token issue
           const isTokenError =
             sessionError.message?.toLowerCase().includes("refresh") ||
             sessionError.message?.toLowerCase().includes("token") ||
             sessionError.message?.toLowerCase().includes("expired");
 
           if (isTokenError) {
-            // Show user they need to sign in again
-            Alert.alert(
-              "Session Expired",
-              "Your session has expired. Please sign in again.",
-              [{ text: "OK" }]
-            );
-
-            // Clear invalid session
-            await supabase.auth.signOut().catch(() => {
-              // Ignore sign out errors
-            });
+            await supabase.auth.signOut().catch(() => {});
           }
-
+          // Don't show alert on cold start (e.g. opening from deeplink); user just sees login
           setError(sessionError);
           setSession(null);
           logger.clearUser();

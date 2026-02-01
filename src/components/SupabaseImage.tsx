@@ -9,6 +9,10 @@ type SupabaseImageProps = {
   path: string;
   contentFit?: "cover" | "contain" | "fill" | "scale-down";
   transition?: number;
+  /** Background color while loading (default: gainsboro) */
+  loadingBackgroundColor?: string;
+  /** ActivityIndicator color while loading */
+  loadingIndicatorColor?: string;
 } & Omit<ComponentProps<typeof Image>, "source">;
 
 // Cache for bucket public/private status (persists across component mounts)
@@ -30,6 +34,8 @@ function SupabaseImage({
   bucket = "post-images",
   contentFit = "cover",
   transition = 200,
+  loadingBackgroundColor = "gainsboro",
+  loadingIndicatorColor,
   ...imageProps
 }: SupabaseImageProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -153,14 +159,14 @@ function SupabaseImage({
       <View
         style={[
           {
-            backgroundColor: "gainsboro",
+            backgroundColor: loadingBackgroundColor,
             alignItems: "center",
             justifyContent: "center",
           },
           imageProps.style,
         ]}
       >
-        <ActivityIndicator />
+        <ActivityIndicator color={loadingIndicatorColor} />
       </View>
     );
   }

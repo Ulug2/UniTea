@@ -31,6 +31,7 @@ import * as ImagePicker from "expo-image-picker";
 import { uploadImage } from "../../../utils/supabaseImages";
 import SupabaseImage from "../../../components/SupabaseImage";
 import nuLogo from "../../../../assets/images/nu-logo.png";
+import { DEFAULT_AVATAR } from "../../../constants/images";
 import NotificationSettingsModal from "../../../components/NotificationSettingsModal";
 import { usePushNotifications } from "../../../hooks/usePushNotifications";
 
@@ -407,12 +408,6 @@ export default function ProfileScreen() {
   // Get current user data
   const userDisplayName = currentUser?.username || "User";
   const userEmail = session?.user?.email || "email@example.com";
-  const userInitials = userDisplayName
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
 
   // Set up settings button handler
   useEffect(() => {
@@ -823,9 +818,7 @@ export default function ProfileScreen() {
                     />
                   )
                 ) : (
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{userInitials}</Text>
-                  </View>
+                  <Image source={DEFAULT_AVATAR} style={styles.avatar} />
                 )}
               </Pressable>
               <View style={styles.userInfo}>
@@ -1156,9 +1149,7 @@ export default function ProfileScreen() {
                 />
               )
             ) : (
-              <View style={styles.avatarPreview}>
-                <Text style={styles.avatarPreviewText}>{userInitials}</Text>
-              </View>
+              <Image source={DEFAULT_AVATAR} style={styles.avatarPreview} />
             )}
           </Pressable>
         </Pressable>

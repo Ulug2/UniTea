@@ -6,15 +6,21 @@ import {
   Pressable,
   RefreshControl,
   ActivityIndicator,
+  Modal,
+  Alert,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
-import LostFoundListItem from "../../../components/LostFoundListItem";
+import LostFoundListItem, {
+  type LostFoundPostForMenu,
+} from "../../../components/LostFoundListItem";
 import LostFoundListSkeleton from "../../../components/LostFoundListSkeleton";
+import ReportModal from "../../../components/ReportModal";
+import BlockUserModal from "../../../components/BlockUserModal";
 import { router } from "expo-router";
-import { FontAwesome } from "@expo/vector-icons";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { FontAwesome, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Database } from "../../../types/database.types";
 import { useAuth } from "../../../context/AuthContext";
 
@@ -58,6 +64,14 @@ export default function LostFoundScreen() {
   const { theme } = useTheme();
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
+  const queryClient = useQueryClient();
+
+  const [selectedPost, setSelectedPost] = useState<LostFoundPostForMenu | null>(null);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
+
+  const isPostOwner = selectedPost && currentUserId === selectedPost.userId;
 
   // Fetch blocked users
   const { data: blocks = [] } = useQuery({
@@ -160,6 +174,131 @@ export default function LostFoundScreen() {
     });
   }, [postsData, blocks]);
 
+  // Delete post mutation with optimistic update and rollback on error
+  const deletePostMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const { error } = await supabase.from("posts").delete().eq("id", postId);
+      if (error) throw error;
+    },
+    onMutate: async (postIdToDelete) => {
+      await queryClient.cancelQueries({ queryKey: ["posts", "lost_found"] });
+      const previous = queryClient.getQueryData<{
+        pages: PostSummary[][];
+        pageParams: unknown[];
+      }>(["posts", "lost_found"]);
+      queryClient.setQueryData(
+        ["posts", "lost_found"],
+        (old: { pages: PostSummary[][]; pageParams: unknown[] } | undefined) => {
+          if (!old) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) =>
+              page.filter((p) => p.post_id !== postIdToDelete)
+            ),
+          };
+        }
+      );
+      return { previous };
+    },
+    onError: (_err, _postId, context) => {
+      if (context?.previous != null) {
+        queryClient.setQueryData(["posts", "lost_found"], context.previous);
+      }
+      Alert.alert("Error", "Failed to delete post. Please try again.");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["posts", "lost_found"] });
+    },
+    onSuccess: (_data, postId) => {
+      setShowMenu(false);
+      setSelectedPost((prev) => (prev?.postId === postId ? null : prev));
+    },
+  });
+
+  const handleDeletePost = useCallback(() => {
+    if (!selectedPost) return;
+    setShowMenu(false);
+    Alert.alert(
+      "Delete Post",
+      "Are you sure you want to delete this post? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deletePostMutation.mutate(selectedPost.postId),
+        },
+      ]
+    );
+  }, [selectedPost, deletePostMutation]);
+
+  // Report post mutation
+  const reportPostMutation = useMutation({
+    mutationFn: async ({ postId, reason }: { postId: string; reason: string }) => {
+      if (!currentUserId) throw new Error("User ID missing");
+      const { error } = await supabase.from("reports").insert({
+        reporter_id: currentUserId,
+        post_id: postId,
+        comment_id: null,
+        reason,
+      });
+      if (error) throw error;
+    },
+    onSuccess: (_, { postId }) => {
+      setShowReportModal(false);
+      setShowMenu(false);
+      setShowBlockModal(true);
+    },
+    onError: (error: unknown) => {
+      Alert.alert("Error", (error as Error)?.message ?? "Failed to submit report");
+    },
+  });
+
+  const handleReportPost = useCallback(
+    (reason: string) => {
+      if (!selectedPost) return;
+      reportPostMutation.mutate({ postId: selectedPost.postId, reason });
+    },
+    [selectedPost, reportPostMutation]
+  );
+
+  // Block user mutation (after report)
+  const blockUserMutation = useMutation({
+    mutationFn: async (userIdToBlock: string) => {
+      if (!currentUserId) throw new Error("User ID missing");
+      const { error } = await supabase.from("blocks").insert({
+        blocker_id: currentUserId,
+        blocked_id: userIdToBlock,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setShowBlockModal(false);
+      setSelectedPost(null);
+      queryClient.invalidateQueries({ queryKey: ["blocks", currentUserId] });
+      queryClient.invalidateQueries({ queryKey: ["posts", "lost_found"] });
+    },
+    onError: (error: unknown) => {
+      Alert.alert("Error", (error as Error)?.message ?? "Failed to block user");
+    },
+  });
+
+  const handleBlockUser = useCallback(() => {
+    if (!selectedPost) return;
+    Alert.alert(
+      "Block User",
+      "Are you sure you want to block this user? You will no longer see their posts and they will no longer see yours.",
+      [
+        { text: "Cancel", style: "cancel", onPress: () => setShowBlockModal(false) },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: () => blockUserMutation.mutate(selectedPost.userId),
+        },
+      ]
+    );
+  }, [selectedPost, blockUserMutation]);
+
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
@@ -169,7 +308,12 @@ export default function LostFoundScreen() {
   // Memoize keyExtractor
   const keyExtractor = useCallback((item: PostSummary) => item.post_id, []);
 
-  // Memoize renderItem to prevent unnecessary re-renders
+  // Open menu on long-press (delete own post / report other's content)
+  const handleItemLongPress = useCallback((post: LostFoundPostForMenu) => {
+    setSelectedPost(post);
+    setShowMenu(true);
+  }, []);
+
   const renderItem = useCallback(
     ({ item }: { item: PostSummary }) => (
       <LostFoundListItem
@@ -184,9 +328,10 @@ export default function LostFoundScreen() {
         username={item.username}
         avatarUrl={item.avatar_url}
         isVerified={item.is_verified}
+        onLongPress={handleItemLongPress}
       />
     ),
-    []
+    [handleItemLongPress]
   );
 
   // Show skeleton while loading initial data
@@ -200,6 +345,59 @@ export default function LostFoundScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Menu Modal (long-press: Delete own / Report other) */}
+      <Modal
+        visible={showMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMenu(false)}
+      >
+        <Pressable
+          style={menuStyles.overlay}
+          onPress={() => setShowMenu(false)}
+        >
+          <View style={[menuStyles.menuContainer, { backgroundColor: theme.card }]}>
+            {isPostOwner ? (
+              <Pressable style={menuStyles.menuItem} onPress={handleDeletePost}>
+                <MaterialCommunityIcons name="delete" size={20} color="#EF4444" />
+                <Text style={[menuStyles.menuText, { color: "#EF4444" }]}>
+                  Delete Post
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={menuStyles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  setShowReportModal(true);
+                }}
+              >
+                <MaterialCommunityIcons name="flag" size={20} color={theme.text} />
+                <Text style={[menuStyles.menuText, { color: theme.text }]}>
+                  Report Content
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
+      <ReportModal
+        visible={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={handleReportPost}
+        isLoading={reportPostMutation.isPending}
+        reportType="post"
+      />
+
+      <BlockUserModal
+        visible={showBlockModal}
+        onClose={() => setShowBlockModal(false)}
+        onBlock={handleBlockUser}
+        isLoading={blockUserMutation.isPending}
+        username={selectedPost?.username ?? "User"}
+      />
+
       <FlatList
         data={lostFoundPosts}
         keyExtractor={keyExtractor}
@@ -282,5 +480,34 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
+  },
+});
+
+const menuStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  menuContainer: {
+    borderRadius: 12,
+    padding: 8,
+    minWidth: 200,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    gap: 12,
+  },
+  menuText: {
+    fontSize: 16,
+    fontFamily: "Poppins_500Medium",
   },
 });

@@ -1,20 +1,19 @@
-import { Slot } from "expo-router";
+import { Slot, useRouter } from "expo-router";
 import {
   useFonts,
   Poppins_400Regular,
   Poppins_500Medium,
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import { ThemeProvider } from "../context/ThemeContext";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import * as Linking from "expo-linking";
 import { supabase } from "../lib/supabase";
 import * as SplashScreen from "expo-splash-screen";
 import { hideSplashSafe } from "../utils/splash";
 import { initSentry } from "../utils/sentry";
-import { logger } from "../utils/logger";
 import ErrorBoundary from "../components/ErrorBoundary";
 
 // Initialize Sentry before anything else
@@ -118,9 +117,50 @@ function RootLayoutContent() {
   return <Slot />;
 }
 
+function RecoveryFallback() {
+  const router = useRouter();
+  return (
+    <View style={recoveryStyles.container}>
+      <Text style={recoveryStyles.title}>Something went wrong</Text>
+      <Pressable
+        style={recoveryStyles.button}
+        onPress={() => router.replace("/(protected)/(tabs)")}
+      >
+        <Text style={recoveryStyles.buttonText}>Open feed</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const recoveryStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+    backgroundColor: "#f5f5f5",
+  },
+  title: {
+    fontSize: 18,
+    marginBottom: 24,
+    textAlign: "center",
+  },
+  button: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    backgroundColor: "#2FC9C1",
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+});
+
 export default function RootLayout() {
   return (
-    <ErrorBoundary>
+    <ErrorBoundary fallback={<RecoveryFallback />}>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <AuthProvider>

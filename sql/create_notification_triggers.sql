@@ -207,14 +207,26 @@ CREATE TRIGGER trigger_notify_trending_post
 -- when comments or votes are added (via separate triggers or application logic)
 
 -- Helper function to update post updated_at when engagement changes
+-- Runs on: comments (NEW.post_id) and votes (NEW.post_id, only when post_id IS NOT NULL via WHEN clause)
 CREATE OR REPLACE FUNCTION update_post_engagement_timestamp()
 RETURNS TRIGGER AS $$
+DECLARE
+  target_post_id uuid;
 BEGIN
-  -- Update the post's updated_at to trigger trending check
-  UPDATE posts
-  SET updated_at = NOW()
-  WHERE id = COALESCE(NEW.post_id, NEW.comment_id::uuid);
-  
+  IF TG_TABLE_NAME = 'comments' THEN
+    target_post_id := NEW.post_id;
+  ELSIF TG_TABLE_NAME = 'votes' AND NEW.post_id IS NOT NULL THEN
+    target_post_id := NEW.post_id;
+  ELSE
+    RETURN NEW;
+  END IF;
+
+  IF target_post_id IS NOT NULL THEN
+    UPDATE posts
+    SET updated_at = NOW()
+    WHERE id = target_post_id;
+  END IF;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

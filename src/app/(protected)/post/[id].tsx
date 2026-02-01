@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useCallback } from "react";
+import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { useLocalSearchParams, router, Stack } from "expo-router";
 import {
   Text,
@@ -6,6 +6,7 @@ import {
   TextInput,
   Pressable,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   FlatList,
   StyleSheet,
@@ -50,8 +51,9 @@ type CommentWithReplies = Comment & {
 };
 
 export default function PostDetailed() {
-  const { id } = useLocalSearchParams();
+  const { id, fromDeeplink } = useLocalSearchParams<{ id: string; fromDeeplink?: string }>();
   const postId = typeof id === "string" ? id : id?.[0];
+  const isFromDeeplink = fromDeeplink === "1";
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const { session } = useAuth();
@@ -66,7 +68,23 @@ export default function PostDetailed() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [isAnonymousMode, setIsAnonymousMode] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const inputRef = useRef<TextInput | null>(null);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Get current user ID
   const currentUserId = session?.user?.id || null;
@@ -345,12 +363,13 @@ export default function PostDetailed() {
     },
     onMutate: async ({ content, parentId, isAnonymous }) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["comments", postId] });
+      await queryClient.cancelQueries({ queryKey: ["comments", postId, currentUserId] });
 
       // Snapshot previous value
       const previousComments = queryClient.getQueryData<CommentWithReplies[]>([
         "comments",
         postId,
+        currentUserId,
       ]);
 
       // Fetch current user profile for optimistic comment
@@ -378,9 +397,9 @@ export default function PostDetailed() {
         score: 0,
       };
 
-      // Optimistically update cache
+      // Optimistically update cache (same key as useQuery so UI updates immediately)
       queryClient.setQueryData<CommentWithReplies[]>(
-        ["comments", postId],
+        ["comments", postId, currentUserId],
         (old = []) => {
           return [...old, optimisticComment];
         }
@@ -418,7 +437,7 @@ export default function PostDetailed() {
       Alert.alert("Error", errorMessage);
     },
     onSuccess: async (newComment) => {
-      // Replace temp comment with real one from server
+      // Replace temp comment with real id/created_at so list shows correct data
       queryClient.setQueryData<CommentWithReplies[]>(
         ["comments", postId, currentUserId],
         (old = []) => {
@@ -427,20 +446,23 @@ export default function PostDetailed() {
               ? {
                 ...comment,
                 id: newComment.id,
-                created_at: newComment.created_at,
+                created_at: newComment.created_at ?? comment.created_at,
               }
               : comment
           );
         }
       );
 
-      // OPTIMIZED: Only invalidate queries that need refetching
-      // Use refetchType: 'none' to just mark as stale without immediate refetch
+      // Refetch comments so the new comment has full user/score from server
+      await queryClient.invalidateQueries({
+        queryKey: ["comments", postId, currentUserId],
+        refetchType: "active",
+      });
 
       // Invalidate current post to update comment count
       queryClient.invalidateQueries({
         queryKey: ["post", postId],
-        refetchType: "active", // Only refetch if currently viewing
+        refetchType: "active",
       });
 
       // Invalidate feed posts (they show comment count)
@@ -708,7 +730,6 @@ export default function PostDetailed() {
   }
 
   if (postError || userError || commentsError) {
-    // Log errors to Sentry
     if (postError) logger.error("Failed to load post", postError as Error, { postId });
     if (userError) logger.error("Failed to load post user", userError as Error, { postId });
     if (commentsError) logger.error("Failed to load comments", commentsError as Error, { postId });
@@ -716,8 +737,14 @@ export default function PostDetailed() {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <Text style={[styles.errorText, { color: theme.text }]}>
-          Failed to load content.
+          {isFromDeeplink ? "This post isn't available right now." : "Failed to load content."}
         </Text>
+        <Pressable
+          style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
+          onPress={() => router.replace("/(protected)/(tabs)")}
+        >
+          <Text style={styles.backToFeedButtonText}>Back to feed</Text>
+        </Pressable>
       </View>
     );
   }
@@ -726,8 +753,14 @@ export default function PostDetailed() {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <Text style={[styles.errorText, { color: theme.text }]}>
-          Post Not Found!
+          {isFromDeeplink ? "This post isn't available." : "Post Not Found!"}
         </Text>
+        <Pressable
+          style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
+          onPress={() => router.replace("/(protected)/(tabs)")}
+        >
+          <Text style={styles.backToFeedButtonText}>Back to feed</Text>
+        </Pressable>
       </View>
     );
   }
@@ -744,8 +777,14 @@ export default function PostDetailed() {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <Text style={[styles.errorText, { color: theme.text }]}>
-          Post Not Found!
+          {isFromDeeplink ? "This post isn't available." : "Post Not Found!"}
         </Text>
+        <Pressable
+          style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
+          onPress={() => router.replace("/(protected)/(tabs)")}
+        >
+          <Text style={styles.backToFeedButtonText}>Back to feed</Text>
+        </Pressable>
       </View>
     );
   }
@@ -845,7 +884,7 @@ export default function PostDetailed() {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1, backgroundColor: theme.background }}
-        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : insets.top}
       >
         <View style={{ flex: 1 }}>
           <FlatList
@@ -917,7 +956,7 @@ export default function PostDetailed() {
             style={[
               styles.inputContainer,
               {
-                paddingBottom: insets.bottom + 10,
+                paddingBottom: keyboardHeight > 0 ? 15 : insets.bottom + 10,
                 backgroundColor: theme.card,
                 borderTopColor: theme.border,
                 shadowColor: theme.text,
@@ -1033,7 +1072,7 @@ export default function PostDetailed() {
   );
 }
 
-function PostErrorFallback({ error, resetErrorBoundary }: any) {
+function PostErrorFallback() {
   const { theme } = useTheme();
 
   return (
@@ -1041,36 +1080,11 @@ function PostErrorFallback({ error, resetErrorBoundary }: any) {
       <Text style={[styles.errorText, { color: theme.text }]}>
         Something went wrong
       </Text>
-      <Text
-        style={[
-          styles.errorText,
-          {
-            color: theme.secondaryText,
-            fontSize: 14,
-            marginTop: 10,
-          },
-        ]}
-      >
-        {error.message}
-      </Text>
       <Pressable
-        onPress={resetErrorBoundary}
-        style={{
-          marginTop: 20,
-          paddingHorizontal: 20,
-          paddingVertical: 10,
-          backgroundColor: theme.primary,
-          borderRadius: 8,
-        }}
+        style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
+        onPress={() => router.replace("/(protected)/(tabs)")}
       >
-        <Text
-          style={{
-            color: "white",
-            fontFamily: "Poppins_500Medium",
-          }}
-        >
-          Try Again
-        </Text>
+        <Text style={styles.backToFeedButtonText}>Back to feed</Text>
       </Pressable>
     </View>
   );
@@ -1085,6 +1099,18 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontFamily: "Poppins_400Regular",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  backToFeedButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  backToFeedButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: "Poppins_500Medium",
   },
   inputContainer: {
     borderTopWidth: 1,

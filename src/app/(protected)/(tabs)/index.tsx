@@ -215,19 +215,19 @@ export default function FeedScreen() {
       });
     }
 
-    // For "hot" filter, sort by engagement score (votes + comments + reposts)
+    // For "hot" filter, sort by engagement (total votes + comments + reposts).
+    // Downvotes count as engagement too: use |vote_score| so negativity isn't penalized.
     if (selectedFilter === "hot") {
       return filteredPosts.sort((a, b) => {
-        // Calculate engagement score: vote_score + comment_count + repost_count
         const engagementA =
-          (a.vote_score || 0) +
+          Math.abs(a.vote_score || 0) +
           (a.comment_count || 0) +
           (a.repost_count || 0);
         const engagementB =
-          (b.vote_score || 0) +
+          Math.abs(b.vote_score || 0) +
           (b.comment_count || 0) +
           (b.repost_count || 0);
-        return engagementB - engagementA; // Sort descending (highest engagement first)
+        return engagementB - engagementA;
       });
     }
 

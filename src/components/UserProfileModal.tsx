@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 import { Database } from "../types/database.types";
 import SupabaseImage from "./SupabaseImage";
+import { DEFAULT_AVATAR } from "../constants/images";
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -51,11 +52,10 @@ export default function UserProfileModal({
     gcTime: 1000 * 60 * 30,
   });
 
-  // Fetch user's posts to calculate total vote count
+  // Fetch user's posts to calculate total vote count (refetch when modal opens so it's up to date)
   const { data: totalVotes = 0, isLoading: isLoadingVotes } = useQuery<number>({
     queryKey: ["user-total-votes", userId],
     queryFn: async () => {
-      // Use posts_summary_view to get vote_score for all user's posts
       const { data, error } = await (supabase as any)
         .from("posts_summary_view")
         .select("vote_score")
@@ -63,17 +63,13 @@ export default function UserProfileModal({
 
       if (error) throw error;
 
-      // Sum all vote scores
       return (data || []).reduce((sum: number, post: any) => sum + (post.vote_score || 0), 0);
     },
     enabled: visible && Boolean(userId),
-    staleTime: 1000 * 60 * 2, // 2 minutes
+    staleTime: 0, // Always refetch when modal opens so total votes is current
     gcTime: 1000 * 60 * 15,
+    refetchOnMount: "always",
   });
-
-  const userInitials = profile?.username
-    ? profile.username.charAt(0).toUpperCase()
-    : "?";
 
   const isLoading = isLoadingProfile || isLoadingVotes;
 
@@ -111,11 +107,7 @@ export default function UserProfileModal({
                     />
                   )
                 ) : (
-                  <View style={[styles.avatar, { backgroundColor: theme.border }]}>
-                    <Text style={[styles.avatarText, { color: theme.text }]}>
-                      {userInitials}
-                    </Text>
-                  </View>
+                  <Image source={DEFAULT_AVATAR} style={styles.avatar} />
                 )}
               </View>
 

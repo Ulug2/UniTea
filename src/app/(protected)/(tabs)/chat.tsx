@@ -7,11 +7,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
 import { useMemo, useEffect, useRef, useCallback } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
 type User = Database["public"]["Tables"]["profiles"]["Row"];
 
-// Type for the optimized view
+// Type for the optimized view (last_message_has_image from view when available)
 type ChatSummary = {
   chat_id: string;
   participant_1_id: string;
@@ -20,6 +21,7 @@ type ChatSummary = {
   created_at: string | null;
   last_message_at: string | null;
   last_message_content: string | null;
+  last_message_has_image?: boolean;
   unread_count_p1: number;
   unread_count_p2: number;
 };
@@ -92,14 +94,25 @@ export default function ChatScreen() {
     retry: 2,
   });
 
+  // When chat tab is focused, refetch summaries so username/avatar updates show
+  useFocusEffect(
+    useCallback(() => {
+      if (currentUserId) {
+        queryClient.invalidateQueries({
+          queryKey: ["chat-summaries", currentUserId],
+        });
+      }
+    }, [currentUserId, queryClient])
+  );
+
   // Filter out chats with blocked users and ensure deleted chats are removed
   const filteredChatSummaries = useMemo(() => {
     if (!chatSummaries || chatSummaries.length === 0) return [];
     if (!currentUserId) return [];
 
     return chatSummaries.filter((chat: ChatSummary) => {
-      // Hide chats with no messages - check both last_message_at and last_message_content
-      if (!chat.last_message_at || !chat.last_message_content || chat.last_message_content.trim() === "") {
+      // Only show chats that have at least one message (empty chats must not appear)
+      if (!chat.last_message_at) {
         return false;
       }
 
@@ -338,7 +351,8 @@ export default function ChatScreen() {
           chatId={item.chat_id}
           lastMessageAt={item.last_message_at}
           otherUser={user}
-          lastMessage={item.last_message_content || ""}
+          lastMessage={item.last_message_content ?? ""}
+          lastMessageHasImage={item.last_message_has_image === true}
           unreadCount={getUnreadCount(item)}
           isAnonymous={isAnonymous}
         />

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocalSearchParams, router } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -16,6 +17,8 @@ import {
   ActionSheetIOS,
   Modal,
   Dimensions,
+  Animated,
+  PanResponder,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../../context/ThemeContext";
@@ -37,6 +40,7 @@ import * as ImageManipulator from "expo-image-manipulator";
 import { uploadImage } from "../../../utils/supabaseImages";
 import { logger } from "../../../utils/logger";
 import UserProfileModal from "../../../components/UserProfileModal";
+import { DEFAULT_AVATAR } from "../../../constants/images";
 
 type Chat = Database['public']['Tables']['chats']['Row'];
 type ChatMessage = Database['public']['Tables']['chat_messages']['Row'] & {
@@ -88,6 +92,80 @@ export default function ChatDetailScreen() {
       pendingMessageIds.current.clear();
     };
   }, []);
+
+  // Full-screen image pinch-to-zoom: animated values and base values for cumulative gestures
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const translateXAnim = useRef(new Animated.Value(0)).current;
+  const translateYAnim = useRef(new Animated.Value(0)).current;
+  const baseScale = useRef(1);
+  const baseTranslateX = useRef(0);
+  const baseTranslateY = useRef(0);
+  const lastScale = useRef(1);
+  const lastTranslateX = useRef(0);
+  const lastTranslateY = useRef(0);
+  const initialPinchDistance = useRef(0);
+  const initialPinchCenter = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (fullScreenImagePath) {
+      scaleAnim.setValue(1);
+      translateXAnim.setValue(0);
+      translateYAnim.setValue(0);
+      baseScale.current = 1;
+      baseTranslateX.current = 0;
+      baseTranslateY.current = 0;
+      lastScale.current = 1;
+      lastTranslateX.current = 0;
+      lastTranslateY.current = 0;
+    }
+  }, [fullScreenImagePath, scaleAnim, translateXAnim, translateYAnim]);
+
+  const fullScreenPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetResponder: () => false,
+      onMoveShouldSetResponder: (_, gestureState) => gestureState.numberActiveTouches === 2,
+      onPanResponderGrant: (evt) => {
+        const touches = evt.nativeEvent.touches;
+        if (touches.length === 2) {
+          baseScale.current = lastScale.current;
+          baseTranslateX.current = lastTranslateX.current;
+          baseTranslateY.current = lastTranslateY.current;
+          const a = touches[0];
+          const b = touches[1];
+          initialPinchDistance.current =
+            Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY) || 1;
+          initialPinchCenter.current = {
+            x: (a.pageX + b.pageX) / 2,
+            y: (a.pageY + b.pageY) / 2,
+          };
+        }
+      },
+      onPanResponderMove: (evt) => {
+        const touches = evt.nativeEvent.touches;
+        if (touches.length !== 2) return;
+        const a = touches[0];
+        const b = touches[1];
+        const dist = Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY) || 1;
+        const centerX = (a.pageX + b.pageX) / 2;
+        const centerY = (a.pageY + b.pageY) / 2;
+        const scale = (baseScale.current * dist) / initialPinchDistance.current;
+        const clampedScale = Math.max(0.5, Math.min(scale, 5));
+        const tx = baseTranslateX.current + (centerX - initialPinchCenter.current.x);
+        const ty = baseTranslateY.current + (centerY - initialPinchCenter.current.y);
+        scaleAnim.setValue(clampedScale);
+        translateXAnim.setValue(tx);
+        translateYAnim.setValue(ty);
+        lastScale.current = clampedScale;
+        lastTranslateX.current = tx;
+        lastTranslateY.current = ty;
+      },
+      onPanResponderRelease: () => {
+        baseScale.current = lastScale.current;
+        baseTranslateX.current = lastTranslateX.current;
+        baseTranslateY.current = lastTranslateY.current;
+      },
+    })
+  ).current;
 
   // Track keyboard visibility - use "Will" events on iOS for instant effect
   useEffect(() => {
@@ -350,8 +428,7 @@ export default function ChatDetailScreen() {
     },
   });
 
-  // Real-time subscription for new messages - only listen to OTHER users' messages
-  // REMOVED UPDATE subscription - it was causing cascading invalidations and freezes
+  // Real-time subscription: subscribe on mount, unsubscribe on unmount (navigate away).
   useEffect(() => {
     if (!id || !currentUserId) return;
 
@@ -391,20 +468,17 @@ export default function ChatDetailScreen() {
           // New message received - add to cache immediately
           const updateSuccess = queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
             if (!oldData) {
-              // If no old data, create new structure
               return {
                 pages: [[newMessage]],
                 pageParams: [0],
               };
             }
 
-            // Double-check for duplicates in cache
             const existingMessage = oldData.pages.flat().find((m: ChatMessage) => m.id === newMessage.id);
             if (existingMessage) {
               return oldData;
             }
 
-            // Add new message to first page (most recent)
             const newPages = [...oldData.pages];
             if (newPages[0]) {
               newPages[0] = [newMessage, ...newPages[0]];
@@ -418,30 +492,25 @@ export default function ChatDetailScreen() {
             };
           });
 
-          // If cache update failed or returned undefined, force refetch
           if (!updateSuccess && isMounted) {
-            // Fallback: invalidate to force refetch (with minimal delay to batch rapid messages)
             setTimeout(() => {
               if (isMounted) {
                 queryClient.invalidateQueries({
                   queryKey: ["chat-messages", id],
-                  refetchType: "active", // Only refetch if screen is active
+                  refetchType: "active",
                 });
               }
-            }, 300); // Reduced debounce from 1000ms to 300ms for faster updates
+            }, 300);
           }
 
-          // Invalidate global unread count to update badge (debounced in _layout.tsx)
           queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });
         }
       )
       .subscribe((status) => {
-        // Verify subscription is active
         if (status === "SUBSCRIBED" && isMounted) {
           console.log(`[Chat ${id}] Real-time subscription active`);
         } else if (status === "CHANNEL_ERROR" && isMounted) {
           console.error(`[Chat ${id}] Real-time subscription error, attempting reconnect...`);
-          // Channel will auto-retry, but we can also manually invalidate as fallback
           setTimeout(() => {
             if (isMounted) {
               queryClient.invalidateQueries({ queryKey: ["chat-messages", id] });
@@ -452,7 +521,6 @@ export default function ChatDetailScreen() {
 
     return () => {
       isMounted = false;
-      // Unsubscribe and remove channel properly
       channel.unsubscribe();
       supabase.removeChannel(channel);
     };
@@ -556,6 +624,19 @@ export default function ChatDetailScreen() {
     const timer = setTimeout(markAsRead, 800);
     return () => clearTimeout(timer);
   }, [id, currentUserId, messages, queryClient]);
+
+  // When returning to this chat screen, refetch messages and other user profile immediately
+  useFocusEffect(
+    useCallback(() => {
+      if (!id || !currentUserId) return;
+      queryClient.invalidateQueries({ queryKey: ["chat-messages", id] });
+      if (otherUserId) {
+        queryClient.invalidateQueries({
+          queryKey: ["chat-other-user", otherUserId],
+        });
+      }
+    }, [id, currentUserId, otherUserId, queryClient])
+  );
 
   const getMessageTime = (dateString: string | null) => {
     if (!dateString) return "";
@@ -718,6 +799,7 @@ export default function ChatDetailScreen() {
               ...summary,
               last_message_content: messageText,
               last_message_at: now,
+              last_message_has_image: !!(imageUrl && imageUrl.trim() !== ""),
             };
             return false;
           }
@@ -1297,20 +1379,20 @@ export default function ChatDetailScreen() {
                   styles.messageImageContainer,
                   item.content ? styles.messageImageContainerWithText : undefined,
                 ]}
-                onPress={() => setFullScreenImagePath(item.image_url!)}
+                onPress={() => !item.id.startsWith("temp-") && setFullScreenImagePath(item.image_url!)}
               >
-                {/* Use local image URI for optimistic messages, SupabaseImage for real messages */}
-                {item.id.startsWith("temp-") && optimisticImageUris.current.has(item.id) ? (
-                  <Image
-                    source={{ uri: optimisticImageUris.current.get(item.id)! }}
-                    style={styles.messageImage}
-                    resizeMode="cover"
-                  />
+                {/* Loading: white background + spinner (temp messages and while real image loads) */}
+                {item.id.startsWith("temp-") ? (
+                  <View style={[styles.messageImage, styles.messageImageLoading]}>
+                    <ActivityIndicator size="large" color="#999" />
+                  </View>
                 ) : (
                   <SupabaseImage
                     path={item.image_url}
                     bucket="chat-images"
                     style={styles.messageImage}
+                    loadingBackgroundColor="#FFFFFF"
+                    loadingIndicatorColor="#999"
                   />
                 )}
               </Pressable>
@@ -1524,9 +1606,7 @@ export default function ChatDetailScreen() {
               />
             )
           ) : (
-            <View style={dynamicStyles.avatar}>
-              <Text style={dynamicStyles.avatarText}>{otherUserInitial}</Text>
-            </View>
+            <Image source={DEFAULT_AVATAR} style={dynamicStyles.avatarImage} />
           )}
 
           <Text style={dynamicStyles.userName}>{otherUserName}</Text>
@@ -1621,7 +1701,7 @@ export default function ChatDetailScreen() {
         />
       )}
 
-      {/* Full-screen image modal - tap image in chat to open */}
+      {/* Full-screen image modal - tap to close, two-finger pinch to zoom */}
       <Modal
         visible={Boolean(fullScreenImagePath)}
         transparent
@@ -1633,9 +1713,18 @@ export default function ChatDetailScreen() {
           onPress={() => setFullScreenImagePath(null)}
         >
           {fullScreenImagePath && (
-            <Pressable
-              style={fullScreenImageStyles.imageWrap}
-              onPress={() => setFullScreenImagePath(null)}
+            <Animated.View
+              style={[
+                fullScreenImageStyles.imageWrap,
+                {
+                  transform: [
+                    { translateX: translateXAnim },
+                    { translateY: translateYAnim },
+                    { scale: scaleAnim },
+                  ],
+                },
+              ]}
+              {...fullScreenPanResponder.panHandlers}
             >
               <Image
                 source={{
@@ -1644,7 +1733,7 @@ export default function ChatDetailScreen() {
                 style={fullScreenImageStyles.fullScreenImage}
                 resizeMode="contain"
               />
-            </Pressable>
+            </Animated.View>
           )}
         </Pressable>
       </Modal>
@@ -1728,6 +1817,11 @@ const styles = StyleSheet.create({
   messageImage: {
     width: 250,
     height: 250,
+  },
+  messageImageLoading: {
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
   },
   messageTime: {
     fontSize: 12,

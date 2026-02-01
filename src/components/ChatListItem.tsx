@@ -4,6 +4,7 @@ import { Database } from "../types/database.types";
 import { useTheme } from "../context/ThemeContext";
 import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
+import { DEFAULT_AVATAR } from "../constants/images";
 import { formatDistanceToNowStrict } from "date-fns";
 import { useAuth } from "../context/AuthContext";
 
@@ -14,6 +15,7 @@ type ChatListItemProps = {
   lastMessageAt: string | null;
   otherUser: Profile | null;
   lastMessage: string;
+  lastMessageHasImage?: boolean;
   unreadCount: number;
   isAnonymous?: boolean;
 };
@@ -24,6 +26,7 @@ const arePropsEqual = (prevProps: ChatListItemProps, nextProps: ChatListItemProp
     prevProps.chatId === nextProps.chatId &&
     prevProps.lastMessageAt === nextProps.lastMessageAt &&
     prevProps.lastMessage === nextProps.lastMessage &&
+    prevProps.lastMessageHasImage === nextProps.lastMessageHasImage &&
     prevProps.unreadCount === nextProps.unreadCount &&
     prevProps.isAnonymous === nextProps.isAnonymous &&
     prevProps.otherUser?.id === nextProps.otherUser?.id &&
@@ -37,6 +40,7 @@ const ChatListItem = React.memo(function ChatListItem({
   lastMessageAt,
   otherUser,
   lastMessage,
+  lastMessageHasImage = false,
   unreadCount,
   isAnonymous,
 }: ChatListItemProps) {
@@ -177,9 +181,7 @@ const ChatListItem = React.memo(function ChatListItem({
               />
             )
           ) : (
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{getInitial()}</Text>
-            </View>
+            <Image source={DEFAULT_AVATAR} style={styles.avatarImage} />
           )}
           {unreadCount > 0 && (
             <View style={styles.unreadBadge}>
@@ -196,7 +198,11 @@ const ChatListItem = React.memo(function ChatListItem({
             </Text>
           </View>
           <Text style={styles.lastMessage} numberOfLines={1}>
-            {lastMessage || "No messages yet"}
+            {lastMessageHasImage
+              ? "sent an image"
+              : lastMessage != null && lastMessage.trim() !== ""
+                ? lastMessage
+                : "No messages yet"}
           </Text>
         </View>
       </Pressable>

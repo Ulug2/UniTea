@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import { View, Pressable, StyleSheet } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import * as Notifications from "expo-notifications";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
 
@@ -141,6 +142,9 @@ function useGlobalUnreadCount() {
               queryKey: ["global-unread-count", currentUserId],
               exact: false, // Match all variants (with or without blocks)
             });
+            queryClient.invalidateQueries({
+              queryKey: ["chat-summaries", currentUserId],
+            });
           }, 500);
         }
       )
@@ -153,10 +157,12 @@ function useGlobalUnreadCount() {
         },
         () => {
           // Message read status changed - update immediately (no debounce for read status)
-          // This ensures badge updates instantly when messages are marked as read
           queryClient.invalidateQueries({
             queryKey: ["global-unread-count", currentUserId],
             exact: false, // Match all variants (with or without blocks)
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["chat-summaries", currentUserId],
           });
         }
       )
@@ -240,6 +246,12 @@ function FilterButtons() {
 export default function TabLayout() {
   const { theme } = useTheme();
   const globalUnreadCount = useGlobalUnreadCount();
+
+  // Keep app icon badge in sync with chat unread count
+  useEffect(() => {
+    const count = typeof globalUnreadCount === "number" ? globalUnreadCount : 0;
+    Notifications.setBadgeCountAsync(count).catch(() => {});
+  }, [globalUnreadCount]);
 
   return (
     <FilterProvider>

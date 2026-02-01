@@ -451,6 +451,21 @@ export default function Auth() {
     }
 
     try {
+      // Check if email already exists so we never call signUp (no confirmation email sent)
+      try {
+        const { data: checkData } = await supabase.functions.invoke("check-email-exists", {
+          body: { email: sanitizedEmail },
+        });
+        if (checkData?.exists === true) {
+          await hideSplashSafe();
+          Alert.alert("User already exists", "An account with this email already exists. Please sign in instead.");
+          setLoadingState((prev) => ({ ...prev, signup: false }));
+          return;
+        }
+      } catch {
+        // If check fails (e.g. function not deployed, network), proceed to signUp; Supabase will return "User already registered" if duplicate
+      }
+
       const {
         data: { session },
         error,
@@ -459,7 +474,6 @@ export default function Auth() {
           email: sanitizedEmail,
           password: password,
           options: {
-            // Use /callback route (auth group is not part of URL)
             emailRedirectTo: "myunitea://callback",
           },
         }),
@@ -469,18 +483,16 @@ export default function Auth() {
         logAuthEvent("signup_failed", { error: error.message });
         const friendlyError = getUserFriendlyError(error);
 
-        // If this is a \"user already registered\" type error, show a clear alert
         if (
           friendlyError.toLowerCase().includes("already exists") ||
           friendlyError.toLowerCase().includes("already registered")
         ) {
           Alert.alert(
-            "Account already exists",
-            "A user with this email is already registered. Please sign in instead."
+            "User already exists",
+            "An account with this email already exists. Please sign in instead."
           );
         }
 
-        // Determine if error is email or password related
         if (
           friendlyError.toLowerCase().includes("email") ||
           friendlyError.toLowerCase().includes("account")
@@ -489,7 +501,6 @@ export default function Auth() {
         } else {
           setPasswordError(friendlyError);
         }
-        // Hide splash screen on error
         await hideSplashSafe();
       } else if (!session) {
         logAuthEvent("signup_success_verification_required");

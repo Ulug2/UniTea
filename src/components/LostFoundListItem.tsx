@@ -8,6 +8,13 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
 import UserProfileModal from "./UserProfileModal";
+import { DEFAULT_AVATAR } from "../constants/images";
+
+export type LostFoundPostForMenu = {
+  postId: string;
+  userId: string;
+  username: string;
+};
 
 type LostFoundListItemProps = {
   postId: string;
@@ -21,6 +28,7 @@ type LostFoundListItemProps = {
   username: string;
   avatarUrl: string | null;
   isVerified: boolean | null;
+  onLongPress?: (post: LostFoundPostForMenu) => void;
 };
 
 // Custom comparison function for better memoization (prevents unnecessary re-renders)
@@ -36,7 +44,8 @@ const arePropsEqual = (prevProps: LostFoundListItemProps, nextProps: LostFoundLi
     prevProps.createdAt === nextProps.createdAt &&
     prevProps.username === nextProps.username &&
     prevProps.avatarUrl === nextProps.avatarUrl &&
-    prevProps.isVerified === nextProps.isVerified
+    prevProps.isVerified === nextProps.isVerified &&
+    prevProps.onLongPress === nextProps.onLongPress
   );
 };
 
@@ -51,6 +60,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   createdAt,
   username,
   avatarUrl,
+  onLongPress,
 }: LostFoundListItemProps) {
   const { theme } = useTheme();
   const { session } = useAuth();
@@ -309,7 +319,13 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   };
 
   return (
-    <Pressable style={styles.card}>
+    <Pressable
+      style={styles.card}
+      onLongPress={() =>
+        onLongPress?.({ postId, userId, username: username ?? "Unknown" })
+      }
+      delayLongPress={400}
+    >
       {/* HEADER */}
       <View style={styles.header}>
         <Pressable
@@ -332,9 +348,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
               />
             )
           ) : (
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{getInitial()}</Text>
-            </View>
+            <Image source={DEFAULT_AVATAR} style={styles.avatarImage} />
           )}
           <Text style={styles.username}>
             {isAnonymous ? "Anonymous" : username || "Unknown"}

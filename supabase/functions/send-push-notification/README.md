@@ -70,3 +70,10 @@ This function works in conjunction with the notification triggers created in `sq
 - Notifications are grouped by user to avoid sending multiple push notifications
 - Users without push tokens are skipped
 - The function is idempotent - safe to call multiple times
+
+## Troubleshooting: "I'm not getting push notifications"
+
+1. **The Edge Function is not called automatically.** Database triggers only insert rows into `notifications`; they do not call this function. You must:
+   - Set up a **Database Webhook** on `notifications` INSERT that POSTs to this function, or
+   - Run a **cron job** (e.g. every 30–60 seconds) that POSTs to this function.
+2. **App icon badge:** The app sets the badge from the chat unread count when the user is in the app. For the badge to show on the home screen, ensure `shouldSetBadge: true` in the notification handler (see `src/hooks/usePushNotifications.ts`) and that the device allows badge for the app.

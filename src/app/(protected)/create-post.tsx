@@ -30,6 +30,7 @@ import { uploadImage, getImageUrl } from "../../utils/supabaseImages";
 import { formatDistanceToNowStrict } from "date-fns";
 import nuLogo from "../../../assets/images/nu-logo.png";
 import SupabaseImage from "../../components/SupabaseImage";
+import { DEFAULT_AVATAR } from "../../constants/images";
 import { logger } from "../../utils/logger";
 
 type PostInsert = Database["public"]["Tables"]["posts"]["Insert"];
@@ -542,7 +543,8 @@ export default function CreatePostScreen() {
               value={content}
               multiline
               autoFocus={!isLostFound && !isRepost}
-              scrollEnabled={false}
+              scrollEnabled={true}
+              textAlignVertical="top"
             />
           </View>
 
@@ -595,12 +597,7 @@ export default function CreatePostScreen() {
                     />
                   )
                 ) : (
-                  <View
-                    style={[
-                      styles.originalAvatar,
-                      { backgroundColor: theme.border },
-                    ]}
-                  />
+                  <Image source={DEFAULT_AVATAR} style={styles.originalAvatar} />
                 )}
                 <View style={styles.originalPostHeaderText}>
                   <Text style={[styles.originalAuthor, { color: theme.text }]}>
@@ -761,6 +758,7 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_400Regular",
     paddingVertical: 10,
     minHeight: 120,
+    maxHeight: 280,
     textAlignVertical: "top",
   },
   imageContainer: {
