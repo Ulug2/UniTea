@@ -110,7 +110,8 @@ export const getUserVote = async (
 
     if (!targetId) return { voteType: null, voteId: null };
 
-    if (commentId?.startsWith('temp-')) {
+    // Ignore temporary optimistic IDs (not real UUIDs)
+    if (postId?.startsWith('temp-') || commentId?.startsWith('temp-')) {
         return { voteType: null, voteId: null };
     }
 
@@ -213,5 +214,79 @@ export const vote = async (
     } catch (error) {
         console.error('[vote] fatal error', error);
         throw error; // Re-throw so UI can show error to user
+    }
+};
+
+/**
+ * Set the user's vote to an explicit desired state.
+ * - desiredVoteType = 'upvote' | 'downvote' => ensures that vote exists with that type
+ * - desiredVoteType = null => ensures that no vote exists
+ *
+ * This is better than "toggle" semantics for spam-tapping because it is idempotent.
+ */
+export const setVote = async (
+    userId: string,
+    desiredVoteType: 'upvote' | 'downvote' | null,
+    postId?: string,
+    commentId?: string
+): Promise<void> => {
+    if (!postId && !commentId) {
+        throw new Error('Either postId or commentId must be provided');
+    }
+
+    try {
+        const { voteType: existingVoteType, voteId: existingVoteId } =
+            await getUserVote(userId, postId, commentId);
+
+        // Ensure vote is removed
+        if (desiredVoteType === null) {
+            if (!existingVoteId) return;
+
+            const { error } = await retryOperation(async () =>
+                await supabase.from('votes').delete().eq('id', existingVoteId)
+            );
+            if (error) {
+                console.error('[setVote] delete error', error);
+                throw error;
+            }
+            return;
+        }
+
+        // Ensure vote exists with correct type
+        if (existingVoteId) {
+            if (existingVoteType === desiredVoteType) return;
+
+            const { error } = await retryOperation(async () =>
+                await supabase
+                    .from('votes')
+                    .update({ vote_type: desiredVoteType })
+                    .eq('id', existingVoteId)
+            );
+            if (error) {
+                console.error('[setVote] update error', error);
+                throw error;
+            }
+            return;
+        }
+
+        const voteData: TablesInsert<'votes'> = {
+            user_id: userId,
+            vote_type: desiredVoteType,
+            ...(postId ? { post_id: postId } : { comment_id: commentId }),
+        };
+
+        const { error } = await retryOperation(async () =>
+            await supabase.from('votes').upsert(voteData, {
+                onConflict: postId ? 'user_id,post_id' : 'user_id,comment_id',
+                ignoreDuplicates: false,
+            })
+        );
+        if (error) {
+            console.error('[setVote] insert error', error);
+            throw error;
+        }
+    } catch (error) {
+        console.error('[setVote] fatal error', error);
+        throw error;
     }
 };

@@ -2,10 +2,6 @@ import { Tabs } from "expo-router";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import { useTheme } from "../../../context/ThemeContext";
 import React, {
-  createContext,
-  useContext,
-  useState,
-  ReactNode,
   useEffect,
   useRef,
 } from "react";
@@ -14,18 +10,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
-
-// Create a context for filter state
-type FeedFilter = "hot" | "new" | "top";
-const FilterContext = createContext<{
-  selectedFilter: FeedFilter;
-  setSelectedFilter: (filter: FeedFilter) => void;
-}>({
-  selectedFilter: "hot",
-  setSelectedFilter: () => { },
-});
-
-export const useFilterContext = () => useContext(FilterContext);
+import { useBlocks } from "../../../hooks/useBlocks";
+import { FilterProvider, useFilterContext } from "./filterContext";
 
 // Hook to get global unread count for chat tab badge
 function useGlobalUnreadCount() {
@@ -37,34 +23,8 @@ function useGlobalUnreadCount() {
   const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const updateDebounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
-  // Fetch blocked users
-  const { data: blocks = [] } = useQuery({
-    queryKey: ["blocks", currentUserId],
-    enabled: Boolean(currentUserId),
-    queryFn: async () => {
-      if (!currentUserId) return [];
-
-      // Get users blocked by me and users who blocked me
-      const [blockedByMe, blockedMe] = await Promise.all([
-        supabase
-          .from("blocks")
-          .select("blocked_id")
-          .eq("blocker_id", currentUserId),
-        supabase
-          .from("blocks")
-          .select("blocker_id")
-          .eq("blocked_id", currentUserId),
-      ]);
-
-      const blockedUserIds = new Set<string>();
-      blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
-      blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
-
-      return Array.from(blockedUserIds);
-    },
-    staleTime: 1000 * 60 * 5, // Blocks stay fresh for 5 minutes
-    gcTime: 1000 * 60 * 30,
-  });
+  // Fetch blocked users using the reusable hook
+  const { data: blocks = [] } = useBlocks();
 
   const { data: unreadCount = 0 } = useQuery<number>({
     queryKey: ["global-unread-count", currentUserId, blocks],
@@ -107,9 +67,8 @@ function useGlobalUnreadCount() {
       return total;
     },
     enabled: Boolean(currentUserId),
-    staleTime: 1000 * 5, // Stale after 5 seconds (reduced from 0 to prevent over-fetching)
+    staleTime: 1000 * 30, // Stale after 30 seconds; rely primarily on realtime + cache
     gcTime: 1000 * 60 * 5, // Cache for 5 minutes
-    refetchInterval: 1000 * 30, // Refetch every 30 seconds as fallback
   });
 
   // Subscribe to real-time changes on chat_messages to update badge with debouncing
@@ -141,10 +100,10 @@ function useGlobalUnreadCount() {
             queryClient.invalidateQueries({
               queryKey: ["global-unread-count", currentUserId],
               exact: false, // Match all variants (with or without blocks)
+              refetchType: "none", // Don't refetch - let chat.tsx handle cache updates via realtime
             });
-            queryClient.invalidateQueries({
-              queryKey: ["chat-summaries", currentUserId],
-            });
+            // Don't invalidate chat-summaries here - chat.tsx handles its own cache updates via realtime subscriptions
+            // This prevents unnecessary refetches and stuck loading states
           }, 500);
         }
       )
@@ -160,10 +119,10 @@ function useGlobalUnreadCount() {
           queryClient.invalidateQueries({
             queryKey: ["global-unread-count", currentUserId],
             exact: false, // Match all variants (with or without blocks)
+            refetchType: "none", // Don't refetch - let chat.tsx handle cache updates via realtime
           });
-          queryClient.invalidateQueries({
-            queryKey: ["chat-summaries", currentUserId],
-          });
+          // Don't invalidate chat-summaries here - chat.tsx handles its own cache updates via realtime subscriptions
+          // This prevents unnecessary refetches and stuck loading states
         }
       )
       .subscribe();
@@ -183,15 +142,6 @@ function useGlobalUnreadCount() {
   }, [currentUserId, queryClient]);
 
   return unreadCount;
-}
-
-export function FilterProvider({ children }: { children: ReactNode }) {
-  const [selectedFilter, setSelectedFilter] = useState<FeedFilter>("hot");
-  return (
-    <FilterContext.Provider value={{ selectedFilter, setSelectedFilter }}>
-      {children}
-    </FilterContext.Provider>
-  );
 }
 
 function FilterButtons() {

@@ -19,6 +19,8 @@ import {
   Dimensions,
   Animated,
   PanResponder,
+  AppState,
+  AppStateStatus,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../../context/ThemeContext";
@@ -41,10 +43,18 @@ import { uploadImage } from "../../../utils/supabaseImages";
 import { logger } from "../../../utils/logger";
 import UserProfileModal from "../../../components/UserProfileModal";
 import { DEFAULT_AVATAR } from "../../../constants/images";
+import { useBlocks } from "../../../hooks/useBlocks";
 
 type Chat = Database['public']['Tables']['chats']['Row'];
 type ChatMessage = Database['public']['Tables']['chat_messages']['Row'] & {
   image_url?: string | null;
+  // Local-only fields used for optimistic UI and retries
+  sendStatus?: "sending" | "failed";
+  _clientPayload?: {
+    messageText: string;
+    imageUrl?: string | null;
+    localImageUri?: string | null;
+  } | null;
 };
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -85,6 +95,11 @@ export default function ChatDetailScreen() {
   // Track local image URIs for optimistic messages (tempId -> localUri)
   const optimisticImageUris = useRef<Map<string, string>>(new Map());
 
+  // Rate limiting: Track message send times to prevent spam
+  const messageSendTimes = useRef<number[]>([]);
+  const RATE_LIMIT_MESSAGES = 10; // Max messages
+  const RATE_LIMIT_WINDOW_MS = 60000; // Per 60 seconds (1 minute)
+
   // Cleanup optimistic image URIs on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
@@ -92,6 +107,23 @@ export default function ChatDetailScreen() {
       pendingMessageIds.current.clear();
     };
   }, []);
+
+  // Track scroll position to know if user is at bottom of the chat
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const isAtBottomRef = useRef(true);
+  useEffect(() => {
+    isAtBottomRef.current = isAtBottom;
+  }, [isAtBottom]);
+
+  // Track how many new messages arrived while user was scrolled up
+  const [pendingNewMessages, setPendingNewMessages] = useState(0);
+
+  // Track if send is in progress to prevent double-tap and disable button
+  const [isSending, setIsSending] = useState(false);
+  const isSendingRef = useRef(false);
+
+  // Ref to the messages FlatList to allow imperative scrolling
+  const flatListRef = useRef<FlatList<ChatMessage> | null>(null);
 
   // Full-screen image pinch-to-zoom: animated values and base values for cumulative gestures
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -122,8 +154,8 @@ export default function ChatDetailScreen() {
 
   const fullScreenPanResponder = useRef(
     PanResponder.create({
-      onStartShouldSetResponder: () => false,
-      onMoveShouldSetResponder: (_, gestureState) => gestureState.numberActiveTouches === 2,
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_: any, gestureState: any) => gestureState.numberActiveTouches === 2,
       onPanResponderGrant: (evt) => {
         const touches = evt.nativeEvent.touches;
         if (touches.length === 2) {
@@ -215,33 +247,7 @@ export default function ChatDetailScreen() {
   const isAnonymous = otherUserId?.startsWith("anonymous-");
 
   // Fetch blocked users
-  const { data: blocks = [] } = useQuery({
-    queryKey: ["blocks", currentUserId],
-    enabled: Boolean(currentUserId),
-    queryFn: async () => {
-      if (!currentUserId) return [];
-
-      // Get users blocked by me and users who blocked me
-      const [blockedByMe, blockedMe] = await Promise.all([
-        supabase
-          .from("blocks")
-          .select("blocked_id")
-          .eq("blocker_id", currentUserId),
-        supabase
-          .from("blocks")
-          .select("blocker_id")
-          .eq("blocked_id", currentUserId),
-      ]);
-
-      const blockedUserIds = new Set<string>();
-      blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
-      blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
-
-      return Array.from(blockedUserIds);
-    },
-    staleTime: 1000 * 60 * 5, // Blocks stay fresh for 5 minutes
-    gcTime: 1000 * 60 * 30,
-  });
+  const { data: blocks = [] } = useBlocks();
 
   // Fetch other user profile
   const { data: otherUser, isLoading: isLoadingUser } =
@@ -300,7 +306,15 @@ export default function ChatDetailScreen() {
         .order("created_at", { ascending: false }) // Fetch newest first for pagination
         .range(from, to);
 
-      if (error) throw error;
+      if (error) {
+        logger.error("Failed to fetch chat messages", error, {
+          userId: currentUserId,
+          chatId: id,
+          component: "ChatDetailScreen",
+          queryKey: "chat-messages",
+        });
+        throw error;
+      }
       return data || [];
     },
     getNextPageParam: (lastPage, allPages) => {
@@ -311,10 +325,22 @@ export default function ChatDetailScreen() {
       return undefined;
     },
     enabled: Boolean(id),
-    staleTime: 0, // Messages are high-velocity data, always refetch
+    staleTime: 1000 * 60 * 2, // Messages stay fresh for 2 minutes - rely on real-time updates
     gcTime: 1000 * 60 * 15,
     initialPageParam: 0,
-    retry: 2,
+    retry: (failureCount, error) => {
+      // Log error on retry
+      if (failureCount > 0) {
+        logger.warn("Retrying chat messages query", {
+          userId: currentUserId,
+          chatId: id,
+          component: "ChatDetailScreen",
+          failureCount,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return failureCount < 2; // Retry up to 2 times
+    },
   });
 
   // Flatten messages and filter out blocked users' messages
@@ -417,7 +443,16 @@ export default function ChatDetailScreen() {
 
       return { previousData };
     },
-    onError: (_error, _variables, context) => {
+    onError: (error, variables, context) => {
+      logger.error("Error deleting message", error, {
+        userId: currentUserId,
+        chatId: id,
+        component: "ChatDetailScreen",
+        operation: "deleteMessage",
+        messageId: variables?.messageId,
+        action: variables?.action,
+      });
+
       if (context?.previousData) {
         queryClient.setQueryData(["chat-messages", id], context.previousData);
       }
@@ -429,13 +464,18 @@ export default function ChatDetailScreen() {
   });
 
   // Real-time subscription: subscribe on mount, unsubscribe on unmount (navigate away).
+  // Uses smart cache updates to instantly show new messages without refetching
   useEffect(() => {
     if (!id || !currentUserId) return;
 
     let isMounted = true;
+    let subscriptionStatus: "SUBSCRIBED" | "SUBSCRIBING" | "CHANNEL_ERROR" | "TIMED_OUT" | "CLOSED" = "SUBSCRIBING";
 
-    const channel = supabase
-      .channel(`chat-${id}`)
+    // CRITICAL: Use unique, consistent channel name for this chat
+    // Format: chat-{chatId} ensures proper cleanup and prevents conflicts
+    // Supabase will handle cleanup when component unmounts
+    const channelName = `chat-${id}`;
+    const channel = supabase.channel(channelName)
       .on(
         "postgres_changes",
         {
@@ -445,84 +485,213 @@ export default function ChatDetailScreen() {
           filter: `chat_id=eq.${id}`,
         },
         (payload) => {
-          const newMessage = payload.new as ChatMessage;
+          if (!isMounted) return;
 
-          // Skip our own messages - they're handled by optimistic updates
-          if (newMessage.user_id === currentUserId) {
-            return;
-          }
+          try {
+            const newMessage = payload.new as ChatMessage;
 
-          // Prevent duplicates: check if message already exists or is pending
-          if (pendingMessageIds.current.has(newMessage.id)) {
-            return;
-          }
-
-          // Mark as pending
-          pendingMessageIds.current.add(newMessage.id);
-
-          // Remove from pending after a delay (cleanup)
-          setTimeout(() => {
-            pendingMessageIds.current.delete(newMessage.id);
-          }, 5000);
-
-          // New message received - add to cache immediately
-          const updateSuccess = queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
-            if (!oldData) {
-              return {
-                pages: [[newMessage]],
-                pageParams: [0],
-              };
+            // Skip our own messages - they're handled by optimistic updates
+            if (newMessage.user_id === currentUserId) {
+              return;
+            }
+            
+            // Check if chat_id matches (safety check)
+            if (newMessage.chat_id !== id) {
+              return;
             }
 
-            const existingMessage = oldData.pages.flat().find((m: ChatMessage) => m.id === newMessage.id);
-            if (existingMessage) {
-              return oldData;
+            // Prevent duplicates: check if message already exists or is pending
+            if (pendingMessageIds.current.has(newMessage.id)) {
+              return;
             }
 
-            const newPages = [...oldData.pages];
-            if (newPages[0]) {
-              newPages[0] = [newMessage, ...newPages[0]];
-            } else {
-              newPages[0] = [newMessage];
-            }
+            // Mark as pending
+            pendingMessageIds.current.add(newMessage.id);
 
-            return {
-              ...oldData,
-              pages: newPages,
-            };
-          });
-
-          if (!updateSuccess && isMounted) {
+            // Remove from pending after a delay (cleanup)
             setTimeout(() => {
-              if (isMounted) {
-                queryClient.invalidateQueries({
-                  queryKey: ["chat-messages", id],
-                  refetchType: "active",
-                });
-              }
-            }, 300);
-          }
+              pendingMessageIds.current.delete(newMessage.id);
+            }, 5000);
 
-          queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });
+            // New message received - add to cache immediately with proper infinite query structure
+            // CRITICAL: Create completely new object references to ensure React Query detects the change
+            queryClient.setQueryData<MessagesQueryData>(["chat-messages", id], (oldData) => {
+              if (!oldData) {
+                // If no data exists, create initial structure
+                logger.breadcrumb("Creating initial messages cache with new message", "cache", {
+                  chatId: id,
+                  messageId: newMessage.id,
+                });
+                return {
+                  pages: [[newMessage]],
+                  pageParams: [0],
+                };
+              }
+
+              const safePages = Array.isArray(oldData.pages) ? oldData.pages : [];
+
+              // Check if message already exists (prevent duplicates)
+              const allMessages = safePages.flat();
+              const existingMessage = allMessages.find((m: ChatMessage) => m.id === newMessage.id);
+              if (existingMessage) {
+                logger.breadcrumb("Message already in cache, skipping", "cache", {
+                  chatId: id,
+                  messageId: newMessage.id,
+                });
+                return oldData; // Message already in cache
+              }
+
+              logger.breadcrumb("Adding new message to cache", "cache", {
+                chatId: id,
+                messageId: newMessage.id,
+                currentPageCount: safePages.length,
+                firstPageLength: safePages[0]?.length || 0,
+              });
+
+              // CRITICAL: Create completely new array references for ALL pages
+              // Even unchanged pages get new array references to ensure React Query detects change
+              const newPages = (safePages.length ? safePages : [[]]).map((page, index) => {
+                if (index === 0 && Array.isArray(page)) {
+                  // Prepend to first page (newest first) - create new array
+                  return [newMessage, ...page];
+                }
+                // Return new array reference even if unchanged (ensures detection)
+                return Array.isArray(page) ? [...page] : [];
+              });
+
+              // If first page doesn't exist, create it
+              if (!newPages[0] || !Array.isArray(newPages[0])) {
+                newPages[0] = [newMessage];
+              }
+
+              const newPageParams = Array.isArray(oldData.pageParams)
+                ? [...oldData.pageParams]
+                : [0];
+
+              const newData: MessagesQueryData = {
+                pages: newPages,
+                pageParams: newPageParams,
+              };
+
+              logger.breadcrumb("Cache updated successfully", "cache", {
+                chatId: id,
+                messageId: newMessage.id,
+                newPageCount: newData.pages.length,
+                newFirstPageLength: newData.pages[0]?.length || 0,
+              });
+
+              return newData;
+            });
+
+            // Auto-scroll only if user is currently at bottom; otherwise, respect their scroll
+            if (isAtBottomRef.current && flatListRef.current) {
+              // Small delay to ensure cache update is rendered first
+              setTimeout(() => {
+                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+              }, 100);
+            } else {
+              // User is reading older messages - show "new messages" indicator instead
+              setPendingNewMessages((count) => count + 1);
+            }
+
+            // Update global unread count
+            queryClient.invalidateQueries({
+              queryKey: ["global-unread-count", currentUserId],
+              refetchType: "none", // Don't refetch immediately
+            });
+          } catch (error) {
+            logger.error("Error updating messages cache (INSERT event)", error, {
+              userId: currentUserId,
+              chatId: id,
+              component: "ChatDetailScreen",
+              event: "chat_messages.INSERT",
+              messageId: payload.new?.id,
+            });
+          }
         }
       )
       .subscribe((status) => {
+        subscriptionStatus = status;
+        
         if (status === "SUBSCRIBED" && isMounted) {
-          console.log(`[Chat ${id}] Real-time subscription active`);
+          logger.breadcrumb("Chat detail subscription active", "realtime", {
+            userId: currentUserId,
+            chatId: id,
+            channel: `chat-${id}`,
+          });
         } else if (status === "CHANNEL_ERROR" && isMounted) {
-          console.error(`[Chat ${id}] Real-time subscription error, attempting reconnect...`);
+          logger.error(
+            "Chat detail subscription error",
+            new Error(`Subscription status: ${status}`),
+            {
+              userId: currentUserId,
+              chatId: id,
+              component: "ChatDetailScreen",
+              channel: `chat-${id}`,
+              status,
+            }
+          );
+          // On error, invalidate to refetch (fallback)
           setTimeout(() => {
             if (isMounted) {
-              queryClient.invalidateQueries({ queryKey: ["chat-messages", id] });
+              queryClient.invalidateQueries({
+                queryKey: ["chat-messages", id],
+                refetchType: "active",
+              });
             }
           }, 1000);
+        } else if (status === "TIMED_OUT" && isMounted) {
+          logger.warn("Chat detail subscription timed out", {
+            userId: currentUserId,
+            chatId: id,
+            component: "ChatDetailScreen",
+            channel: `chat-${id}`,
+          });
+          // Resubscribe on timeout
+          setTimeout(() => {
+            if (isMounted) {
+              channel.unsubscribe();
+              supabase.removeChannel(channel);
+              // Trigger re-subscription by invalidating (component will re-run effect)
+              queryClient.invalidateQueries({
+                queryKey: ["chat-messages", id],
+                refetchType: "none",
+              });
+            }
+          }, 2000);
         }
       });
 
+    // Connection Recovery: Listen for app state changes to catch up on missed messages
+    // When app comes back from background, the socket might have been disconnected
+    // and we may have missed some messages
+    const appStateSubscription = AppState.addEventListener("change", (nextAppState: AppStateStatus) => {
+      if (nextAppState === "active" && isMounted && id && currentUserId) {
+        // App came to foreground - check for missed messages
+        // Small delay to allow socket to reconnect first
+        setTimeout(() => {
+          if (isMounted) {
+            // Force refetch to catch up on any missed messages while socket was disconnected
+            queryClient.invalidateQueries({
+              queryKey: ["chat-messages", id],
+              refetchType: "active", // Refetch if query is active (user is viewing chat)
+            });
+            logger.breadcrumb("App state changed to active - checking for missed messages", "app_state", {
+              chatId: id,
+              userId: currentUserId,
+            });
+          }
+        }, 1000);
+      }
+    });
+
     return () => {
       isMounted = false;
-      channel.unsubscribe();
-      supabase.removeChannel(channel);
+      appStateSubscription.remove();
+      if (subscriptionStatus !== "CLOSED") {
+        channel.unsubscribe();
+        supabase.removeChannel(channel);
+      }
     };
   }, [id, currentUserId, queryClient]);
 
@@ -600,24 +769,55 @@ export default function ChatDetailScreen() {
         .neq("user_id", currentUserId)
         .then(({ error }) => {
           if (error) {
-            console.error("Error marking messages as read:", error);
+            logger.error("Error marking messages as read", error, {
+              userId: currentUserId,
+              chatId: id,
+              component: "ChatDetailScreen",
+              operation: "markAsRead",
+            });
             // On error, invalidate to refetch correct state
             queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
             queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });
           }
         });
 
-      // 5. Invalidate queries to ensure eventual consistency (but don't refetch immediately)
-      queryClient.invalidateQueries({
-        queryKey: ["chat-summaries", currentUserId],
-        refetchType: "none", // Don't refetch now, wait for focus
-      });
-      // Invalidate all variants of global-unread-count (including those with blocks dependency)
-      queryClient.invalidateQueries({
-        queryKey: ["global-unread-count", currentUserId],
-        exact: false, // Match all variants (with or without blocks)
-        refetchType: "none",
-      });
+      // 5. Update global unread count optimistically from updated chat-summaries cache
+      // CRITICAL: Calculate from cache instead of invalidating to ensure immediate sync
+      // The queryFn in _layout.tsx will now use cached chat-summaries, so we just need to trigger recalculation
+      queryClient.setQueriesData<number>(
+        { queryKey: ["global-unread-count", currentUserId], exact: false },
+        () => {
+          // Get updated chat summaries from cache
+          const updatedSummaries = queryClient.getQueryData<any[]>(["chat-summaries", currentUserId]);
+          if (!updatedSummaries || !Array.isArray(updatedSummaries)) {
+            return undefined; // Let queryFn handle it
+          }
+
+          // Get blocks from cache (needed for calculation)
+          const cachedBlocks = queryClient.getQueryData<string[]>(["blocks", currentUserId]) || [];
+
+          // Calculate total unread count from cached summaries
+          const total = updatedSummaries.reduce((sum: number, chat: any) => {
+            const otherUserId =
+              chat.participant_1_id === currentUserId
+                ? chat.participant_2_id
+                : chat.participant_1_id;
+
+            // Skip chats with blocked users
+            if (cachedBlocks.includes(otherUserId)) {
+              return sum;
+            }
+
+            const isP1 = chat.participant_1_id === currentUserId;
+            const unread = isP1
+              ? chat.unread_count_p1 || 0
+              : chat.unread_count_p2 || 0;
+            return sum + unread;
+          }, 0);
+
+          return total;
+        }
+      );
     };
 
     // Debounce to avoid marking as read too quickly
@@ -625,17 +825,79 @@ export default function ChatDetailScreen() {
     return () => clearTimeout(timer);
   }, [id, currentUserId, messages, queryClient]);
 
-  // When returning to this chat screen, refetch messages and other user profile immediately
+  // Track if we've done initial scroll for this chat ID
+  const hasScrolledInitiallyRef = useRef<string | null>(null);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Scroll to bottom when messages are first loaded for a chat
+  useEffect(() => {
+    if (messages.length > 0 && flatListRef.current && hasScrolledInitiallyRef.current !== id) {
+      // Clear any pending scroll
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      
+      // Small delay to ensure FlatList has rendered
+      scrollTimeoutRef.current = setTimeout(() => {
+        if (flatListRef.current) {
+          flatListRef.current.scrollToOffset({ offset: 0, animated: false });
+          // Set initial state to "at bottom" since we just scrolled there
+          setIsAtBottom(true);
+          isAtBottomRef.current = true;
+          hasScrolledInitiallyRef.current = id;
+        }
+        scrollTimeoutRef.current = null;
+      }, 200);
+      
+      return () => {
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current);
+          scrollTimeoutRef.current = null;
+        }
+      };
+    }
+  }, [messages.length, id]); // Run when messages load or chat ID changes
+
+  // Refetch messages when screen comes into focus to catch any missed messages
+  // This ensures users see new messages even if they navigated away and realtime missed some events
   useFocusEffect(
     useCallback(() => {
-      if (!id || !currentUserId) return;
-      queryClient.invalidateQueries({ queryKey: ["chat-messages", id] });
-      if (otherUserId) {
-        queryClient.invalidateQueries({
-          queryKey: ["chat-other-user", otherUserId],
-        });
+      if (!id) return;
+
+      // Reset initial scroll flag when navigating to a different chat
+      if (hasScrolledInitiallyRef.current !== id) {
+        hasScrolledInitiallyRef.current = null;
       }
-    }, [id, currentUserId, otherUserId, queryClient])
+
+      let scrollTimer: NodeJS.Timeout | null = null;
+
+      // Small delay to allow navigation to complete
+      const timer = setTimeout(() => {
+        // Invalidate to trigger refetch if data is stale or if query is active
+        queryClient.invalidateQueries({
+          queryKey: ["chat-messages", id],
+          refetchType: "active", // Only refetch if query is active (screen is visible)
+        });
+        
+        // Always scroll to bottom when screen comes into focus (user expects to see latest messages)
+        // Use a longer delay to ensure messages have loaded/rendered
+        scrollTimer = setTimeout(() => {
+          if (flatListRef.current) {
+            flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+            setIsAtBottom(true);
+            isAtBottomRef.current = true;
+            hasScrolledInitiallyRef.current = id;
+          }
+        }, 400); // Longer delay to ensure refetch completes and renders
+      }, 300);
+
+      return () => {
+        clearTimeout(timer);
+        if (scrollTimer) {
+          clearTimeout(scrollTimer);
+        }
+      };
+    }, [id, queryClient])
   );
 
   const getMessageTime = (dateString: string | null) => {
@@ -699,6 +961,31 @@ export default function ChatDetailScreen() {
         throw new Error("Missing chat ID or user ID");
       }
 
+      // Server-side rate limiting check (if function exists)
+      // This provides an additional layer of protection
+      // Note: Function may not exist in types, so we use type assertion
+      try {
+        const { data: rateLimitCheck, error: rateLimitError } = await (supabase as any)
+          .rpc("check_message_rate_limit", {
+            p_user_id: currentUserId,
+            p_chat_id: id,
+            p_max_messages: 10,
+            p_time_window_minutes: 1,
+          });
+
+        // If rate limit function exists and returns false, user is over limit
+        if (!rateLimitError && rateLimitCheck === false) {
+          throw new Error("RATE_LIMIT_EXCEEDED: You're sending messages too quickly. Please wait a moment.");
+        }
+      } catch (rpcError: any) {
+        // If RPC function doesn't exist, ignore (client-side rate limiting will handle it)
+        // Only throw if it's actually a rate limit error
+        if (rpcError?.message?.includes("RATE_LIMIT_EXCEEDED")) {
+          throw rpcError;
+        }
+        // Otherwise, continue with message send (RPC function may not be deployed yet)
+      }
+
       const now = new Date().toISOString();
 
       // Only include image_url when present so text-only messages work if migration not run yet
@@ -718,7 +1005,13 @@ export default function ChatDetailScreen() {
         .select()
         .single();
 
-      if (messageError) throw messageError;
+      if (messageError) {
+        // Check if it's a rate limit error from database
+        if (messageError.message?.includes("rate limit") || messageError.message?.includes("too many")) {
+          throw new Error("RATE_LIMIT_EXCEEDED: You're sending messages too quickly. Please wait a moment.");
+        }
+        throw messageError;
+      }
 
       // Update chat's last_message_at (non-blocking, fire and forget)
       supabase
@@ -762,6 +1055,12 @@ export default function ChatDetailScreen() {
         is_read: false,
         deleted_by_receiver: null,
         deleted_by_sender: null,
+        sendStatus: "sending",
+        _clientPayload: {
+          messageText,
+          imageUrl: imageUrl || null,
+          localImageUri: localImageUri || null,
+        },
       };
 
       // Mark as pending to prevent real-time subscription from adding it
@@ -773,7 +1072,13 @@ export default function ChatDetailScreen() {
 
       // IMMEDIATE optimistic update - messages (no waiting)
       queryClient.setQueryData<MessagesQueryData>(["chat-messages", id], (oldData) => {
-        if (!oldData) return oldData;
+        if (!oldData) {
+          // Create initial structure if no data exists
+          return {
+            pages: [[optimisticMessage]],
+            pageParams: [0],
+          };
+        }
 
         const newPages = [...oldData.pages];
         if (newPages[0]) {
@@ -787,6 +1092,14 @@ export default function ChatDetailScreen() {
           pages: newPages,
         };
       });
+
+      // Always scroll to bottom when sending our own message (UX: user wants to see what they sent)
+      // Small delay to ensure cache update is rendered first
+      setTimeout(() => {
+        if (flatListRef.current) {
+          flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+        }
+      }, 100);
 
       // IMMEDIATE optimistic update - chat summaries (no waiting)
       queryClient.setQueryData<any[]>(["chat-summaries", currentUserId], (oldSummaries: any[] | undefined) => {
@@ -840,7 +1153,16 @@ export default function ChatDetailScreen() {
         if (!oldData) return oldData;
 
         const newPages = oldData.pages.map((page) =>
-          page.map((msg) => (msg.id === tempId ? newMessage : msg))
+          page.map((msg) =>
+            msg.id === tempId
+              ? {
+                  ...newMessage,
+                  // Clear local-only fields; this message is now confirmed
+                  sendStatus: undefined,
+                  _clientPayload: null,
+                }
+              : msg
+          )
         );
 
         return {
@@ -852,11 +1174,74 @@ export default function ChatDetailScreen() {
       // Don't invalidate - we already updated optimistically, no need to refetch
     },
     onError: (error: any, variables, context) => {
-      console.error("Error sending message:", error);
+      // Remove the send attempt from rate limit tracking on error
+      if (messageSendTimes.current.length > 0) {
+        messageSendTimes.current.pop();
+      }
+
+      logger.error("Error sending message", error, {
+        userId: currentUserId,
+        chatId: id,
+        component: "ChatDetailScreen",
+        operation: "sendMessage",
+        hasImage: !!variables?.imageUrl,
+        messageLength: variables?.messageText?.length || 0,
+        errorCode: error?.code,
+      });
 
       if (!context) return;
 
-      // Rollback optimistic updates
+      // Classify network / transient vs validation / server errors
+      const isNetworkError =
+        error?.message?.includes("network") ||
+        error?.message?.includes("timeout") ||
+        error?.message?.includes("fetch") ||
+        error?.code === "ECONNABORTED" ||
+        error?.code === "ETIMEDOUT";
+
+      // CRITICAL: Always remove tempId from pendingMessageIds so future retries / realtime
+      // can proceed without being blocked by a stale pending entry
+      if (context.tempId) {
+        pendingMessageIds.current.delete(context.tempId);
+        optimisticImageUris.current.delete(context.tempId);
+      }
+
+      // Network / transient error case:
+      // - Keep the optimistic message in UI
+      // - Mark it as failed so user can retry
+      if (isNetworkError && context.tempId) {
+        queryClient.setQueryData<MessagesQueryData>(["chat-messages", id], (oldData) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page) =>
+              page.map((msg) =>
+                msg.id === context.tempId
+                  ? {
+                      ...msg,
+                      sendStatus: "failed",
+                    }
+                  : msg
+              )
+            ),
+          };
+        });
+
+        logger.warn("Network error during send - message may have been sent or may be retried", {
+          tempId: context.tempId,
+          chatId: id,
+          userId: currentUserId,
+        });
+
+        Alert.alert(
+          "Connection issue",
+          "We couldn't confirm if your message was delivered. It is marked as failed — tap it to retry.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      // Non-network errors: rollback optimistic updates
       if (context.previousMessages) {
         queryClient.setQueryData(["chat-messages", id], context.previousMessages);
       }
@@ -864,17 +1249,27 @@ export default function ChatDetailScreen() {
         queryClient.setQueryData(["chat-summaries", currentUserId], context.previousSummaries);
       }
 
-      // Remove from pending and cleanup optimistic image
-      if (context.tempId) {
-        pendingMessageIds.current.delete(context.tempId);
-        optimisticImageUris.current.delete(context.tempId);
+      // Handle rate limit errors specially
+      const isRateLimit =
+        error?.message?.includes("RATE_LIMIT_EXCEEDED") ||
+        String(error?.message || "").includes("too quickly");
+
+      if (isRateLimit) {
+        Alert.alert(
+          "Rate Limit",
+          "You're sending messages too quickly. Please wait a moment before sending another message.",
+          [{ text: "OK" }]
+        );
+        return;
       }
 
-      const isPgrst204 = error?.code === "PGRST204" || String(error?.message || "").includes("Could not find");
-      const message = isPgrst204
+      const isPgrst204 =
+        error?.code === "PGRST204" ||
+        String(error?.message || "").includes("Could not find");
+      const messageText = isPgrst204
         ? "Chat images require a database update. Run sql/add_chat_message_image.sql in Supabase SQL Editor, then reload schema (NOTIFY pgrst, 'reload schema')."
         : "Failed to send message. Please try again.";
-      Alert.alert("Error", message);
+      Alert.alert("Error", messageText);
       if (variables) {
         setMessage(variables.messageText); // Restore message on error
         if (variables.imageUrl) {
@@ -912,6 +1307,11 @@ export default function ChatDetailScreen() {
   }, []);
 
   const handleSend = useCallback(async () => {
+    // Prevent double-tap / rapid sends
+    if (isSendingRef.current || isSending) {
+      return;
+    }
+
     const messageText = message.trim();
     if (!id || !currentUserId) {
       return;
@@ -921,6 +1321,40 @@ export default function ChatDetailScreen() {
     if (!messageText && !selectedImage) {
       return;
     }
+
+    // Mark as sending
+    isSendingRef.current = true;
+    setIsSending(true);
+
+    // Rate limiting: Check if user has sent too many messages recently
+    const now = Date.now();
+    // Remove messages older than the time window
+    messageSendTimes.current = messageSendTimes.current.filter(
+      (time) => now - time < RATE_LIMIT_WINDOW_MS
+    );
+
+    // Check if over rate limit
+    if (messageSendTimes.current.length >= RATE_LIMIT_MESSAGES) {
+      const timeUntilNext = Math.ceil(
+        (RATE_LIMIT_WINDOW_MS - (now - messageSendTimes.current[0])) / 1000
+      );
+      Alert.alert(
+        "Rate Limit",
+        `You're sending messages too quickly. Please wait ${timeUntilNext} second${timeUntilNext !== 1 ? "s" : ""} before sending another message.`,
+        [{ text: "OK" }]
+      );
+      logger.warn("Message rate limit exceeded", {
+        userId: currentUserId,
+        chatId: id,
+        messagesInWindow: messageSendTimes.current.length,
+        timeUntilNext,
+      });
+      isSendingRef.current = false;
+      return;
+    }
+
+    // Record this send attempt
+    messageSendTimes.current.push(now);
 
     let imageUrl: string | null = null;
     const localImageUri = selectedImage; // Store local URI before upload
@@ -933,13 +1367,24 @@ export default function ChatDetailScreen() {
       } catch (error) {
         logger.error("Error uploading image", error as Error);
         Alert.alert("Error", "Failed to upload image. Please try again.");
+        isSendingRef.current = false;
+        setIsSending(false);
         return;
       }
     }
 
     setMessage(""); // Clear input IMMEDIATELY
-    sendMessageMutation.mutate({ messageText, imageUrl, localImageUri }); // Fire and forget
-  }, [message, selectedImage, id, currentUserId, sendMessageMutation]);
+    sendMessageMutation.mutate(
+      { messageText, imageUrl, localImageUri },
+      {
+        onSettled: () => {
+          // Reset sending flag after mutation completes (success or error)
+          isSendingRef.current = false;
+          setIsSending(false);
+        },
+      }
+    );
+  }, [message, selectedImage, id, currentUserId, sendMessageMutation, isSending]);
 
   // Block user mutation
   const blockUserMutation = useMutation({
@@ -976,7 +1421,13 @@ export default function ChatDetailScreen() {
       router.back();
     },
     onError: (error) => {
-      console.error("Error blocking user:", error);
+      logger.error("Error blocking user", error, {
+        userId: currentUserId,
+        chatId: id,
+        component: "ChatDetailScreen",
+        operation: "blockUser",
+        blockedUserId: otherUserId,
+      });
       Alert.alert("Error", "Failed to block user. Please try again.");
     },
   });
@@ -1137,8 +1588,13 @@ export default function ChatDetailScreen() {
       }, 100);
     },
     onError: (error, _variables, context) => {
-      console.error("Error deleting chat:", error);
-      console.error("Error details:", JSON.stringify(error, null, 2));
+      logger.error("Error deleting chat", error, {
+        userId: currentUserId,
+        chatId: id,
+        component: "ChatDetailScreen",
+        operation: "deleteChat",
+        errorDetails: error instanceof Error ? error.message : String(error),
+      });
 
       // Rollback optimistic update
       if (context?.previousSummaries) {
@@ -1323,6 +1779,37 @@ export default function ChatDetailScreen() {
     [currentUserId, deleteMessageMutation]
   );
 
+  const handleRetrySend = useCallback(
+    (msg: ChatMessage) => {
+      if (!id || !currentUserId) return;
+      const isCurrentUser = msg.user_id === currentUserId;
+      if (!isCurrentUser) return;
+
+      const payload = msg._clientPayload || {
+        messageText: msg.content || "",
+        imageUrl: msg.image_url || null,
+        localImageUri: optimisticImageUris.current.get(msg.id) || null,
+      };
+
+      // Remove the failed optimistic message before retrying to avoid duplicates
+      queryClient.setQueryData<MessagesQueryData>(["chat-messages", id], (oldData) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page) => page.filter((m) => m.id !== msg.id)),
+        };
+      });
+
+      // Fire a new send with the original payload
+      sendMessageMutation.mutate({
+        messageText: payload.messageText,
+        imageUrl: payload.imageUrl,
+        localImageUri: payload.localImageUri || undefined,
+      });
+    },
+    [id, currentUserId, queryClient, sendMessageMutation]
+  );
+
   const renderMessage = ({
     item,
     index,
@@ -1334,6 +1821,7 @@ export default function ChatDetailScreen() {
     const deletedBySender = (item as any).deleted_by_sender;
     const deletedByReceiver = (item as any).deleted_by_receiver;
     const isDeletedForEveryone = (item as any).is_deleted;
+    const sendStatus = item.sendStatus;
 
     // Hide message if it was deleted locally
     const isHiddenForCurrentUser =
@@ -1356,23 +1844,25 @@ export default function ChatDetailScreen() {
             isCurrentUser ? styles.currentUserMessage : styles.otherUserMessage,
           ]}
           onLongPress={() => handleMessageLongPress(item)}
+          onPress={() => {
+            if (sendStatus === "failed") {
+              handleRetrySend(item);
+            }
+          }}
         >
           <View
             style={[
               styles.messageBubble,
               {
-                backgroundColor: isDeletedForEveryone
-                  ? theme.card
-                  : isCurrentUser
-                    ? "#5DBEBC"
-                    : theme.card,
+                backgroundColor: "transparent", // Bubble container is transparent, individual parts have their own backgrounds
                 borderRadius: 20,
-                paddingHorizontal: item.image_url && !isDeletedForEveryone ? 0 : 16,
-                paddingVertical: item.image_url && !isDeletedForEveryone ? 0 : 12,
+                paddingHorizontal: 0,
+                paddingVertical: 0,
+                overflow: "hidden",
               },
             ]}
           >
-            {/* Show image if present - rounded top only when text below; tappable for full-screen */}
+            {/* Show image if present - white background, rounded top only when text below */}
             {item.image_url && !isDeletedForEveryone && (
               <Pressable
                 style={[
@@ -1397,11 +1887,26 @@ export default function ChatDetailScreen() {
                 )}
               </Pressable>
             )}
-            {/* Show text content if present - bottom area, start-aligned, vertically centered */}
+            {/* Show text content if present - teal background for current user, card for others */}
             {item.content && (
               <View
                 style={[
                   styles.messageTextWrap,
+                  {
+                    backgroundColor: isDeletedForEveryone
+                      ? theme.card
+                      : isCurrentUser
+                        ? sendStatus === "failed"
+                          ? "#B91C1C" // red-ish for failed sends
+                          : "#5DBEBC" // teal for current user
+                        : theme.card,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderBottomLeftRadius: 20,
+                    borderBottomRightRadius: 20,
+                    borderTopLeftRadius: item.image_url && !isDeletedForEveryone ? 0 : 20,
+                    borderTopRightRadius: item.image_url && !isDeletedForEveryone ? 0 : 20,
+                  },
                   item.image_url && !isDeletedForEveryone && styles.messageTextWrapWithImage,
                 ]}
               >
@@ -1434,6 +1939,16 @@ export default function ChatDetailScreen() {
           >
             {getMessageTime(item.created_at)}
           </Text>
+          {isCurrentUser && sendStatus === "failed" && (
+            <Text
+              style={[
+                styles.failedStatusText,
+                { color: "#EF4444" },
+              ]}
+            >
+              Failed to send. Tap to retry.
+            </Text>
+          )}
         </Pressable>
         {/* Date divider rendered AFTER message in JSX
             With inverted={true}, this appears BELOW the message visually,
@@ -1625,12 +2140,50 @@ export default function ChatDetailScreen() {
         style={{ flex: 1 }}
         keyboardVerticalOffset={0}
       >
+        {/* "New messages" pill when user has scrolled up */}
+        {pendingNewMessages > 0 && !isAtBottom && (
+          <Pressable
+            style={styles.newMessagesPill}
+            onPress={() => {
+              if (flatListRef.current) {
+                flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+              }
+              setPendingNewMessages(0);
+            }}
+          >
+            <Text style={styles.newMessagesPillText}>
+              {pendingNewMessages === 1
+                ? "1 new message"
+                : `${pendingNewMessages} new messages`}
+            </Text>
+          </Pressable>
+        )}
+
         <FlatList
+          ref={flatListRef}
           data={messages}
           renderItem={renderMessage}
           keyExtractor={(item) => item.id}
           contentContainerStyle={dynamicStyles.messagesList}
           inverted={true}
+           // Keep scroll position stable when loading older messages
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          // Tune performance for long chats with images
+          windowSize={10}
+          maxToRenderPerBatch={20}
+          initialNumToRender={20}
+          removeClippedSubviews
+          onScroll={({ nativeEvent }) => {
+            // For inverted list, offset 0 is the bottom (latest messages)
+            const nearBottom = nativeEvent.contentOffset.y <= 80;
+            if (nearBottom !== isAtBottomRef.current) {
+              setIsAtBottom(nearBottom);
+              if (nearBottom) {
+                // User returned to bottom; clear any pending indicator
+                setPendingNewMessages(0);
+              }
+            }
+          }}
           onEndReached={() => {
             if (hasNextPage && !isFetchingNextPage) {
               fetchNextPage();
@@ -1683,9 +2236,9 @@ export default function ChatDetailScreen() {
             onPress={handleSend}
             style={[
               dynamicStyles.sendButton,
-              { opacity: (!message.trim() && !selectedImage) ? 0.5 : 1 },
+              { opacity: (!message.trim() && !selectedImage) || isSending ? 0.5 : 1 },
             ]}
-            disabled={!message.trim() && !selectedImage}
+            disabled={(!message.trim() && !selectedImage) || isSending}
           >
             <Ionicons name="send" size={20} color="#FFFFFF" />
           </Pressable>
@@ -1788,14 +2341,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   messageBubble: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
     overflow: "hidden",
   },
   messageTextWrap: {},
   messageTextWrapWithImage: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
     justifyContent: "center",
     alignItems: "flex-start",
   },
@@ -1809,6 +2358,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 0,
     borderColor: "rgba(0, 0, 0, 0.1)",
+    backgroundColor: "#FFFFFF", // White background for images
   },
   messageImageContainerWithText: {
     borderBottomLeftRadius: 0,
@@ -1831,5 +2381,26 @@ const styles = StyleSheet.create({
   },
   currentUserTime: {
     textAlign: "right",
+  },
+  failedStatusText: {
+    fontSize: 11,
+    fontFamily: "Poppins_400Regular",
+    marginTop: 2,
+    marginHorizontal: 4,
+  },
+  newMessagesPill: {
+    position: "absolute",
+    alignSelf: "center",
+    bottom: 140, // Positioned above input area
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#111827CC", // semi-transparent dark background
+    zIndex: 5,
+  },
+  newMessagesPillText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontFamily: "Poppins_500Medium",
   },
 });

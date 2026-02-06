@@ -67,7 +67,7 @@ export default function PostDetailed() {
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
-  const [isAnonymousMode, setIsAnonymousMode] = useState(false);
+  const [isAnonymousMode, setIsAnonymousMode] = useState(true);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const inputRef = useRef<TextInput | null>(null);
 
@@ -481,7 +481,7 @@ export default function PostDetailed() {
       setCommentText("");
       setParentCommentId(null);
       setReplyingToUsername(null);
-      setIsAnonymousMode(false);
+      setIsAnonymousMode(true);
       inputRef.current?.blur();
     },
   });
@@ -699,7 +699,7 @@ export default function PostDetailed() {
     setParentCommentId(null);
     setReplyingToUsername(null);
     setCommentText("");
-    setIsAnonymousMode(false);
+    setIsAnonymousMode(true);
   };
 
   // Memoize renderItem and keyExtractor for performance
@@ -913,8 +913,7 @@ export default function PostDetailed() {
                   detailedPost.is_verified || postUser?.is_verified || null
                 }
                 commentCount={rawComments?.length || 0}
-                voteScore={postScore}
-                userVote={null}
+                voteScore={detailedPost.vote_score ?? 0}
                 repostCount={detailedPost.repost_count || 0}
                 repostedFromPostId={detailedPost.reposted_from_post_id}
                 repostComment={detailedPost.repost_comment}
@@ -927,6 +926,7 @@ export default function PostDetailed() {
                 isDetailedPost
                 isBookmarked={isBookmarked}
                 onBookmarkPress={toggleBookmark}
+                disableCommentInteraction
               />
             }
             // Pass the nested tree (roots) to the FlatList

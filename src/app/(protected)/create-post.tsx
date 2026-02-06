@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { AntDesign, Feather, Ionicons } from "@expo/vector-icons";
+import { AntDesign, Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -65,8 +65,12 @@ export default function CreatePostScreen() {
 
   const [content, setContent] = useState<string>("");
   const [image, setImage] = useState<string | null>(null);
-  const [isAnonymous, setIsAnonymous] = useState<boolean>(false);
+  const [isAnonymous, setIsAnonymous] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Poll state (feed posts only)
+  const [isPoll, setIsPoll] = useState<boolean>(false);
+  const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
 
   // Lost & Found specific states
   const [category, setCategory] = useState<"lost" | "found">("lost");
@@ -75,7 +79,9 @@ export default function CreatePostScreen() {
   const goBack = () => {
     setContent("");
     setImage(null);
-    setIsAnonymous(false);
+    setIsAnonymous(true);
+    setIsPoll(false);
+    setPollOptions(["", ""]);
     setCategory("lost");
     setLocation("");
     // Use replace instead of back to avoid navigation errors
@@ -119,12 +125,14 @@ export default function CreatePostScreen() {
       postLocation,
       postIsAnonymous,
       postCategory,
+      pollOptions,
     }: {
       imagePath: string | undefined;
       postContent: string;
       postLocation: string;
       postIsAnonymous: boolean;
       postCategory: "lost" | "found";
+      pollOptions?: string[];
     }) => {
       if (!session?.user) {
         throw new Error("You must be logged in to create a post.");
@@ -151,6 +159,12 @@ export default function CreatePostScreen() {
         }),
         ...(repostId && {
           reposted_from_post_id: repostId,
+        }),
+        // Optional poll payload (feed posts only)
+        ...(!isLostFound &&
+          pollOptions &&
+          pollOptions.length >= 2 && {
+          poll_options: pollOptions,
         }),
       };
 
@@ -308,7 +322,7 @@ export default function CreatePostScreen() {
       // Log error to Sentry (logger handles dev vs prod automatically)
       logger.error("Error creating post", error as Error, {
         isLostFound,
-        hasImage: !!context?.imagePath,
+        hasImage: !!variables.imagePath,
       });
 
       // Show the actual error message from Edge Function (already user-friendly)
@@ -330,6 +344,29 @@ export default function CreatePostScreen() {
 
     try {
       let imagePath: string | undefined = undefined;
+
+      // If poll is enabled on feed posts, validate options
+      let cleanedPollOptions: string[] | undefined = undefined;
+      if (!isLostFound && isPoll) {
+        const normalized = Array.from(
+          new Set(
+            pollOptions
+              .map((o) => o.trim())
+              .filter((o) => o.length > 0)
+          )
+        );
+
+        if (normalized.length < 2) {
+          Alert.alert(
+            "Poll options required",
+            "Please provide at least two distinct poll options."
+          );
+          setIsSubmitting(false);
+          return;
+        }
+
+        cleanedPollOptions = normalized;
+      }
 
       // Upload image first if present
       if (image) {
@@ -353,6 +390,7 @@ export default function CreatePostScreen() {
         postLocation: location,
         postIsAnonymous: isAnonymous,
         postCategory: category,
+        pollOptions: cleanedPollOptions,
       });
     } catch (error) {
       setIsSubmitting(false);
@@ -364,7 +402,16 @@ export default function CreatePostScreen() {
     ? false // Reposts don't require content
     : isLostFound
       ? !content.trim() || !location.trim()
-      : !content.trim();
+      : !content.trim() && !(isPoll && pollOptions.some((o) => o.trim().length > 0));
+
+  const handleTogglePoll = () => {
+    if (isPoll) {
+      setIsPoll(false);
+      setPollOptions(["", ""]);
+    } else {
+      setIsPoll(true);
+    }
+  };
 
   const isLoading = createPostMutation.isPending || isSubmitting;
 
@@ -548,6 +595,95 @@ export default function CreatePostScreen() {
             />
           </View>
 
+          {/* POLL BUILDER (feed posts only, shown only when enabled) */}
+          {!isLostFound && isPoll && (
+            <View style={styles.pollSection}>
+              <View style={styles.pollHeaderRow}>
+                <Text style={[styles.sectionLabel, { color: theme.text }]}>
+                  Poll
+                </Text>
+                <Pressable onPress={handleTogglePoll} style={styles.pollRemoveButton}>
+                  <AntDesign name="close" size={18} color={theme.secondaryText} />
+                </Pressable>
+              </View>
+
+              <View style={styles.pollOptionsContainer}>
+                {pollOptions.map((option, index) => (
+                  <View key={index} style={styles.pollOptionRow}>
+                    <View
+                      style={[
+                        styles.pollOptionIndex,
+                        { borderColor: theme.border, backgroundColor: theme.background },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.pollOptionIndexText,
+                          { color: theme.secondaryText },
+                        ]}
+                      >
+                        {index + 1}
+                      </Text>
+                    </View>
+                    <TextInput
+                      style={[
+                        styles.pollOptionInput,
+                        {
+                          borderColor: theme.border,
+                          backgroundColor: theme.background,
+                          color: theme.text,
+                        },
+                      ]}
+                      placeholder={`Option ${index + 1}`}
+                      placeholderTextColor={theme.secondaryText}
+                      value={option}
+                      onChangeText={(text) => {
+                        const next = [...pollOptions];
+                        next[index] = text;
+                        setPollOptions(next);
+                      }}
+                    />
+                    {pollOptions.length > 2 && (
+                      <Pressable
+                        onPress={() => {
+                          const next = pollOptions.filter((_, i) => i !== index);
+                          setPollOptions(next.length >= 2 ? next : ["", ""]);
+                        }}
+                        style={styles.pollOptionRemoveButton}
+                      >
+                        <AntDesign name="close" size={16} color={theme.secondaryText} />
+                      </Pressable>
+                    )}
+                  </View>
+                ))}
+
+                {pollOptions.length < 4 && (
+                  <Pressable
+                    onPress={() => setPollOptions([...pollOptions, ""])}
+                    style={[
+                      styles.pollAddOptionButton,
+                      { borderColor: theme.border },
+                    ]}
+                  >
+                    <Feather
+                      name="plus-circle"
+                      size={18}
+                      color={theme.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.pollAddOptionText,
+                        { color: theme.primary },
+                      ]}
+                    >
+                      Add option
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          )}
+
           {/* IMAGE PREVIEW */}
           {image && (
             <View style={styles.imageContainer}>
@@ -641,22 +777,40 @@ export default function CreatePostScreen() {
         >
           {/* ANONYMOUS TOGGLE (Feed posts only) */}
           {!isLostFound && (
-            <View style={styles.anonymousFooterRow}>
-              <Text style={[styles.anonymousLabel, { color: theme.text }]}>
-                Anonymous
-              </Text>
-              <Switch
-                value={isAnonymous}
-                onValueChange={setIsAnonymous}
-                trackColor={{ false: theme.border, true: theme.primary }}
-                thumbColor={isAnonymous ? "#fff" : "#f4f3f4"}
-              />
-            </View>
+            <>
+              <View style={styles.anonymousFooterRow}>
+                <Text style={[styles.anonymousLabel, { color: theme.text }]}>
+                  Anonymous
+                </Text>
+                <Switch
+                  value={isAnonymous}
+                  onValueChange={setIsAnonymous}
+                  trackColor={{ false: theme.border, true: theme.primary }}
+                  thumbColor={isAnonymous ? "#fff" : "#f4f3f4"}
+                />
+              </View>
+              <View style={styles.footerActionsRow}>
+                <Pressable onPress={handleTogglePoll} style={styles.footerButton}>
+                  <MaterialCommunityIcons
+                    name="poll"
+                    size={24}
+                    color={theme.text}
+                  />
+                </Pressable>
+                <Pressable onPress={pickImage} style={styles.footerButton}>
+                  <Feather name="image" size={24} color={theme.text} />
+                </Pressable>
+              </View>
+            </>
           )}
-          {isLostFound && <View />}
-          <Pressable onPress={pickImage} style={styles.footerButton}>
-            <Feather name="image" size={24} color={theme.text} />
-          </Pressable>
+          {isLostFound && (
+            <>
+              <View />
+              <Pressable onPress={pickImage} style={styles.footerButton}>
+                <Feather name="image" size={24} color={theme.text} />
+              </Pressable>
+            </>
+          )}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -749,6 +903,65 @@ const styles = StyleSheet.create({
   contentSection: {
     paddingTop: 15,
   },
+  pollSection: {
+    paddingTop: 6,
+  },
+  pollHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  pollOptionsContainer: {
+    marginTop: 8,
+    gap: 8,
+  },
+  pollOptionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  pollOptionIndex: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  pollOptionIndexText: {
+    fontSize: 13,
+    fontFamily: "Poppins_500Medium",
+  },
+  pollOptionInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    fontFamily: "Poppins_400Regular",
+  },
+  pollRemoveButton: {
+    padding: 4,
+  },
+  pollOptionRemoveButton: {
+    padding: 4,
+  },
+  pollAddOptionButton: {
+    marginTop: 4,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  pollAddOptionText: {
+    fontSize: 13,
+    fontFamily: "Poppins_500Medium",
+  },
   anonymousLabel: {
     fontSize: 16,
     fontFamily: "Poppins_500Medium",
@@ -757,7 +970,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Poppins_400Regular",
     paddingVertical: 10,
-    minHeight: 120,
+    minHeight: 48,
     maxHeight: 280,
     textAlignVertical: "top",
   },
@@ -791,6 +1004,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+  },
+  footerActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   footerButton: {
     padding: 5,

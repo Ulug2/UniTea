@@ -57,6 +57,10 @@ serve(async (req: Request) => {
       location,
       category,
       reposted_from_post_id,
+      // Optional poll fields (feed posts only)
+      poll_options,
+      poll_expires_at,
+      poll_allow_multiple,
     } = await req.json();
 
     // 3. Text Moderation (if content exists)
@@ -155,7 +159,57 @@ serve(async (req: Request) => {
       throw dbError;
     }
 
-    // 7. Return success response
+    // 7. If this is a feed post with poll options, create poll + options
+    if (
+      postData.post_type === "feed" &&
+      Array.isArray(poll_options) &&
+      poll_options.length >= 2
+    ) {
+      // Filter and normalize options (trim, drop empties, de-duplicate)
+      const normalizedOptions = Array.from(
+        new Set(
+          poll_options
+            .map((o: unknown) => (typeof o === "string" ? o.trim() : ""))
+            .filter((o) => o.length > 0)
+        )
+      );
+
+      if (normalizedOptions.length >= 2) {
+        // Create poll row
+        const { data: poll, error: pollError } = await supabase
+          .from("polls")
+          .insert({
+            post_id: data.id,
+            expires_at: poll_expires_at ?? null,
+            allow_multiple: poll_allow_multiple ?? false,
+          })
+          .select()
+          .single();
+
+        if (pollError) {
+          console.error("Poll create error:", pollError);
+          // Do not fail the whole post creation; just log.
+        } else {
+          // Create poll options
+          const pollOptionsPayload = normalizedOptions.map((optionText, idx) => ({
+            poll_id: poll.id,
+            option_text: optionText,
+            position: idx,
+          }));
+
+          const { error: optionsError } = await supabase
+            .from("poll_options")
+            .insert(pollOptionsPayload);
+
+          if (optionsError) {
+            console.error("Poll options create error:", optionsError);
+            // Again, do not fail the post; worst case the poll is incomplete.
+          }
+        }
+      }
+    }
+
+    // 8. Return success response
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

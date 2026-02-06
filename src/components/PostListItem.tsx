@@ -19,6 +19,7 @@ import { DEFAULT_AVATAR } from "../constants/images";
 import { useTheme } from "../context/ThemeContext";
 import { useVote } from "../hooks/useVote";
 import SupabaseImage from "./SupabaseImage";
+import Poll from "./Poll";
 import UserProfileModal from "./UserProfileModal";
 import { useAuth } from "../context/AuthContext";
 
@@ -46,7 +47,6 @@ type PostListItemProps = {
   // Aggregated data from view
   commentCount: number;
   voteScore: number;
-  userVote: "upvote" | "downvote" | null;
 
   // Repost data from view
   repostCount?: number;
@@ -61,6 +61,7 @@ type PostListItemProps = {
 
   // Optional props for detailed post view
   isDetailedPost?: boolean;
+  disableCommentInteraction?: boolean;
   isBookmarked?: boolean;
   onBookmarkPress?: () => void;
 };
@@ -87,7 +88,6 @@ const arePropsEqual = (prevProps: PostListItemProps, nextProps: PostListItemProp
     prevProps.isVerified === nextProps.isVerified &&
     prevProps.commentCount === nextProps.commentCount &&
     prevProps.voteScore === nextProps.voteScore &&
-    prevProps.userVote === nextProps.userVote &&
     prevProps.repostCount === nextProps.repostCount &&
     prevProps.repostedFromPostId === nextProps.repostedFromPostId &&
     prevProps.repostComment === nextProps.repostComment &&
@@ -97,6 +97,7 @@ const arePropsEqual = (prevProps: PostListItemProps, nextProps: PostListItemProp
     prevProps.originalIsAnonymous === nextProps.originalIsAnonymous &&
     prevProps.originalCreatedAt === nextProps.originalCreatedAt &&
     prevProps.isDetailedPost === nextProps.isDetailedPost &&
+    prevProps.disableCommentInteraction === nextProps.disableCommentInteraction &&
     prevProps.isBookmarked === nextProps.isBookmarked
   );
 };
@@ -114,7 +115,6 @@ const PostListItem = React.memo(function PostListItem({
   isVerified,
   commentCount,
   voteScore,
-  userVote: initialUserVote,
   repostCount = 0,
   repostedFromPostId,
   repostComment,
@@ -125,6 +125,7 @@ const PostListItem = React.memo(function PostListItem({
   originalIsAnonymous,
   originalCreatedAt,
   isDetailedPost = false,
+  disableCommentInteraction = false,
   isBookmarked = false,
   onBookmarkPress,
 }: PostListItemProps) {
@@ -158,8 +159,7 @@ const PostListItem = React.memo(function PostListItem({
     handleDownvote,
     isVoting,
   } = useVote({
-    postId: postId,
-    initialUserVote,
+    postId,
     initialScore: voteScore,
   });
 
@@ -521,6 +521,10 @@ const PostListItem = React.memo(function PostListItem({
                       )}
                   </View>
                 )}
+                {/* POLL (only for original feed posts, not repost wrappers) */}
+                {!isRepost && (
+                  <Poll postId={postId} />
+                )}
               </>
             )}
           </View>
@@ -573,9 +577,12 @@ const PostListItem = React.memo(function PostListItem({
                   e.preventDefault();
                   e.stopPropagation();
                   // Navigate to post detail (comment button behavior)
-                  router.push(`/post/${postId}`);
+                  if (!disableCommentInteraction && !isDetailedPost) {
+                    router.push(`/post/${postId}`);
+                  }
                 }}
                 style={styles.iconBox}
+                disabled={disableCommentInteraction || isDetailedPost}
               >
                 <MaterialCommunityIcons
                   name="comment-outline"

@@ -64,7 +64,6 @@ CREATE TABLE public.notification_settings (
   user_id uuid NOT NULL,
   push_token text,
   notify_chats boolean NOT NULL DEFAULT true,
-  notify_trending boolean NOT NULL DEFAULT true,
   notify_upvotes boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -74,7 +73,7 @@ CREATE TABLE public.notification_settings (
 CREATE TABLE public.notifications (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
-  type text NOT NULL CHECK (type = ANY (ARRAY['comment_reply'::text, 'upvote'::text, 'chat_message'::text, 'trending'::text])),
+  type text NOT NULL CHECK (type = ANY (ARRAY['comment_reply'::text, 'upvote'::text, 'chat_message'::text])),
   related_post_id uuid,
   related_comment_id uuid,
   related_user_id uuid,

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { AppState, AppStateStatus } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
@@ -6,14 +7,42 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { logger } from "../utils/logger";
 
+// Track app state to suppress notifications when app is in foreground
+// Using module-level variable so notification handler can access it
+let currentAppState: AppStateStatus = AppState.currentState;
+
+// Set up AppState listener at module level to track foreground/background state
+// This ensures the listener is active from app startup, regardless of hook usage
+const appStateSubscription = AppState.addEventListener("change", (nextAppState: AppStateStatus) => {
+    currentAppState = nextAppState;
+});
+
+// Set notification handler to suppress notifications when app is in foreground
+// This handler is called each time a notification arrives, so it reads currentAppState at that moment
 Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: false,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-    }),
+    handleNotification: async () => {
+        const isAppInForeground = currentAppState === "active";
+        
+        // When app is in foreground, suppress all notification UI but still update badge
+        if (isAppInForeground) {
+            return {
+                shouldShowAlert: false,
+                shouldPlaySound: false,
+                shouldSetBadge: true, // Still update badge count
+                shouldShowBanner: false,
+                shouldShowList: false,
+            };
+        }
+        
+        // When app is in background or inactive, show notifications normally
+        return {
+            shouldShowAlert: true,
+            shouldPlaySound: false,
+            shouldSetBadge: true,
+            shouldShowBanner: true,
+            shouldShowList: true,
+        };
+    },
 });
 
 async function registerForPushNotificationsAsync() {

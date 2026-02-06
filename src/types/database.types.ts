@@ -254,7 +254,6 @@ export type Database = {
         Row: {
           created_at: string
           notify_chats: boolean
-          notify_trending: boolean
           notify_upvotes: boolean
           push_token: string | null
           updated_at: string
@@ -263,7 +262,6 @@ export type Database = {
         Insert: {
           created_at?: string
           notify_chats?: boolean
-          notify_trending?: boolean
           notify_upvotes?: boolean
           push_token?: string | null
           updated_at?: string
@@ -272,7 +270,6 @@ export type Database = {
         Update: {
           created_at?: string
           notify_chats?: boolean
-          notify_trending?: boolean
           notify_upvotes?: boolean
           push_token?: string | null
           updated_at?: string
@@ -286,6 +283,7 @@ export type Database = {
           id: string
           is_read: boolean | null
           message: string
+          push_sent: boolean | null
           related_comment_id: string | null
           related_post_id: string | null
           related_user_id: string | null
@@ -297,6 +295,7 @@ export type Database = {
           id?: string
           is_read?: boolean | null
           message: string
+          push_sent?: boolean | null
           related_comment_id?: string | null
           related_post_id?: string | null
           related_user_id?: string | null
@@ -308,6 +307,7 @@ export type Database = {
           id?: string
           is_read?: boolean | null
           message?: string
+          push_sent?: boolean | null
           related_comment_id?: string | null
           related_post_id?: string | null
           related_user_id?: string | null
@@ -346,6 +346,127 @@ export type Database = {
           {
             foreignKeyName: "notifications_related_post_id_fkey"
             columns: ["related_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts_summary_view"
+            referencedColumns: ["post_id"]
+          },
+        ]
+      }
+      poll_options: {
+        Row: {
+          id: string
+          option_text: string
+          poll_id: string
+          position: number
+        }
+        Insert: {
+          id?: string
+          option_text: string
+          poll_id: string
+          position?: number
+        }
+        Update: {
+          id?: string
+          option_text?: string
+          poll_id?: string
+          position?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "poll_options_poll_id_fkey"
+            columns: ["poll_id"]
+            isOneToOne: false
+            referencedRelation: "polls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      poll_votes: {
+        Row: {
+          created_at: string
+          id: string
+          option_id: string
+          poll_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          option_id: string
+          poll_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          option_id?: string
+          poll_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "poll_votes_option_id_fkey"
+            columns: ["option_id"]
+            isOneToOne: false
+            referencedRelation: "poll_options"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "poll_votes_poll_id_fkey"
+            columns: ["poll_id"]
+            isOneToOne: false
+            referencedRelation: "polls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "poll_votes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      polls: {
+        Row: {
+          allow_multiple: boolean
+          created_at: string
+          expires_at: string | null
+          id: string
+          post_id: string
+        }
+        Insert: {
+          allow_multiple?: boolean
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          post_id: string
+        }
+        Update: {
+          allow_multiple?: boolean
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          post_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "polls_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "polls_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts_summary_view"
+            referencedColumns: ["original_post_id"]
+          },
+          {
+            foreignKeyName: "polls_post_id_fkey"
+            columns: ["post_id"]
             isOneToOne: false
             referencedRelation: "posts_summary_view"
             referencedColumns: ["post_id"]
@@ -779,6 +900,15 @@ export type Database = {
       }
     }
     Functions: {
+      check_message_rate_limit: {
+        Args: {
+          p_chat_id: string
+          p_max_messages?: number
+          p_time_window_minutes?: number
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       delete_user_account: { Args: never; Returns: undefined }
       get_repost_count: { Args: { post_id: string }; Returns: number }
     }

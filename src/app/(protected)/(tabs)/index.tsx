@@ -20,7 +20,7 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useMemo, useEffect, useRef } from "react";
 import { Database } from "../../../types/database.types";
-import { useFilterContext } from "./_layout";
+import { useFilterContext } from "./filterContext";
 import { useAuth } from "../../../context/AuthContext";
 
 type PostSummary = {
@@ -313,7 +313,6 @@ export default function FeedScreen() {
         isVerified={item.is_verified}
         commentCount={item.comment_count}
         voteScore={item.vote_score}
-        userVote={item.user_vote}
         repostCount={item.repost_count}
         repostedFromPostId={item.reposted_from_post_id}
         repostComment={item.repost_comment}

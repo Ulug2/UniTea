@@ -5,7 +5,8 @@ import {
   Poppins_500Medium,
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet, AppState, AppStateStatus } from "react-native";
+import * as Notifications from "expo-notifications";
 import { ThemeProvider } from "../context/ThemeContext";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -88,6 +89,31 @@ function RootLayoutContent() {
   });
   const { loading: authLoading, session } = useAuth();
   const queryClient = useQueryClient();
+
+  // Reset app icon badge to 0 on app open and when app comes to foreground
+  useEffect(() => {
+    const resetBadge = async () => {
+      try {
+        await Notifications.setBadgeCountAsync(0);
+      } catch (error) {
+        // Silently fail - badge reset is best effort
+      }
+    };
+
+    // Reset immediately on mount (app open)
+    resetBadge();
+
+    // Reset when app comes to foreground
+    const subscription = AppState.addEventListener("change", (nextAppState: AppStateStatus) => {
+      if (nextAppState === "active") {
+        resetBadge();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   // Prefetch data when user is authenticated and fonts are loaded
   useEffect(() => {

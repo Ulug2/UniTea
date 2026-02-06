@@ -18,7 +18,6 @@ type NotificationSettings = {
     user_id: string;
     push_token: string | null;
     notify_chats: boolean;
-    notify_trending: boolean;
     notify_upvotes: boolean;
 };
 
@@ -61,7 +60,6 @@ export default function NotificationSettingsModal({
                     user_id: userId,
                     push_token: null,
                     notify_chats: true,
-                    notify_trending: true,
                     notify_upvotes: true,
                 };
             }
@@ -75,7 +73,7 @@ export default function NotificationSettingsModal({
             field,
             value,
         }: {
-            field: "notify_chats" | "notify_trending" | "notify_upvotes";
+            field: "notify_chats" | "notify_upvotes";
             value: boolean;
         }) => {
             if (!userId) throw new Error("User ID missing");
@@ -132,7 +130,7 @@ export default function NotificationSettingsModal({
     const isBusy = isLoading || isFetching;
 
     const handleToggle =
-        (field: "notify_chats" | "notify_trending" | "notify_upvotes") =>
+        (field: "notify_chats" | "notify_upvotes") =>
             (value: boolean) => {
                 updateSettingMutation.mutate({ field, value });
             };
@@ -141,7 +139,6 @@ export default function NotificationSettingsModal({
         user_id: userId || "",
         push_token: null,
         notify_chats: true,
-        notify_trending: true,
         notify_upvotes: true,
     };
 
@@ -190,25 +187,6 @@ export default function NotificationSettingsModal({
                         <Switch
                             value={effectiveSettings.notify_chats}
                             onValueChange={handleToggle("notify_chats")}
-                            trackColor={{ false: theme.border, true: theme.primary }}
-                            thumbColor={"white"}
-                        />
-                    </View>
-
-                    <View style={styles.optionRow}>
-                        <View style={styles.optionLeft}>
-                            <MaterialCommunityIcons
-                                name="fire"
-                                size={22}
-                                color={theme.text}
-                            />
-                            <Text style={[styles.optionLabel, { color: theme.text }]}>
-                                Trending Posts
-                            </Text>
-                        </View>
-                        <Switch
-                            value={effectiveSettings.notify_trending}
-                            onValueChange={handleToggle("notify_trending")}
                             trackColor={{ false: theme.border, true: theme.primary }}
                             thumbColor={"white"}
                         />
