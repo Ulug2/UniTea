@@ -494,7 +494,7 @@ export default function ChatDetailScreen() {
             if (newMessage.user_id === currentUserId) {
               return;
             }
-            
+
             // Check if chat_id matches (safety check)
             if (newMessage.chat_id !== id) {
               return;
@@ -612,7 +612,7 @@ export default function ChatDetailScreen() {
       )
       .subscribe((status) => {
         subscriptionStatus = status;
-        
+
         if (status === "SUBSCRIBED" && isMounted) {
           logger.breadcrumb("Chat detail subscription active", "realtime", {
             userId: currentUserId,
@@ -836,7 +836,7 @@ export default function ChatDetailScreen() {
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
       }
-      
+
       // Small delay to ensure FlatList has rendered
       scrollTimeoutRef.current = setTimeout(() => {
         if (flatListRef.current) {
@@ -848,7 +848,7 @@ export default function ChatDetailScreen() {
         }
         scrollTimeoutRef.current = null;
       }, 200);
-      
+
       return () => {
         if (scrollTimeoutRef.current) {
           clearTimeout(scrollTimeoutRef.current);
@@ -878,7 +878,7 @@ export default function ChatDetailScreen() {
           queryKey: ["chat-messages", id],
           refetchType: "active", // Only refetch if query is active (screen is visible)
         });
-        
+
         // Always scroll to bottom when screen comes into focus (user expects to see latest messages)
         // Use a longer delay to ensure messages have loaded/rendered
         scrollTimer = setTimeout(() => {
@@ -1156,11 +1156,11 @@ export default function ChatDetailScreen() {
           page.map((msg) =>
             msg.id === tempId
               ? {
-                  ...newMessage,
-                  // Clear local-only fields; this message is now confirmed
-                  sendStatus: undefined,
-                  _clientPayload: null,
-                }
+                ...newMessage,
+                // Clear local-only fields; this message is now confirmed
+                sendStatus: undefined,
+                _clientPayload: null,
+              }
               : msg
           )
         );
@@ -1218,9 +1218,9 @@ export default function ChatDetailScreen() {
               page.map((msg) =>
                 msg.id === context.tempId
                   ? {
-                      ...msg,
-                      sendStatus: "failed",
-                    }
+                    ...msg,
+                    sendStatus: "failed",
+                  }
                   : msg
               )
             ),
@@ -2166,7 +2166,7 @@ export default function ChatDetailScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={dynamicStyles.messagesList}
           inverted={true}
-           // Keep scroll position stable when loading older messages
+          // Keep scroll position stable when loading older messages
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           // Tune performance for long chats with images
           windowSize={10}
