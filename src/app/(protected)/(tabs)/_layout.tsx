@@ -296,6 +296,13 @@ export default function TabLayout() {
             ),
           }}
         />
+        {/* Hide filterContext from tab bar — it's a context file, not a screen */}
+        <Tabs.Screen
+          name="filterContext"
+          options={{
+            href: null,
+          }}
+        />
       </Tabs>
     </FilterProvider>
   );

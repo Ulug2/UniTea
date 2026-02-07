@@ -4,6 +4,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const EXPO_PUSH_API_URL = "https://exp.host/--/api/v2/push/send";
 const MAX_MESSAGE_LENGTH = 80; // Truncate chat message body to 80 characters
 
+const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
+
+function getCorsHeaders(req: Request) {
+  const origin = req.headers.get("Origin");
+  const allowOrigin =
+    origin && ALLOWED_ORIGINS.includes(origin) ? origin : "*";
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+  };
+}
+
 interface NotificationRecord {
   id: string;
   user_id: string;
@@ -16,15 +29,15 @@ interface NotificationRecord {
 }
 
 serve(async (req) => {
+  const corsHeaders = {
+    ...getCorsHeaders(req),
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-      },
+      headers: corsHeaders,
     });
   }
 
@@ -346,7 +359,7 @@ serve(async (req) => {
         status: 200,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
+          ...getCorsHeaders(req),
         },
       }
     );
@@ -360,7 +373,7 @@ serve(async (req) => {
         status: 500,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
+          ...getCorsHeaders(req),
         },
       }
     );
