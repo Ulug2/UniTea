@@ -13,6 +13,8 @@ type SupabaseImageProps = {
   loadingBackgroundColor?: string;
   /** ActivityIndicator color while loading */
   loadingIndicatorColor?: string;
+  /** Called when the image has finished loading (or when there is no image to load) */
+  onLoad?: () => void;
 } & Omit<ComponentProps<typeof Image>, "source">;
 
 // Cache for bucket public/private status (persists across component mounts)
@@ -36,11 +38,14 @@ function SupabaseImage({
   transition = 200,
   loadingBackgroundColor = "gainsboro",
   loadingIndicatorColor,
+  onLoad,
   ...imageProps
 }: SupabaseImageProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const isMountedRef = useRef(true);
+  const onLoadRef = useRef(onLoad);
+  onLoadRef.current = onLoad;
   const cacheKey = `${bucket}:${path}`;
 
   useEffect(() => {
@@ -154,6 +159,14 @@ function SupabaseImage({
   // MUST be called before any early returns (Rules of Hooks)
   const imageSource = useMemo(() => ({ uri: imageUrl || undefined }), [imageUrl]);
 
+  // Notify parent when there is no image to load (so feed can count this as "loaded")
+  // Must run unconditionally (Rules of Hooks)
+  useEffect(() => {
+    if (!isLoading && !imageUrl) {
+      onLoadRef.current?.();
+    }
+  }, [isLoading, imageUrl]);
+
   if (isLoading) {
     return (
       <View
@@ -186,12 +199,18 @@ function SupabaseImage({
     );
   }
 
+  const handleLoad = () => {
+    onLoadRef.current?.();
+    imageProps.onLoad?.();
+  };
+
   return (
     <Image
       source={imageSource}
       contentFit={contentFit}
       transition={transition}
       cachePolicy="disk" // Critical: Caches to disk, not memory
+      onLoad={handleLoad}
       {...imageProps}
     />
   );

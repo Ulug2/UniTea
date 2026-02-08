@@ -493,7 +493,17 @@ export default function ProfileScreen() {
   async function signOut() {
     setSettingsVisible(false);
     setManageAccountVisible(false);
+    const userId = session?.user?.id;
     try {
+      // Clear this user's push token before signing out so this device stops
+      // receiving push notifications for the logged-out account (e.g. after
+      // switching to another account on the same device).
+      if (userId) {
+        await supabase
+          .from("notification_settings")
+          .update({ push_token: null })
+          .eq("user_id", userId);
+      }
       const { error } = await supabase.auth.signOut();
       if (error) {
         // Network errors can occur when offline – log but still navigate to auth
@@ -538,7 +548,6 @@ export default function ProfileScreen() {
       queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
       queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] }); // Update unread count
 
-      Alert.alert("Success", "All users have been unblocked");
       setManageAccountVisible(false);
     },
     onError: (error: any) => {
@@ -569,7 +578,6 @@ export default function ProfileScreen() {
       queryClient.clear();
       // Navigate to auth screen
       router.replace("/(auth)");
-      Alert.alert("Success", "Your account has been deleted");
     },
     onError: (error: any) => {
       Alert.alert(
@@ -664,8 +672,6 @@ export default function ProfileScreen() {
 
       // Close manage account modal after successful update
       setManageAccountVisible(false);
-
-      Alert.alert("Success", "Profile updated successfully");
     },
     onError: (error: any, updates, context) => {
       // Rollback optimistic update on error
@@ -688,9 +694,7 @@ export default function ProfileScreen() {
 
       if (error) throw error;
     },
-    onSuccess: () => {
-      Alert.alert("Success", "Password updated successfully");
-    },
+    onSuccess: () => {},
     onError: (error: any) => {
       Alert.alert(
         "Error",

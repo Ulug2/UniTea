@@ -16,13 +16,16 @@ import LostFoundListItem, {
 import LostFoundListSkeleton from "../../../components/LostFoundListSkeleton";
 import ReportModal from "../../../components/ReportModal";
 import BlockUserModal from "../../../components/BlockUserModal";
+import CustomInput from "../../../components/CustomInput";
 import { router } from "expo-router";
 import { FontAwesome, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { Database } from "../../../types/database.types";
 import { useAuth } from "../../../context/AuthContext";
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 type PostSummary = {
   post_id: string;
@@ -70,8 +73,23 @@ export default function LostFoundScreen() {
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isPostOwner = selectedPost && currentUserId === selectedPost.userId;
+
+  // Debounce search input to avoid filtering on every keystroke
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim().toLowerCase());
+      debounceRef.current = null;
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchQuery]);
 
   // Fetch blocked users
   const { data: blocks = [] } = useQuery({
@@ -173,6 +191,18 @@ export default function LostFoundScreen() {
       return !isPostAuthorBlocked && !isRepostAuthorBlocked;
     });
   }, [postsData, blocks]);
+
+  // Filter by search: match content, category, or location (single pass, case-insensitive)
+  const filteredPosts = useMemo(() => {
+    if (!debouncedQuery) return lostFoundPosts;
+    const q = debouncedQuery;
+    return lostFoundPosts.filter((post) => {
+      const content = (post.content ?? "").toLowerCase();
+      const category = (post.category ?? "").toLowerCase();
+      const location = (post.location ?? "").toLowerCase();
+      return content.includes(q) || category.includes(q) || location.includes(q);
+    });
+  }, [lostFoundPosts, debouncedQuery]);
 
   // Delete post mutation with optimistic update and rollback on error
   const deletePostMutation = useMutation({
@@ -399,7 +429,7 @@ export default function LostFoundScreen() {
       />
 
       <FlatList
-        data={lostFoundPosts}
+        data={filteredPosts}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         onEndReached={handleLoadMore}
@@ -409,6 +439,20 @@ export default function LostFoundScreen() {
         updateCellsBatchingPeriod={150}
         initialNumToRender={6}
         windowSize={10}
+        ListHeaderComponent={
+          <View style={styles.searchHeader}>
+            <CustomInput
+              placeholder="Search by item, location, lost or found..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              leftIcon={{ type: "font-awesome", name: "search" }}
+              returnKeyType="search"
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.searchInput}
+            />
+          </View>
+        }
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
@@ -427,7 +471,9 @@ export default function LostFoundScreen() {
           !isLoading ? (
             <View style={styles.emptyContainer}>
               <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
-                No lost & found posts yet
+                {debouncedQuery
+                  ? "No results for your search"
+                  : "No lost & found posts yet"}
               </Text>
             </View>
           ) : null
@@ -448,6 +494,14 @@ export default function LostFoundScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  searchHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  searchInput: {
+    marginBottom: 8,
   },
   text: {
     fontSize: 16,

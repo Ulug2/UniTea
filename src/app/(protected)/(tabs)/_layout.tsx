@@ -5,13 +5,13 @@ import React, {
   useEffect,
   useRef,
 } from "react";
-import { View, Pressable, StyleSheet } from "react-native";
+import { View, Pressable, StyleSheet, AppState } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
 import { useBlocks } from "../../../hooks/useBlocks";
-import { FilterProvider, useFilterContext } from "./filterContext";
+import { FilterProvider, useFilterContext } from "./_filterContext";
 
 // Hook to get global unread count for chat tab badge
 function useGlobalUnreadCount() {
@@ -97,13 +97,10 @@ function useGlobalUnreadCount() {
             clearTimeout(debounceRef.current);
           }
           debounceRef.current = setTimeout(() => {
-            queryClient.invalidateQueries({
+            queryClient.refetchQueries({
               queryKey: ["global-unread-count", currentUserId],
               exact: false, // Match all variants (with or without blocks)
-              refetchType: "none", // Don't refetch - let chat.tsx handle cache updates via realtime
             });
-            // Don't invalidate chat-summaries here - chat.tsx handles its own cache updates via realtime subscriptions
-            // This prevents unnecessary refetches and stuck loading states
           }, 500);
         }
       )
@@ -116,13 +113,10 @@ function useGlobalUnreadCount() {
         },
         () => {
           // Message read status changed - update immediately (no debounce for read status)
-          queryClient.invalidateQueries({
+          queryClient.refetchQueries({
             queryKey: ["global-unread-count", currentUserId],
-            exact: false, // Match all variants (with or without blocks)
-            refetchType: "none", // Don't refetch - let chat.tsx handle cache updates via realtime
+            exact: false,
           });
-          // Don't invalidate chat-summaries here - chat.tsx handles its own cache updates via realtime subscriptions
-          // This prevents unnecessary refetches and stuck loading states
         }
       )
       .subscribe();
@@ -195,7 +189,24 @@ function FilterButtons() {
 
 export default function TabLayout() {
   const { theme } = useTheme();
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id;
+  const queryClient = useQueryClient();
   const globalUnreadCount = useGlobalUnreadCount();
+
+  // When app comes to foreground, refetch unread count so tab badge and app icon badge stay correct
+  useEffect(() => {
+    if (!currentUserId) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        queryClient.refetchQueries({
+          queryKey: ["global-unread-count", currentUserId],
+          exact: false,
+        });
+      }
+    });
+    return () => sub.remove();
+  }, [currentUserId, queryClient]);
 
   // Keep app icon badge in sync with chat unread count
   useEffect(() => {
@@ -294,13 +305,6 @@ export default function TabLayout() {
             tabBarIcon: ({ color }) => (
               <Ionicons name="person-outline" size={24} color={color} />
             ),
-          }}
-        />
-        {/* Hide filterContext from tab bar — it's a context file, not a screen */}
-        <Tabs.Screen
-          name="filterContext"
-          options={{
-            href: null,
           }}
         />
       </Tabs>

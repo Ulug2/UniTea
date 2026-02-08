@@ -50,23 +50,23 @@ eas secret:create --name EXPO_PUBLIC_SENTRY_DSN --value "YOUR_SENTRY_DSN" --scop
 
 ## 2. Supabase and OpenAI
 
-- [ ] **Supabase**  
+- [x] **Supabase**  
   Confirm Free tier limits (500MB DB, 1GB storage, 2GB egress) are enough for launch. Plan to upgrade to Pro when you need backups, more resources, or >50K MAU.
 
-- [ ] **OpenAI**  
+- [x] **OpenAI**  
   Billing enabled; set **usage limits** and **budget alerts** in the OpenAI dashboard so moderation usage doesn’t overrun costs.
 
-- [ ] **Secrets in Supabase**  
+- [x] **Secrets in Supabase**  
   In Supabase Dashboard → Project Settings → Edge Functions, confirm `OPENAI_API_KEY` (and any other secrets) are set as secrets, not in code.
 
 ---
 
 ## 3. Apple and App Store Connect
 
-- [ ] **Apple Developer Program**  
+- [x] **Apple Developer Program**  
   Enrolled ($99/year); same Apple ID used for Xcode and App Store Connect.
 
-- [ ] **Identifiers and capabilities**  
+- [x] **Identifiers and capabilities**  
   Bundle ID `com.unitea.app` registered; Push Notifications and Associated Domains enabled if the app uses them.
 
 - [ ] **Banking and tax**  
@@ -78,7 +78,7 @@ eas secret:create --name EXPO_PUBLIC_SENTRY_DSN --value "YOUR_SENTRY_DSN" --scop
 - [ ] **App Privacy**  
   Questionnaire completed; list third-party SDKs and what data they collect (e.g. Supabase, Expo, Sentry).
 
-- [ ] **Legal**  
+- [x] **Legal**  
   Privacy Policy and Terms of Service URLs live and linked in the app and in App Store Connect. Your app already links to a Notion privacy policy – ensure the URL is public and stable.
 
 - [ ] **Export compliance**  
@@ -88,7 +88,7 @@ eas secret:create --name EXPO_PUBLIC_SENTRY_DSN --value "YOUR_SENTRY_DSN" --scop
 
 ## 4. App and build config
 
-- [ ] **app.json / app.config**  
+- [x] **app.json / app.config**  
   Correct `bundleIdentifier` (`com.unitea.app`), `version` (e.g. `1.0.0`), `ios.buildNumber` (e.g. `1`). Icons and splash in `assets/`.
 
 - [ ] **No dev-only code in release**  

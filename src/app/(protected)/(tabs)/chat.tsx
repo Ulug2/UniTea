@@ -140,14 +140,17 @@ export default function ChatScreen() {
 
   // Real-time subscription for chat updates - uses smart cache updates instead of invalidations
   // This prevents scroll jumps and UI lag by updating specific items without refetching
+  const channelErrorLoggedRef = useRef(false);
   useEffect(() => {
     if (!currentUserId) return;
 
+    channelErrorLoggedRef.current = false;
     // Track if component is still mounted
     let isMounted = true;
 
+    // Unique channel per user to avoid CHANNEL_ERROR from duplicate/binding conflicts
     const channel = supabase
-      .channel("chats-realtime")
+      .channel(`chats-realtime-${currentUserId}`)
       .on(
         "postgres_changes",
         {
@@ -436,22 +439,27 @@ export default function ChatScreen() {
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
-          logger.breadcrumb("Chat list subscription active", "realtime", {
+            logger.breadcrumb("Chat list subscription active", "realtime", {
             userId: currentUserId,
-            channel: "chats-realtime",
+            channel: `chats-realtime-${currentUserId}`,
           });
         } else if (status === "CHANNEL_ERROR") {
-          logger.error("Chat list subscription error", new Error(`Subscription status: ${status}`), {
-            userId: currentUserId,
-            component: "ChatScreen",
-            channel: "chats-realtime",
-            status,
-          });
+          // Log once per subscription. With Realtime enabled, CHANNEL_ERROR is often due to RLS:
+          // Realtime uses RLS when delivering postgres_changes. Ensure SELECT policies on `chats`
+          // and `chat_messages` allow the authenticated user to read rows they participate in.
+          if (!channelErrorLoggedRef.current) {
+            channelErrorLoggedRef.current = true;
+            logger.warn(
+              "Chat list realtime subscription failed (chat list still works). " +
+              "If Realtime is enabled for chats/chat_messages, check RLS: SELECT policies must allow the user to read their chats.",
+              { userId: currentUserId, component: "ChatScreen", channel: `chats-realtime-${currentUserId}`, status }
+            );
+          }
         } else if (status === "TIMED_OUT") {
           logger.warn("Chat list subscription timed out", {
             userId: currentUserId,
             component: "ChatScreen",
-            channel: "chats-realtime",
+            channel: `chats-realtime-${currentUserId}`,
           });
         }
       });
@@ -473,6 +481,7 @@ export default function ChatScreen() {
       // Unsubscribe and remove channel properly
       channel.unsubscribe();
       supabase.removeChannel(channel);
+      channelErrorLoggedRef.current = false;
     };
   }, [currentUserId, queryClient]);
 

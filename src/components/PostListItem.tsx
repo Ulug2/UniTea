@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Image,
   Pressable,
@@ -64,6 +64,8 @@ type PostListItemProps = {
   disableCommentInteraction?: boolean;
   isBookmarked?: boolean;
   onBookmarkPress?: () => void;
+  /** Called when all images/avatars in this post have finished loading (for feed skeleton) */
+  onImageLoad?: () => void;
 };
 
 // Custom comparison function for better memoization (prevents unnecessary re-renders)
@@ -98,7 +100,8 @@ const arePropsEqual = (prevProps: PostListItemProps, nextProps: PostListItemProp
     prevProps.originalCreatedAt === nextProps.originalCreatedAt &&
     prevProps.isDetailedPost === nextProps.isDetailedPost &&
     prevProps.disableCommentInteraction === nextProps.disableCommentInteraction &&
-    prevProps.isBookmarked === nextProps.isBookmarked
+    prevProps.isBookmarked === nextProps.isBookmarked &&
+    prevProps.onImageLoad === nextProps.onImageLoad
   );
 };
 
@@ -128,6 +131,7 @@ const PostListItem = React.memo(function PostListItem({
   disableCommentInteraction = false,
   isBookmarked = false,
   onBookmarkPress,
+  onImageLoad,
 }: PostListItemProps) {
   const { theme } = useTheme();
   const { session } = useAuth();
@@ -136,9 +140,25 @@ const PostListItem = React.memo(function PostListItem({
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [contentExpanded, setContentExpanded] = useState(false);
   const [originalContentExpanded, setOriginalContentExpanded] = useState(false);
+  const [avatarLoaded, setAvatarLoaded] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   // Check if this is a repost
   const isRepost = !!repostedFromPostId;
+  const hasAvatar = !!(isRepost ? originalAuthorAvatar : avatarUrl) || isAnonymous;
+  const hasImage = !!imageUrl;
+
+  // Notify parent when all media has loaded (for feed skeleton)
+  useEffect(() => {
+    if (!onImageLoad) return;
+    if (!hasAvatar && !hasImage) {
+      onImageLoad();
+      return;
+    }
+    if ((!hasAvatar || avatarLoaded) && (!hasImage || imageLoaded)) {
+      onImageLoad();
+    }
+  }, [onImageLoad, hasAvatar, hasImage, avatarLoaded, imageLoaded]);
 
   // Handle profile view - only for other users, not yourself
   const handleProfilePress = (e: any, targetUserId: string, isAnon: boolean) => {
@@ -367,46 +387,53 @@ const PostListItem = React.memo(function PostListItem({
               {isRepost ? (
                 // Show original author for reposts
                 originalIsAnonymous ? (
-                  <Image source={nuLogo} style={styles.avatar} />
+                  <Image source={nuLogo} style={styles.avatar} onLoad={() => setAvatarLoaded(true)} />
                 ) : originalAuthorAvatar ? (
                   originalAuthorAvatar.startsWith("http") ? (
                     <Image
                       source={{ uri: originalAuthorAvatar }}
                       style={styles.avatar}
+                      onLoad={() => setAvatarLoaded(true)}
                     />
                   ) : (
                     <SupabaseImage
                       path={originalAuthorAvatar}
                       bucket="avatars"
                       style={styles.avatar}
+                      onLoad={() => setAvatarLoaded(true)}
                     />
                   )
                 ) : (
-                  <Image source={DEFAULT_AVATAR} style={styles.avatar} />
+                  <Image source={DEFAULT_AVATAR} style={styles.avatar} onLoad={() => setAvatarLoaded(true)} />
                 )
               ) : // Show regular post author
                 isAnonymous ? (
-                  <Image source={nuLogo} style={styles.avatar} />
+                  <Image source={nuLogo} style={styles.avatar} onLoad={() => setAvatarLoaded(true)} />
                 ) : avatarUrl ? (
                   avatarUrl.startsWith("http") ? (
-                    <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+                    <Image source={{ uri: avatarUrl }} style={styles.avatar} onLoad={() => setAvatarLoaded(true)} />
                   ) : (
                     <SupabaseImage
                       path={avatarUrl}
                       bucket="avatars"
                       style={styles.avatar}
+                      onLoad={() => setAvatarLoaded(true)}
                     />
                   )
                 ) : (
-                  <Image source={DEFAULT_AVATAR} style={styles.avatar} />
+                  <Image source={DEFAULT_AVATAR} style={styles.avatar} onLoad={() => setAvatarLoaded(true)} />
                 )}
               <Text style={styles.username}>
                 {isRepost
                   ? originalIsAnonymous
-                    ? "Anonymous"
+                    ? originalUserId === currentUserId
+                      ? "You"
+                      : "Anonymous"
                     : originalAuthorUsername
                   : isAnonymous
-                    ? "Anonymous"
+                    ? userId === currentUserId
+                      ? "You"
+                      : "Anonymous"
                     : username}
               </Text>
             </Pressable>
@@ -431,6 +458,7 @@ const PostListItem = React.memo(function PostListItem({
               path={imageUrl}
               bucket="post-images"
               style={styles.postImage}
+              onLoad={() => setImageLoaded(true)}
             />
           )}
 
@@ -485,6 +513,7 @@ const PostListItem = React.memo(function PostListItem({
                     path={imageUrl}
                     bucket="post-images"
                     style={styles.postImage}
+                    onLoad={() => setImageLoaded(true)}
                   />
                 )}
                 {content && (

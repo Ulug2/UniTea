@@ -351,7 +351,11 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
             <Image source={DEFAULT_AVATAR} style={styles.avatarImage} />
           )}
           <Text style={styles.username}>
-            {isAnonymous ? "Anonymous" : username || "Unknown"}
+            {isAnonymous
+              ? currentUserId === userId
+                ? "You"
+                : "Anonymous"
+              : username || "Unknown"}
           </Text>
         </Pressable>
         <Text style={styles.time}>

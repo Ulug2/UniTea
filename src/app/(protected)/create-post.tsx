@@ -36,7 +36,7 @@ import { logger } from "../../utils/logger";
 type PostInsert = Database["public"]["Tables"]["posts"]["Insert"];
 
 export default function CreatePostScreen() {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { type, repostId } = useLocalSearchParams<{
     type?: string;
@@ -557,6 +557,7 @@ export default function CreatePostScreen() {
                   placeholder="e.g., Library, Block 10, Dining Hall"
                   placeholderTextColor={theme.secondaryText}
                   style={[styles.locationInput, { color: theme.text }]}
+                  keyboardAppearance={isDark ? "dark" : "light"}
                   onChangeText={setLocation}
                   value={location}
                 />
@@ -586,6 +587,7 @@ export default function CreatePostScreen() {
               }
               placeholderTextColor={theme.secondaryText}
               style={[styles.contentInput, { color: theme.text }]}
+              keyboardAppearance={isDark ? "dark" : "light"}
               onChangeText={setContent}
               value={content}
               multiline
@@ -636,6 +638,7 @@ export default function CreatePostScreen() {
                       ]}
                       placeholder={`Option ${index + 1}`}
                       placeholderTextColor={theme.secondaryText}
+                      keyboardAppearance={isDark ? "dark" : "light"}
                       value={option}
                       onChangeText={(text) => {
                         const next = [...pollOptions];
@@ -738,7 +741,9 @@ export default function CreatePostScreen() {
                 <View style={styles.originalPostHeaderText}>
                   <Text style={[styles.originalAuthor, { color: theme.text }]}>
                     {originalPost.is_anonymous
-                      ? "Anonymous"
+                      ? originalPost.user_id === session?.user?.id
+                        ? "You"
+                        : "Anonymous"
                       : originalPost.username}
                   </Text>
                   <Text

@@ -18,7 +18,7 @@ export default function CustomInput({
     rightElement,
     ...textInputProps
 }: CustomInputProps) {
-    const { theme } = useTheme();
+    const { theme, isDark } = useTheme();
 
     return (
         <View style={styles.container}>
@@ -45,6 +45,7 @@ export default function CustomInput({
                 <TextInput
                     style={[styles.input, { color: theme.text }]}
                     placeholderTextColor={theme.secondaryText}
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
                     {...textInputProps}
                 />
                 {rightElement && <View style={styles.rightElement}>{rightElement}</View>}

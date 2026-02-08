@@ -197,6 +197,7 @@ serve(async (req) => {
           data: {
             notificationId: latestChat.id,
             type: "chat_message",
+            relatedUserId: senderId, // So client can suppress banner when viewing this chat
           },
         };
 

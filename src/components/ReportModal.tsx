@@ -32,7 +32,7 @@ export default function ReportModal({
   isLoading = false,
   reportType,
 }: ReportModalProps) {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const [reason, setReason] = useState('');
 
   const handleSubmit = () => {
@@ -97,6 +97,7 @@ export default function ReportModal({
                 ]}
                 placeholder="Describe the issue..."
                 placeholderTextColor={theme.secondaryText}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
                 multiline
                 numberOfLines={4}
                 value={reason}

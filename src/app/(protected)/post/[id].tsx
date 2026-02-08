@@ -55,7 +55,7 @@ export default function PostDetailed() {
   const postId = typeof id === "string" ? id : id?.[0];
   const isFromDeeplink = fromDeeplink === "1";
   const insets = useSafeAreaInsets();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const { session } = useAuth();
   const queryClient = useQueryClient();
 
@@ -507,8 +507,6 @@ export default function PostDetailed() {
 
       // Navigate back
       router.back();
-
-      Alert.alert("Success", "Post deleted successfully");
     },
     onError: (error: any) => {
       Alert.alert("Error", error.message || "Failed to delete post");
@@ -623,7 +621,6 @@ export default function PostDetailed() {
       // Refetch current post to hide if author is blocked
       queryClient.invalidateQueries({ queryKey: ["post", postId] });
 
-      Alert.alert("Success", "User blocked successfully");
       router.back(); // Go back to feed
     },
     onError: (error: any) => {
@@ -800,6 +797,7 @@ export default function PostDetailed() {
           headerStyle: { backgroundColor: theme.primary },
           headerLeft: () => (
             <AntDesign
+              style={{ marginLeft: 5 }}
               name="close"
               size={24}
               color="white"
@@ -808,7 +806,7 @@ export default function PostDetailed() {
           ),
           headerRight: () => (
             <Pressable onPress={() => setShowMenu(true)}>
-              <Entypo name="dots-three-horizontal" size={24} color="white" />
+              <Entypo name="dots-three-horizontal" size={24} color="white" style={{ marginLeft: 5 }} />
             </Pressable>
           ),
         }}
@@ -876,7 +874,9 @@ export default function PostDetailed() {
         isLoading={blockUserMutation.isPending}
         username={
           detailedPost?.is_anonymous
-            ? "Anonymous"
+            ? detailedPost?.user_id === currentUserId
+              ? "You"
+              : "Anonymous"
             : detailedPost?.username || "User"
         }
       />
@@ -1025,6 +1025,7 @@ export default function PostDetailed() {
                   styles.input,
                   { backgroundColor: theme.background, color: theme.text },
                 ]}
+                keyboardAppearance={isDark ? "dark" : "light"}
                 multiline
                 editable={!createCommentMutation.isPending}
               />
@@ -1073,7 +1074,7 @@ export default function PostDetailed() {
 }
 
 function PostErrorFallback() {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>

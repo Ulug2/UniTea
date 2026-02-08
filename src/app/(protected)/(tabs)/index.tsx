@@ -1,6 +1,7 @@
 import {
   View,
   FlatList,
+  ScrollView,
   StyleSheet,
   Pressable,
   Text,
@@ -18,9 +19,9 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useMemo, useEffect, useRef } from "react";
+import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { Database } from "../../../types/database.types";
-import { useFilterContext } from "./filterContext";
+import { useFilterContext } from "./_filterContext";
 import { useAuth } from "../../../context/AuthContext";
 
 type PostSummary = {
@@ -58,6 +59,8 @@ type PostSummary = {
 };
 
 const POSTS_PER_PAGE = 10;
+/** On first open only: wait for this many posts' images/avatars before hiding skeleton overlay */
+const FIRST_POSTS_IMAGE_WAIT = 3;
 
 export default function FeedScreen() {
   const { theme } = useTheme();
@@ -68,6 +71,12 @@ export default function FeedScreen() {
 
   // Debounce ref to prevent cascading invalidations from real-time updates
   const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  // True when we had to fetch (isPending was true)
+  const hadPendingRef = useRef(false);
+  // Once we've done the "first 3 images" wait once this session, never show overlay again (e.g. filter change = data only)
+  const hasCompletedFirstLoadImagesRef = useRef(false);
+  const [imagesLoaded, setImagesLoaded] = useState(false);
+  const loadingImagesRef = useRef<Set<string>>(new Set());
 
   // Fetch blocked users
   const { data: blocks = [] } = useQuery({
@@ -104,11 +113,12 @@ export default function FeedScreen() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    isLoading,
+    isPending,
     refetch,
     isRefetching,
   } = useInfiniteQuery({
     queryKey: ["posts", "feed", selectedFilter], // Add filter to query key
+    // Use default refetchOnMount so cached data shows instantly when revisiting; skeleton only on true initial load
     queryFn: async ({ pageParam = 0 }) => {
       let query = (supabase as any)
         .from("posts_summary_view")
@@ -243,6 +253,36 @@ export default function FeedScreen() {
   // Memoize keyExtractor
   const keyExtractor = useCallback((item: PostSummary) => item.post_id, []);
 
+  // First N post IDs we wait for (only on first open in session)
+  const firstBatchIds = useMemo(
+    () => posts.slice(0, FIRST_POSTS_IMAGE_WAIT).map((p) => p.post_id),
+    [posts]
+  );
+
+  if (isPending) hadPendingRef.current = true;
+
+  useEffect(() => {
+    if (posts.length > 0 && hadPendingRef.current && !hasCompletedFirstLoadImagesRef.current) {
+      setImagesLoaded(false);
+      loadingImagesRef.current = new Set();
+    }
+  }, [posts]);
+
+  const handleImageLoad = useCallback(
+    (postId: string) => {
+      if (hasCompletedFirstLoadImagesRef.current) return;
+      loadingImagesRef.current.add(postId);
+      const allLoaded =
+        firstBatchIds.length > 0 &&
+        firstBatchIds.every((id) => loadingImagesRef.current.has(id));
+      if (allLoaded) {
+        setImagesLoaded(true);
+        hasCompletedFirstLoadImagesRef.current = true;
+      }
+    },
+    [firstBatchIds]
+  );
+
   // Real-time subscription for new posts with debouncing
   useEffect(() => {
     // Track if component is still mounted
@@ -322,16 +362,30 @@ export default function FeedScreen() {
         originalAuthorAvatar={item.original_author_avatar}
         originalIsAnonymous={item.original_is_anonymous}
         originalCreatedAt={item.original_created_at}
+        onImageLoad={() => handleImageLoad(item.post_id)}
       />
     ),
-    []
+    [handleImageLoad]
   );
 
-  // Show skeleton while loading initial data
-  if (isLoading) {
+  // Full-screen skeleton only when we have no data (data still loading)
+  const dataLoading = isPending;
+  // First open only (we had to fetch and haven't completed image wait yet): overlay until first 3 posts' images/avatars
+  const firstLoadImagesLoading =
+    hadPendingRef.current &&
+    !hasCompletedFirstLoadImagesRef.current &&
+    !imagesLoaded &&
+    posts.length > 0;
+
+  if (dataLoading) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <PostListSkeleton />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.skeletonContent}
+        >
+          <PostListSkeleton />
+        </ScrollView>
       </View>
     );
   }
@@ -366,16 +420,28 @@ export default function FeedScreen() {
           ) : null
         }
         ListEmptyComponent={
-          !isLoading ? (
-            <View style={styles.emptyContainer}>
-              <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
-                No posts yet
-              </Text>
-            </View>
-          ) : null
+          <View style={styles.emptyContainer}>
+            <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
+              No posts yet
+            </Text>
+          </View>
         }
         contentInsetAdjustmentBehavior="automatic"
       />
+      {/* First open only: overlay skeleton until first 3 posts' images/avatars loaded */}
+      {firstLoadImagesLoading && (
+        <View
+          style={[StyleSheet.absoluteFill, { backgroundColor: theme.background }]}
+          pointerEvents="none"
+        >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.skeletonContent}
+          >
+            <PostListSkeleton />
+          </ScrollView>
+        </View>
+      )}
       {/* Floating Action Button */}
       <Pressable
         onPress={() => router.push("/create-post")}
@@ -390,6 +456,9 @@ export default function FeedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  skeletonContent: {
+    paddingBottom: 100,
   },
   emptyContainer: {
     flex: 1,

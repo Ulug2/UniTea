@@ -45,7 +45,7 @@ export default function ManageAccountModal({
   isUpdating = false,
   currentUsername = '',
 }: ManageAccountModalProps) {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const [currentView, setCurrentView] = useState<ViewType>('menu');
   const [username, setUsername] = useState(currentUsername);
   const [password, setPassword] = useState('');
@@ -265,6 +265,7 @@ export default function ManageAccountModal({
           ]}
           placeholder="Enter new username"
           placeholderTextColor={theme.secondaryText}
+          keyboardAppearance={isDark ? "dark" : "light"}
           value={username}
           onChangeText={setUsername}
           autoCapitalize="none"
@@ -322,6 +323,7 @@ export default function ManageAccountModal({
           ]}
           placeholder="Enter new password"
           placeholderTextColor={theme.secondaryText}
+          keyboardAppearance={isDark ? "dark" : "light"}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -343,6 +345,7 @@ export default function ManageAccountModal({
           ]}
           placeholder="Confirm new password"
           placeholderTextColor={theme.secondaryText}
+          keyboardAppearance={isDark ? "dark" : "light"}
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           secureTextEntry

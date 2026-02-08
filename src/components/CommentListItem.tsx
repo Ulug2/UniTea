@@ -115,7 +115,6 @@ const CommentListItem = ({
       queryClient.invalidateQueries({ queryKey: ["user-posts"] }); // Refresh profile posts
       queryClient.invalidateQueries({ queryKey: ["user-post-comments"] }); // Refresh profile comment counts
       queryClient.invalidateQueries({ queryKey: ["bookmarked-posts"] }); // Refresh bookmarked
-      Alert.alert("Success", "Comment deleted successfully");
     },
     onError: (error: any) => {
       Alert.alert("Error", error.message || "Failed to delete comment");
@@ -189,8 +188,6 @@ const CommentListItem = ({
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       queryClient.invalidateQueries({ queryKey: ["comments"] });
       queryClient.invalidateQueries({ queryKey: ["chat-summaries"] });
-
-      Alert.alert("Success", "User blocked successfully");
     },
     onError: (error: any) => {
       Alert.alert("Error", error.message || "Failed to block user");
@@ -269,7 +266,9 @@ const CommentListItem = ({
             )}
             <Text style={[styles.username, { color: theme.text }]}>
               {comment.is_anonymous
-                ? "Anonymous"
+                ? comment.user_id === currentUserId
+                  ? "You"
+                  : "Anonymous"
                 : comment.user?.username || "Unknown"}
             </Text>
           </Pressable>

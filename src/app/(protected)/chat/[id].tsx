@@ -44,6 +44,7 @@ import { logger } from "../../../utils/logger";
 import UserProfileModal from "../../../components/UserProfileModal";
 import { DEFAULT_AVATAR } from "../../../constants/images";
 import { useBlocks } from "../../../hooks/useBlocks";
+import { setCurrentViewedChatPartnerId } from "../../../hooks/usePushNotifications";
 
 type Chat = Database['public']['Tables']['chats']['Row'];
 type ChatMessage = Database['public']['Tables']['chat_messages']['Row'] & {
@@ -79,7 +80,7 @@ function hashStringToNumber(str: string): number {
 
 export default function ChatDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [message, setMessage] = useState("");
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -245,6 +246,14 @@ export default function ChatDetailScreen() {
       : chat?.participant_1_id;
 
   const isAnonymous = otherUserId?.startsWith("anonymous-");
+
+  // Tell notification handler which chat we're viewing so it can suppress banners for this chat only
+  useFocusEffect(
+    useCallback(() => {
+      setCurrentViewedChatPartnerId(otherUserId ?? null);
+      return () => setCurrentViewedChatPartnerId(null);
+    }, [otherUserId])
+  );
 
   // Fetch blocked users
   const { data: blocks = [] } = useBlocks();
@@ -2229,6 +2238,7 @@ export default function ChatDetailScreen() {
             value={message}
             onChangeText={setMessage}
             style={dynamicStyles.input}
+            keyboardAppearance={isDark ? "dark" : "light"}
             multiline
             maxLength={1000}
           />
