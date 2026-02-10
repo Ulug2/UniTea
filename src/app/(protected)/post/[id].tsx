@@ -69,7 +69,9 @@ export default function PostDetailed() {
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [isAnonymousMode, setIsAnonymousMode] = useState(true);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const inputRef = useRef<TextInput | null>(null);
+  const commentsListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     const showSub = Keyboard.addListener(
@@ -320,11 +322,15 @@ export default function PostDetailed() {
         throw new Error("You must be logged in to post a comment.");
       }
 
+      // Never send temp IDs to API (e.g. from optimistic reply-to-reply)
+      const safeParentId =
+        parentId && !parentId.startsWith("temp-") ? parentId : null;
+
       // Prepare comment payload for Edge Function
       const commentPayload = {
         content: content.trim(),
         post_id: postId,
-        parent_comment_id: parentId || null,
+        parent_comment_id: safeParentId,
         is_anonymous: isAnonymous,
       };
 
@@ -361,69 +367,9 @@ export default function PostDetailed() {
       // Return the comment data (edge function returns the inserted comment)
       return responseData;
     },
-    onMutate: async ({ content, parentId, isAnonymous }) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["comments", postId, currentUserId] });
-
-      // Snapshot previous value
-      const previousComments = queryClient.getQueryData<CommentWithReplies[]>([
-        "comments",
-        postId,
-        currentUserId,
-      ]);
-
-      // Fetch current user profile for optimistic comment
-      if (!currentUserId) return { previousComments };
-
-      const { data: currentUser } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", currentUserId)
-        .single();
-
-      // Create optimistic comment
-      const optimisticComment: CommentWithReplies = {
-        id: `temp-${Date.now()}`,
-        post_id: postId!,
-        user_id: currentUserId!,
-        content: content.trim(),
-        parent_comment_id: parentId,
-        is_deleted: false,
-        is_anonymous: isAnonymous,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        user: currentUser || undefined,
-        replies: [],
-        score: 0,
-      };
-
-      // Optimistically update cache (same key as useQuery so UI updates immediately)
-      queryClient.setQueryData<CommentWithReplies[]>(
-        ["comments", postId, currentUserId],
-        (old = []) => {
-          return [...old, optimisticComment];
-        }
-      );
-
-      return { previousComments };
-    },
-    onError: (error: Error, variables, context) => {
-      // Rollback on error
-      if (context?.previousComments) {
-        queryClient.setQueryData(
-          ["comments", postId, currentUserId],
-          context.previousComments
-        );
-      }
-
-      // Log error to Sentry (logger handles dev vs prod automatically)
+    onError: (error: Error) => {
       logger.error("Error posting comment", error as Error);
-
-      // Show the actual error message from Edge Function (already user-friendly)
-      // Edge Function returns: "Comment violates community guidelines"
       let errorMessage = error.message || "Failed to post comment. Please try again.";
-
-      // Handle specific error cases
       if (error.message?.includes("rate limit")) {
         errorMessage = "You're posting too fast. Please wait a moment.";
       } else if (
@@ -432,57 +378,43 @@ export default function PostDetailed() {
       ) {
         errorMessage = "Network error. Please check your connection.";
       }
-
-      // This Alert is what users see - console errors are only for developers
       Alert.alert("Error", errorMessage);
     },
-    onSuccess: async (newComment) => {
-      // Replace temp comment with real id/created_at so list shows correct data
+    onSuccess: async (newComment: CommentWithReplies) => {
+      // Merge new comment into cache immediately so it appears without waiting for refetch
+      // (refetch can lag behind write, so reply-to-reply often missing on first load)
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", currentUserId!)
+        .single();
+
+      const entry: CommentWithReplies = {
+        ...newComment,
+        user: profile ?? undefined,
+        score: 0,
+        replies: [],
+      };
+
       queryClient.setQueryData<CommentWithReplies[]>(
         ["comments", postId, currentUserId],
-        (old = []) => {
-          return old.map((comment) =>
-            comment.id.startsWith("temp-")
-              ? {
-                ...comment,
-                id: newComment.id,
-                created_at: newComment.created_at ?? comment.created_at,
-              }
-              : comment
-          );
-        }
+        (old) => [...(old ?? []), entry]
       );
 
-      // Refetch comments so the new comment has full user/score from server
-      await queryClient.invalidateQueries({
-        queryKey: ["comments", postId, currentUserId],
-        refetchType: "active",
-      });
-
-      // Invalidate current post to update comment count
-      queryClient.invalidateQueries({
-        queryKey: ["post", postId],
-        refetchType: "active",
-      });
-
-      // Invalidate feed posts (they show comment count)
-      queryClient.invalidateQueries({
-        queryKey: ["posts", "feed"],
-        refetchType: "none", // Don't refetch feed immediately
-      });
-
-      // Invalidate user's own posts/comments
-      queryClient.invalidateQueries({
-        queryKey: ["user-posts", currentUserId],
-        refetchType: "none",
-      });
-
-      // Clear input and reset reply state
+      queryClient.invalidateQueries({ queryKey: ["post", postId] });
+      queryClient.invalidateQueries({ queryKey: ["posts", "feed"], refetchType: "none" });
+      queryClient.invalidateQueries({ queryKey: ["user-posts", currentUserId], refetchType: "none" });
       setCommentText("");
       setParentCommentId(null);
       setReplyingToUsername(null);
       setIsAnonymousMode(true);
       inputRef.current?.blur();
+      commentsListRef.current?.scrollToEnd({ animated: true });
+
+      // Refetch in background to get correct vote score
+      queryClient.refetchQueries({
+        queryKey: ["comments", postId, currentUserId],
+      });
     },
   });
 
@@ -684,12 +616,15 @@ export default function PostDetailed() {
       Alert.alert("Error", "You must be logged in to post a comment");
       return;
     }
-
-    createCommentMutation.mutate({
-      content: commentText,
-      parentId: parentCommentId,
-      isAnonymous: isAnonymousMode,
-    });
+    const content = commentText;
+    const parentId = parentCommentId;
+    const isAnonymous = isAnonymousMode;
+    // Clear input and reply state immediately so UI updates before request
+    setCommentText("");
+    setParentCommentId(null);
+    setReplyingToUsername(null);
+    inputRef.current?.blur();
+    createCommentMutation.mutate({ content, parentId, isAnonymous });
   };
 
   const handleCancelReply = () => {
@@ -699,6 +634,13 @@ export default function PostDetailed() {
     setIsAnonymousMode(true);
   };
 
+  const handleCommentDeleteStart = useCallback((commentId: string) => {
+    setDeletingCommentId(commentId);
+  }, []);
+  const handleCommentDeleteEnd = useCallback(() => {
+    setDeletingCommentId(null);
+  }, []);
+
   // Memoize renderItem and keyExtractor for performance
   // MUST be before any conditional returns to follow Rules of Hooks
   const renderCommentItem = useCallback(
@@ -707,9 +649,11 @@ export default function PostDetailed() {
         comment={item}
         depth={0}
         handleReplyPress={handleReplyPress}
+        onDeleteStart={handleCommentDeleteStart}
+        onDeleteEnd={handleCommentDeleteEnd}
       />
     ),
-    [handleReplyPress]
+    [handleReplyPress, handleCommentDeleteStart, handleCommentDeleteEnd]
   );
 
   const keyExtractor = useCallback((item: CommentWithReplies) => item.id, []);
@@ -887,7 +831,24 @@ export default function PostDetailed() {
         keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : insets.top}
       >
         <View style={{ flex: 1 }}>
+          {(createCommentMutation.isPending || deletingCommentId) && (
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: "rgba(255, 255, 255, 0.6)",
+                  zIndex: 10,
+                  justifyContent: "center",
+                  alignItems: "center",
+                },
+              ]}
+              pointerEvents="box-only"
+            >
+              <ActivityIndicator size="large" color={theme.primary} />
+            </View>
+          )}
           <FlatList
+            ref={commentsListRef}
             ListHeaderComponent={
               <PostListItem
                 postId={detailedPost.post_id || detailedPost.id}
