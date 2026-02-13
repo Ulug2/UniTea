@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useCallback, useEffect } from "react";
+import { useState, useRef, useMemo, useCallback } from "react";
 import { useLocalSearchParams, router, Stack } from "expo-router";
 import {
   Text,
@@ -6,49 +6,37 @@ import {
   TextInput,
   Pressable,
   KeyboardAvoidingView,
-  Keyboard,
   Platform,
   FlatList,
   StyleSheet,
   ActivityIndicator,
   Alert,
-  RefreshControl,
   Modal,
-  Switch,
-  Image,
 } from "react-native";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import PostListItem from "../../../components/PostListItem";
-import CommentListItem from "../../../components/CommentListItem";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import ReportModal from "../../../components/ReportModal";
 import BlockUserModal from "../../../components/BlockUserModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  MaterialCommunityIcons,
-  AntDesign,
-  Entypo,
-  Ionicons,
-} from "@expo/vector-icons";
+import { MaterialCommunityIcons, AntDesign, Entypo } from "@expo/vector-icons";
 import { useTheme } from "../../../context/ThemeContext";
 import { useAuth } from "../../../context/AuthContext";
-import { Database, TablesInsert } from "../../../types/database.types";
+import { Database } from "../../../types/database.types";
 import { supabase } from "../../../lib/supabase";
-import nuLogo from "../../../../assets/images/nu-logo.png";
 import { ErrorBoundary } from "react-error-boundary";
 import { logger } from "../../../utils/logger";
-
-type Post = Database["public"]["Tables"]["posts"]["Row"];
-type Comment = Database["public"]["Tables"]["comments"]["Row"];
-type Profile = Database["public"]["Tables"]["profiles"]["Row"];
-type Vote = Database["public"]["Tables"]["votes"]["Row"];
-type Bookmark = Database["public"]["Tables"]["bookmarks"]["Row"];
-
-// Extended type to include the joined user profile and nested replies
-type CommentWithReplies = Comment & {
-  user: Profile | undefined;
-  replies: CommentWithReplies[];
-  score?: number;
-};
+import { useBlocks } from "../../../hooks/useBlocks";
+import type { PostsSummaryViewRow } from "../../../types/posts";
+import { usePostComments } from "../../../features/comments/hooks/usePostComments";
+import type { CommentNode } from "../../../features/comments/utils/tree";
+import { useCreateComment } from "../../../features/comments/hooks/useCreateComment";
+import { useProfileById } from "../../../features/profile/hooks/useProfileById";
+import { useBookmarkToggle } from "../../../features/posts/hooks/useBookmarkToggle";
+import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
+import { useReportPost } from "../../../features/posts/hooks/useReportPost";
+import { useBlockUser } from "../../../features/posts/hooks/useBlockUser";
+import { CommentsTreeList } from "../../../features/comments/components/CommentsTreeList";
+import { CommentComposer } from "../../../features/comments/components/CommentComposer";
+import { PostHeaderCard } from "../../../features/posts/components/PostHeaderCard";
 
 export default function PostDetailed() {
   const { id, fromDeeplink } = useLocalSearchParams<{ id: string; fromDeeplink?: string }>();
@@ -68,64 +56,22 @@ export default function PostDetailed() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [isAnonymousMode, setIsAnonymousMode] = useState(true);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const inputRef = useRef<TextInput | null>(null);
-  const commentsListRef = useRef<FlatList>(null);
-
-  useEffect(() => {
-    const showSub = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      (e) => setKeyboardHeight(e.endCoordinates.height)
-    );
-    const hideSub = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
-      () => setKeyboardHeight(0)
-    );
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
+  const commentsListRef = useRef<FlatList<CommentNode> | null>(null);
 
   // Get current user ID
   const currentUserId = session?.user?.id || null;
 
-  // Fetch blocked users (must be before nestedComments useMemo)
-  const { data: blocks = [] } = useQuery({
-    queryKey: ["blocks", currentUserId],
-    enabled: Boolean(currentUserId),
-    queryFn: async () => {
-      if (!currentUserId) return [];
-
-      // Get users blocked by me and users who blocked me
-      const [blockedByMe, blockedMe] = await Promise.all([
-        supabase
-          .from("blocks")
-          .select("blocked_id")
-          .eq("blocker_id", currentUserId),
-        supabase
-          .from("blocks")
-          .select("blocker_id")
-          .eq("blocked_id", currentUserId),
-      ]);
-
-      const blockedUserIds = new Set<string>();
-      blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
-      blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
-
-      return Array.from(blockedUserIds);
-    },
-    staleTime: 1000 * 60 * 5, // Blocks stay fresh for 5 minutes
-    gcTime: 1000 * 60 * 30,
-  });
+  // Fetch blocked users via shared hook
+  const { data: blocks = [] } = useBlocks();
 
   // 1. Fetch Post Details (using view to get repost data)
   const {
     data: detailedPost,
     isLoading: isPostLoading,
     error: postError,
-  } = useQuery<any>({
+  } = useQuery<PostsSummaryViewRow | null>({
     queryKey: ["post", postId],
     enabled: Boolean(postId),
     queryFn: async () => {
@@ -136,8 +82,9 @@ export default function PostDetailed() {
         .eq("post_id", postId)
         .limit(1);
       if (error) throw error;
-      // Return first row if multiple exist (shouldn't happen but handles edge case)
-      return data && data.length > 0 ? data[0] : null;
+      const row = data && data.length > 0 ? data[0] : null;
+      if (!row) return null;
+      return row as PostsSummaryViewRow;
     },
     staleTime: 1000 * 60 * 5, // Post stays fresh for 5 minutes
     gcTime: 1000 * 60 * 30, // Cache for 30 minutes
@@ -149,127 +96,24 @@ export default function PostDetailed() {
     data: postUser,
     isLoading: isUserLoading,
     error: userError,
-  } = useQuery<Profile | null>({
-    queryKey: ["post-user", detailedPost?.user_id],
-    enabled: Boolean(detailedPost?.user_id),
-    queryFn: async () => {
-      if (!detailedPost?.user_id) return null;
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", detailedPost.user_id)
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    staleTime: 1000 * 60 * 30, // Profile stays fresh for 30 minutes
-    gcTime: 1000 * 60 * 60, // Cache for 1 hour
-    retry: 2,
-  });
+  } = useProfileById(detailedPost?.user_id ?? null);
 
-  // 3. Fetch Comments (Flat List)
+  // 3. Comments via shared hook (flat + tree), with blocked filtering
   const {
-    data: rawComments,
+    flatComments,
+    treeComments,
     isLoading: isCommentsLoading,
     error: commentsError,
     refetch: refetchComments,
     isRefetching: isRefetchingComments,
-  } = useQuery<CommentWithReplies[]>({
-    queryKey: ["comments", postId, currentUserId],
-    enabled: Boolean(postId),
-    queryFn: async () => {
-      if (!postId) return [];
+  } = usePostComments(postId, currentUserId, blocks);
 
-      // Fetch comments
-      const { data: comments, error: commentsErr } = await supabase
-        .from("comments")
-        .select("*")
-        .eq("post_id", postId)
-        .eq("is_deleted", false)
-        .order("created_at", { ascending: true });
-
-      if (commentsErr) throw commentsErr;
-      if (!comments?.length) return [];
-
-      // Get unique user IDs
-      const userIds = [
-        ...new Set(comments.map((c) => c.user_id).filter(Boolean)),
-      ] as string[];
-
-      // Fetch all comment authors in one query
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("*")
-        .in("id", userIds);
-
-      const usersById = new Map(profiles?.map((u) => [u.id, u]) || []);
-
-      // Fetch all votes for these comments in one query
-      const commentIds = comments.map((c) => c.id);
-      const { data: votes } = await supabase
-        .from("votes")
-        .select("comment_id, vote_type")
-        .in("comment_id", commentIds);
-
-      // Calculate score for each comment
-      const scoreByCommentId = new Map<string, number>();
-      votes?.forEach((vote) => {
-        if (!vote.comment_id) return;
-        const current = scoreByCommentId.get(vote.comment_id) || 0;
-        scoreByCommentId.set(
-          vote.comment_id,
-          current + (vote.vote_type === "upvote" ? 1 : -1)
-        );
-      });
-
-      // Map comments with user data
-      return comments.map((c) => ({
-        ...c,
-        user: c.user_id ? usersById.get(c.user_id) : undefined,
-        score: scoreByCommentId.get(c.id) || 0,
-        replies: [],
-      }));
-    },
-    staleTime: 0, // Always refetch when invalidated for immediate updates
-    gcTime: 1000 * 60 * 15, // Cache for 15 minutes
-    retry: 2,
-  });
-
-  // 4. Transform Flat Comments into a Nested Tree (with blocked user filtering)
-  const nestedComments = useMemo(() => {
-    if (!rawComments) return [];
-
-    // Filter out comments from blocked users
-    const filteredComments = rawComments.filter(
-      (c) => c.user_id && !blocks.includes(c.user_id)
-    );
-
-    const commentMap: { [key: string]: CommentWithReplies } = {};
-    const roots: CommentWithReplies[] = [];
-
-    // First pass: Create a map of all comments and initialize their replies array
-    filteredComments.forEach((c) => {
-      commentMap[c.id] = { ...c, replies: [] };
-    });
-
-    // Second pass: Link children to parents
-    filteredComments.forEach((c) => {
-      if (c.parent_comment_id) {
-        // If it has a parent, push it to the parent's replies array
-        if (commentMap[c.parent_comment_id]) {
-          commentMap[c.parent_comment_id].replies.push(commentMap[c.id]);
-        }
-      } else {
-        // If no parent, it's a top-level comment
-        roots.push(commentMap[c.id]);
-      }
-    });
-
-    return roots;
-  }, [rawComments, blocks]);
+  const nestedComments: CommentNode[] = treeComments;
 
   // Fetch bookmarks for this post
-  const { data: postBookmarks = [] } = useQuery<Bookmark[]>({
+  const { data: postBookmarks = [] } = useQuery<
+    Database["public"]["Tables"]["bookmarks"]["Row"][]
+  >({
     queryKey: ["bookmarks", postId],
     enabled: Boolean(postId),
     queryFn: async () => {
@@ -292,158 +136,12 @@ export default function PostDetailed() {
     return postBookmarks.some((b) => b.user_id === currentUserId);
   }, [postBookmarks, currentUserId]);
 
-  // Mutation to post a comment with optimistic updates
-  const createCommentMutation = useMutation({
-    mutationFn: async ({
-      content,
-      parentId,
-      isAnonymous,
-    }: {
-      content: string;
-      parentId: string | null;
-      isAnonymous: boolean;
-    }) => {
-      if (!currentUserId) {
-        throw new Error("You must be logged in to post a comment");
-      }
-
-      if (!postId) {
-        throw new Error("Post ID is required");
-      }
-
-      // Call Edge Function for AI moderation
-      // Use fetch directly to access response body even on 400 status codes
-      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-      const functionUrl = `${supabaseUrl}/functions/v1/create-comment`;
-
-      // Get auth token from session
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (!currentSession?.access_token) {
-        throw new Error("You must be logged in to post a comment.");
-      }
-
-      // Never send temp IDs to API (e.g. from optimistic reply-to-reply)
-      const safeParentId =
-        parentId && !parentId.startsWith("temp-") ? parentId : null;
-
-      // Prepare comment payload for Edge Function
-      const commentPayload = {
-        content: content.trim(),
-        post_id: postId,
-        parent_comment_id: safeParentId,
-        is_anonymous: isAnonymous,
-      };
-
-      const response = await fetch(functionUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${currentSession.access_token}`,
-          apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-        },
-        body: JSON.stringify(commentPayload),
-      });
-
-      // Parse response body (works for both 200 and 400 status)
-      const responseData = await response.json();
-
-      // Check if response contains an error (Edge Function returns { error: "..." } on failure)
-      if (!response.ok) {
-        // Extract error message from response body
-        const errorMessage = responseData?.error || responseData?.message || "Failed to create comment";
-        throw new Error(errorMessage);
-      }
-
-      // Additional check: if responseData has an error field even on 200 status
-      if (responseData?.error) {
-        throw new Error(responseData.error);
-      }
-
-      // Validate that we received comment data
-      if (!responseData || !responseData.id) {
-        throw new Error("Invalid response from server");
-      }
-
-      // Return the comment data (edge function returns the inserted comment)
-      return responseData;
-    },
-    onError: (error: Error) => {
-      logger.error("Error posting comment", error as Error);
-      let errorMessage = error.message || "Failed to post comment. Please try again.";
-      if (error.message?.includes("rate limit")) {
-        errorMessage = "You're posting too fast. Please wait a moment.";
-      } else if (
-        error.message?.includes("network") ||
-        error.message?.includes("timeout")
-      ) {
-        errorMessage = "Network error. Please check your connection.";
-      }
-      Alert.alert("Error", errorMessage);
-    },
-    onSuccess: async (newComment: CommentWithReplies) => {
-      // Merge new comment into cache immediately so it appears without waiting for refetch
-      // (refetch can lag behind write, so reply-to-reply often missing on first load)
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", currentUserId!)
-        .single();
-
-      const entry: CommentWithReplies = {
-        ...newComment,
-        user: profile ?? undefined,
-        score: 0,
-        replies: [],
-      };
-
-      queryClient.setQueryData<CommentWithReplies[]>(
-        ["comments", postId, currentUserId],
-        (old) => [...(old ?? []), entry]
-      );
-
-      queryClient.invalidateQueries({ queryKey: ["post", postId] });
-      queryClient.invalidateQueries({ queryKey: ["posts", "feed"], refetchType: "none" });
-      queryClient.invalidateQueries({ queryKey: ["user-posts", currentUserId], refetchType: "none" });
-      setCommentText("");
-      setParentCommentId(null);
-      setReplyingToUsername(null);
-      setIsAnonymousMode(true);
-      inputRef.current?.blur();
-      commentsListRef.current?.scrollToEnd({ animated: true });
-
-      // Refetch in background to get correct vote score
-      queryClient.refetchQueries({
-        queryKey: ["comments", postId, currentUserId],
-      });
-    },
+  const createCommentMutation = useCreateComment({
+    postId,
+    viewerId: currentUserId,
   });
 
-  // Delete post mutation (hard delete with cascade) - MUST be before early returns
-  const deletePostMutation = useMutation({
-    mutationFn: async () => {
-      if (!postId) throw new Error("Post ID is required");
-
-      // Delete the post (comments and votes will cascade)
-      const { error } = await supabase.from("posts").delete().eq("id", postId);
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      // Invalidate all related queries to update everywhere
-      queryClient.invalidateQueries({ queryKey: ["posts"] }); // Refresh feed
-      queryClient.invalidateQueries({ queryKey: ["post", postId] }); // Current post
-      queryClient.invalidateQueries({ queryKey: ["user-posts"] }); // Profile posts
-      queryClient.invalidateQueries({ queryKey: ["user-post-comments"] }); // Profile comment counts
-      queryClient.invalidateQueries({ queryKey: ["user-post-votes"] }); // Profile vote scores
-      queryClient.invalidateQueries({ queryKey: ["bookmarked-posts"] }); // Bookmarked posts
-
-      // Navigate back
-      router.back();
-    },
-    onError: (error: any) => {
-      Alert.alert("Error", error.message || "Failed to delete post");
-    },
-  });
+  const deletePostMutation = useDeletePost(postId);
 
   const handleDeletePost = () => {
     setShowMenu(false);
@@ -465,102 +163,25 @@ export default function PostDetailed() {
     );
   };
 
-  // Bookmark mutation
-  const bookmarkMutation = useMutation({
-    mutationFn: async (shouldBookmark: boolean) => {
-      if (!currentUserId || !postId) throw new Error("User or post ID missing");
-
-      if (shouldBookmark) {
-        // Add bookmark
-        const { error } = await supabase.from("bookmarks").insert({
-          user_id: currentUserId,
-          post_id: postId,
-        });
-        if (error) throw error;
-      } else {
-        // Remove bookmark
-        const { error } = await supabase
-          .from("bookmarks")
-          .delete()
-          .eq("user_id", currentUserId)
-          .eq("post_id", postId);
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => {
-      // Invalidate all bookmark-related queries
-      queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
-      queryClient.invalidateQueries({ queryKey: ["bookmarked-posts"] }); // Refresh bookmarked list
-      queryClient.invalidateQueries({ queryKey: ["post", postId] });
-    },
-    onError: (error: any) => {
-      Alert.alert("Error", error.message || "Failed to update bookmark");
-    },
+  const bookmarkMutation = useBookmarkToggle({
+    postId,
+    viewerId: currentUserId,
   });
 
   const toggleBookmark = () => {
     bookmarkMutation.mutate(!isBookmarked);
   };
 
-  // Report post mutation
-  const reportPostMutation = useMutation({
-    mutationFn: async (reason: string) => {
-      if (!currentUserId || !postId) throw new Error("User or post ID missing");
-
-      const { error } = await supabase.from("reports").insert({
-        reporter_id: currentUserId,
-        post_id: postId,
-        comment_id: null,
-        reason: reason,
-      });
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      setShowReportModal(false);
-      setShowMenu(false);
-      // Show block user modal after successful report
-      setShowBlockModal(true);
-    },
-    onError: (error: any) => {
-      Alert.alert("Error", error.message || "Failed to submit report");
-    },
+  const reportPostMutation = useReportPost({
+    postId,
+    viewerId: currentUserId,
   });
 
-  // Block user mutation
-  const blockUserMutation = useMutation({
-    mutationFn: async (userIdToBlock: string) => {
-      if (!currentUserId) throw new Error("User ID missing");
-
-      const { error } = await supabase.from("blocks").insert({
-        blocker_id: currentUserId,
-        blocked_id: userIdToBlock,
-      });
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      setShowBlockModal(false);
-      // Invalidate blocks query to refresh blocked users list
-      queryClient.invalidateQueries({ queryKey: ["blocks", currentUserId] });
-      // Invalidate queries to filter out blocked user's content
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      queryClient.invalidateQueries({ queryKey: ["comments", postId] });
-      queryClient.invalidateQueries({
-        queryKey: ["chat-summaries", currentUserId],
-      });
-
-      // Refetch current post to hide if author is blocked
-      queryClient.invalidateQueries({ queryKey: ["post", postId] });
-
-      router.back(); // Go back to feed
-    },
-    onError: (error: any) => {
-      Alert.alert("Error", error.message || "Failed to block user");
-    },
-  });
+  const blockUserMutation = useBlockUser(currentUserId);
 
   const handleReportPost = (reason: string) => {
+    setShowReportModal(false);
+    setShowMenu(false);
     reportPostMutation.mutate(reason);
   };
 
@@ -588,8 +209,8 @@ export default function PostDetailed() {
   const handleReplyPress = (commentId: string) => {
     // Find the comment to get the username
     const findComment = (
-      comments: CommentWithReplies[]
-    ): CommentWithReplies | null => {
+      comments: CommentNode[]
+    ): CommentNode | null => {
       for (const comment of comments) {
         if (comment.id === commentId) {
           return comment;
@@ -605,7 +226,22 @@ export default function PostDetailed() {
     const targetComment = findComment(nestedComments);
     if (targetComment) {
       setParentCommentId(commentId);
-      setReplyingToUsername(targetComment.user?.username || "Unknown");
+
+      let label: string;
+      if (targetComment.is_anonymous) {
+        const anonId =
+          (targetComment as any).post_specific_anon_id ??
+          (targetComment as any).post_specific_anon_id;
+        label =
+          typeof anonId === "number" && anonId > 0
+            ? `User ${anonId}`
+            : "Anonymous";
+      } else {
+        const name = targetComment.user?.username || "Unknown";
+        label = name.length > 15 ? `${name.slice(0, 15)}...` : name;
+      }
+
+      setReplyingToUsername(label);
       inputRef.current?.focus();
     }
   };
@@ -640,25 +276,6 @@ export default function PostDetailed() {
   const handleCommentDeleteEnd = useCallback(() => {
     setDeletingCommentId(null);
   }, []);
-
-  // Memoize renderItem and keyExtractor for performance
-  // MUST be before any conditional returns to follow Rules of Hooks
-  const renderCommentItem = useCallback(
-    ({ item }: { item: CommentWithReplies }) => (
-      <CommentListItem
-        comment={item}
-        depth={0}
-        handleReplyPress={handleReplyPress}
-        onDeleteStart={handleCommentDeleteStart}
-        onDeleteEnd={handleCommentDeleteEnd}
-      />
-    ),
-    [handleReplyPress, handleCommentDeleteStart, handleCommentDeleteEnd]
-  );
-
-  const keyExtractor = useCallback((item: CommentWithReplies) => item.id, []);
-
-  const postScore = 0;
 
   const isLoading = isPostLoading || isUserLoading || isCommentsLoading;
 
@@ -847,172 +464,41 @@ export default function PostDetailed() {
               <ActivityIndicator size="large" color={theme.primary} />
             </View>
           )}
-          <FlatList
-            ref={commentsListRef}
-            ListHeaderComponent={
-              <PostListItem
-                postId={detailedPost.post_id || detailedPost.id}
-                userId={detailedPost.user_id}
-                content={detailedPost.content}
-                imageUrl={detailedPost.image_url}
-                category={detailedPost.category}
-                location={detailedPost.location}
-                postType={detailedPost.post_type}
-                isAnonymous={detailedPost.is_anonymous}
-                isEdited={detailedPost.is_edited}
-                createdAt={detailedPost.created_at}
-                updatedAt={detailedPost.updated_at}
-                editedAt={detailedPost.edited_at}
-                viewCount={detailedPost.view_count}
-                username={
-                  detailedPost.username || postUser?.username || "Unknown"
-                }
-                avatarUrl={
-                  detailedPost.avatar_url || postUser?.avatar_url || null
-                }
-                isVerified={
-                  detailedPost.is_verified || postUser?.is_verified || null
-                }
-                commentCount={rawComments?.length || 0}
-                voteScore={detailedPost.vote_score ?? 0}
-                repostCount={detailedPost.repost_count || 0}
-                repostedFromPostId={detailedPost.reposted_from_post_id}
-                repostComment={detailedPost.repost_comment}
-                originalContent={detailedPost.original_content}
-                originalUserId={detailedPost.original_user_id}
-                originalAuthorUsername={detailedPost.original_author_username}
-                originalAuthorAvatar={detailedPost.original_author_avatar}
-                originalIsAnonymous={detailedPost.original_is_anonymous}
-                originalCreatedAt={detailedPost.original_created_at}
-                isDetailedPost
-                isBookmarked={isBookmarked}
-                onBookmarkPress={toggleBookmark}
-                disableCommentInteraction
-              />
-            }
-            // Pass the nested tree (roots) to the FlatList
+          <CommentsTreeList
             data={nestedComments}
-            renderItem={renderCommentItem}
-            keyExtractor={keyExtractor}
-            contentContainerStyle={{ paddingBottom: 20 }}
-            keyboardShouldPersistTaps="handled"
+            onReply={handleReplyPress}
+            onDeleteStart={handleCommentDeleteStart}
+            onDeleteEnd={handleCommentDeleteEnd}
+            isRefetching={isRefetchingComments}
+            onRefresh={refetchComments}
+            listRef={commentsListRef}
             style={{ flex: 1 }}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefetchingComments}
-                onRefresh={refetchComments}
-                tintColor={theme.primary}
+            headerComponent={
+              <PostHeaderCard
+                post={detailedPost}
+                postUser={postUser ?? null}
+                commentCount={flatComments.length || 0}
+                isBookmarked={isBookmarked}
+                onToggleBookmark={toggleBookmark}
               />
             }
-            // Performance optimizations
-            removeClippedSubviews={true}
-            maxToRenderPerBatch={10}
-            updateCellsBatchingPeriod={50}
-            initialNumToRender={10}
-            windowSize={5}
           />
 
-          {/* POST A COMMENT */}
-          <View
-            style={[
-              styles.inputContainer,
-              {
-                paddingBottom: keyboardHeight > 0 ? 15 : insets.bottom + 10,
-                backgroundColor: theme.card,
-                borderTopColor: theme.border,
-                shadowColor: theme.text,
-              },
-            ]}
-          >
-            {/* Anonymous Toggle */}
-            <View style={styles.anonymousToggle}>
-              <View style={styles.anonymousToggleLeft}>
-                {isAnonymousMode ? (
-                  <Image source={nuLogo} style={styles.toggleAvatar} />
-                ) : (
-                  <Ionicons name="person" size={20} color={theme.text} />
-                )}
-                <Text style={[styles.anonymousText, { color: theme.text }]}>
-                  {isAnonymousMode
-                    ? "Anonymous"
-                    : `As ${session?.user?.user_metadata?.username || "You"}`}
-                </Text>
-              </View>
-              <Switch
-                value={isAnonymousMode}
-                onValueChange={setIsAnonymousMode}
-                trackColor={{ false: theme.border, true: theme.primary }}
-                thumbColor={"white"}
-              />
-            </View>
-            {/* Reply indicator */}
-            {replyingToUsername && (
-              <View style={styles.replyIndicator}>
-                <Text
-                  style={[
-                    styles.replyIndicatorText,
-                    { color: theme.secondaryText },
-                  ]}
-                >
-                  Replying to{" "}
-                  <Text style={{ fontWeight: "600" }}>
-                    {replyingToUsername}
-                  </Text>
-                </Text>
-                <Pressable
-                  onPress={handleCancelReply}
-                  style={styles.cancelReplyButton}
-                >
-                  <MaterialCommunityIcons
-                    name="close"
-                    size={16}
-                    color={theme.secondaryText}
-                  />
-                </Pressable>
-              </View>
-            )}
-            <View style={styles.inputRow}>
-              <TextInput
-                ref={inputRef}
-                placeholder={
-                  parentCommentId
-                    ? `Reply to ${replyingToUsername}...`
-                    : "Comment..."
-                }
-                placeholderTextColor={theme.secondaryText}
-                value={commentText}
-                onChangeText={setCommentText}
-                style={[
-                  styles.input,
-                  { backgroundColor: theme.background, color: theme.text },
-                ]}
-                keyboardAppearance={isDark ? "dark" : "light"}
-                multiline
-                editable={!createCommentMutation.isPending}
-              />
-              <Pressable
-                disabled={
-                  !commentText.trim() || createCommentMutation.isPending
-                }
-                onPress={handlePostComment}
-                style={[
-                  styles.replyButton,
-                  {
-                    backgroundColor:
-                      !commentText.trim() || createCommentMutation.isPending
-                        ? theme.border
-                        : theme.primary,
-                  },
-                ]}
-              >
-                {createCommentMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <MaterialCommunityIcons name="send" size={20} color="#fff" />
-                )}
-              </Pressable>
-            </View>
-          </View>
+          <CommentComposer
+            theme={theme}
+            insetsTop={insets.top}
+            commentText={commentText}
+            onChangeText={setCommentText}
+            onSubmit={handlePostComment}
+            onCancelReply={handleCancelReply}
+            isAnonymousMode={isAnonymousMode}
+            onToggleAnonymous={() => setIsAnonymousMode((prev) => !prev)}
+            replyingToUsername={replyingToUsername}
+            isSubmitting={createCommentMutation.isPending}
+            currentUserLabel={
+              session?.user?.user_metadata?.username || "You"
+            }
+          />
         </View>
       </KeyboardAvoidingView>
     </>

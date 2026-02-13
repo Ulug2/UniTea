@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   ScrollView,
@@ -19,10 +19,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import * as ImagePicker from "expo-image-picker";
-import * as ImageManipulator from "expo-image-manipulator";
 import { useTheme } from "../../context/ThemeContext";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
 import { Database } from "../../types/database.types";
@@ -32,6 +29,10 @@ import nuLogo from "../../../assets/images/nu-logo.png";
 import SupabaseImage from "../../components/SupabaseImage";
 import { DEFAULT_AVATAR } from "../../constants/images";
 import { logger } from "../../utils/logger";
+import { useOriginalPostForRepost } from "../../hooks/useOriginalPostForRepost";
+import { useImagePipeline } from "../../hooks/useImagePipeline";
+import { useCreatePostFormState } from "../../hooks/useCreatePostFormState";
+import { useCreatePostMutation } from "../../hooks/useCreatePostMutation";
 
 type PostInsert = Database["public"]["Tables"]["posts"]["Insert"];
 
@@ -42,296 +43,56 @@ export default function CreatePostScreen() {
     type?: string;
     repostId?: string;
   }>();
-  const isLostFound = type === "lost_found";
-  const isRepost = !!repostId;
   const { session } = useAuth();
-  const queryClient = useQueryClient();
 
-  // Fetch original post if reposting
-  const { data: originalPost, isLoading: isLoadingOriginal } = useQuery({
-    queryKey: ["original-post", repostId],
-    queryFn: async () => {
-      if (!repostId) return null;
-      const { data, error } = await supabase
-        .from("posts_summary_view")
-        .select("*")
-        .eq("post_id", repostId)
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!repostId,
-  });
+  const {
+    originalPost,
+    isLoadingOriginal,
+  } = useOriginalPostForRepost(repostId);
 
-  const [content, setContent] = useState<string>("");
-  const [image, setImage] = useState<string | null>(null);
-  const [isAnonymous, setIsAnonymous] = useState<boolean>(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const {
+    isLostFound,
+    isRepost,
+    content,
+    setContent,
+    image,
+    setImage,
+    isAnonymous,
+    setIsAnonymous,
+    isSubmitting,
+    setIsSubmitting,
+    isPoll,
+    setIsPoll,
+    pollOptions,
+    setPollOptions,
+    category,
+    setCategory,
+    location,
+    setLocation,
+    reset,
+    canSubmit,
+  } = useCreatePostFormState({ type, repostId });
 
-  // Poll state (feed posts only)
-  const [isPoll, setIsPoll] = useState<boolean>(false);
-  const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
-
-  // Lost & Found specific states
-  const [category, setCategory] = useState<"lost" | "found">("lost");
-  const [location, setLocation] = useState<string>("");
+  const { pickAndPrepareImage } = useImagePipeline();
 
   const goBack = () => {
-    setContent("");
-    setImage(null);
-    setIsAnonymous(true);
-    setIsPoll(false);
-    setPollOptions(["", ""]);
-    setCategory("lost");
-    setLocation("");
+    reset();
     // Use replace instead of back to avoid navigation errors
     router.replace("/(protected)/(tabs)");
   };
 
   const pickImage = async () => {
-    try {
-      let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: "images",
-        allowsEditing: true,
-        quality: 0.8, // Initial quality for picker
-      });
-
-      if (!result.canceled) {
-        // CRITICAL: Compress & resize BEFORE setting state
-        // This prevents memory issues and reduces upload size by 70-80%
-        const manipResult = await ImageManipulator.manipulateAsync(
-          result.assets[0].uri,
-          [
-            { resize: { width: 1080 } }, // Max width 1080px (perfect for mobile screens)
-          ],
-          {
-            compress: 0.7, // Further compression
-            format: ImageManipulator.SaveFormat.WEBP, // WebP is 30% smaller than JPEG
-          }
-        );
-        setImage(manipResult.uri);
-      }
-    } catch (error) {
-      logger.error("Error processing image", error as Error);
-      Alert.alert("Error", "Failed to process image. Please try again.");
+    const uri = await pickAndPrepareImage();
+    if (uri) {
+      setImage(uri);
     }
   };
 
   // Create post mutation with optimistic UI updates (like Instagram/X)
-  const createPostMutation = useMutation({
-    mutationFn: async ({
-      imagePath,
-      postContent,
-      postLocation,
-      postIsAnonymous,
-      postCategory,
-      pollOptions,
-    }: {
-      imagePath: string | undefined;
-      postContent: string;
-      postLocation: string;
-      postIsAnonymous: boolean;
-      postCategory: "lost" | "found";
-      pollOptions?: string[];
-    }) => {
-      if (!session?.user) {
-        throw new Error("You must be logged in to create a post.");
-      }
-
-      // Content is required for regular posts, optional for reposts
-      if (!repostId && !postContent.trim()) {
-        throw new Error("Content is required");
-      }
-
-      if (isLostFound && !postLocation.trim()) {
-        throw new Error("Location is required for lost & found posts");
-      }
-
-      // Prepare post data for Edge Function
-      const postPayload = {
-        content: postContent.trim() || "", // Allow empty content for reposts
-        post_type: isLostFound ? "lost_found" : "feed",
-        image_url: imagePath || null,
-        is_anonymous: isLostFound ? false : postIsAnonymous, // Lost & Found posts are never anonymous
-        ...(isLostFound && {
-          category: postCategory,
-          location: postLocation.trim(),
-        }),
-        ...(repostId && {
-          reposted_from_post_id: repostId,
-        }),
-        // Optional poll payload (feed posts only)
-        ...(!isLostFound &&
-          pollOptions &&
-          pollOptions.length >= 2 && {
-          poll_options: pollOptions,
-        }),
-      };
-
-      // Call Edge Function for AI moderation
-      // Use fetch directly to access response body even on 400 status codes
-      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-      const functionUrl = `${supabaseUrl}/functions/v1/create-post`;
-
-      // Get auth token from session
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (!currentSession?.access_token) {
-        throw new Error("You must be logged in to create a post.");
-      }
-
-      const response = await fetch(functionUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${currentSession.access_token}`,
-          apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-        },
-        body: JSON.stringify(postPayload),
-      });
-
-      // Parse response body (works for both 200 and 400 status)
-      const responseData = await response.json();
-
-      // Check if response contains an error (Edge Function returns { error: "..." } on failure)
-      if (!response.ok) {
-        // Extract error message from response body
-        const errorMessage = responseData?.error || responseData?.message || "Failed to create post";
-        throw new Error(errorMessage);
-      }
-
-      // Additional check: if responseData has an error field even on 200 status
-      if (responseData?.error) {
-        throw new Error(responseData.error);
-      }
-
-      // Validate that we received post data
-      if (!responseData || !responseData.id) {
-        throw new Error("Invalid response from server");
-      }
-
-      // Return the post data (edge function returns the inserted post with 'id' field)
-      return responseData;
-    },
-    // OPTIMISTIC UI: Show post immediately (like Instagram/X/Threads)
-    onMutate: async (variables) => {
-      if (isLostFound) return; // Skip optimistic update for lost & found (different screen)
-
-      // Cancel outgoing refetches to avoid overwriting optimistic update
-      await queryClient.cancelQueries({ queryKey: ["posts", "feed"] });
-
-      // Snapshot previous value for rollback
-      const previousData = queryClient.getQueryData(["posts", "feed", "new"]);
-
-      // Create optimistic post (will be replaced by real data from server)
-      // Use placeholder data - real-time subscription will update with full data
-      const tempId = `temp-${Date.now()}`;
-      const now = new Date().toISOString();
-
-      const optimisticPost = {
-        post_id: tempId,
-        user_id: session?.user?.id || "",
-        content: variables.postContent.trim(),
-        image_url: variables.imagePath || null,
-        category: null,
-        location: null,
-        post_type: "feed",
-        is_anonymous: variables.postIsAnonymous,
-        is_deleted: false,
-        is_edited: false,
-        created_at: now,
-        updated_at: now,
-        edited_at: null,
-        view_count: 0,
-        username: variables.postIsAnonymous ? "Anonymous" : "You", // Placeholder - will be updated
-        avatar_url: null, // Placeholder - will be updated by real-time
-        is_verified: false,
-        is_banned: false,
-        comment_count: 0,
-        vote_score: 0,
-        user_vote: null,
-        reposted_from_post_id: repostId || null,
-        repost_comment: repostId ? variables.postContent.trim() : null,
-        repost_count: 0,
-        original_post_id: null,
-        original_content: null,
-        original_user_id: null,
-        original_author_username: null,
-        original_author_avatar: null,
-        original_is_anonymous: null,
-        original_created_at: null,
-      };
-
-      // Optimistically update feed - add to beginning of first page
-      queryClient.setQueryData(["posts", "feed", "new"], (old: any) => {
-        if (!old?.pages) return old;
-
-        const newPages = [...old.pages];
-        if (newPages[0]) {
-          newPages[0] = [optimisticPost, ...newPages[0]];
-        } else {
-          newPages[0] = [optimisticPost];
-        }
-
-        return { ...old, pages: newPages };
-      });
-
-      return { previousData, tempId };
-    },
-    onSuccess: (data, variables, context) => {
-      if (isLostFound) {
-        // For lost & found, just invalidate
-        queryClient.invalidateQueries({ queryKey: ["posts", "lost_found"] });
-      } else {
-        // Replace optimistic post with real data from server
-        // Note: Edge function returns post with 'id' field, but view uses 'post_id'
-        queryClient.setQueryData(["posts", "feed", "new"], (old: any) => {
-          if (!old?.pages) return old;
-
-          const newPages = old.pages.map((page: any[]) =>
-            page.map((post: any) =>
-              post.post_id === context?.tempId
-                ? {
-                  ...post,
-                  post_id: data.id, // Map 'id' from DB to 'post_id' in view
-                  created_at: data.created_at,
-                  updated_at: data.updated_at,
-                }
-                : post
-            )
-          );
-
-          return { ...old, pages: newPages };
-        });
-
-        // Mark as stale but don't refetch immediately (let real-time handle it)
-        queryClient.invalidateQueries({
-          queryKey: ["posts", "feed"],
-          refetchType: "none"
-        });
-      }
-      setIsSubmitting(false);
-      goBack();
-    },
-    onError: (error: Error, variables, context) => {
-      // Rollback optimistic update on error
-      if (context?.previousData && !isLostFound) {
-        queryClient.setQueryData(["posts", "feed", "new"], context.previousData);
-      }
-      setIsSubmitting(false);
-
-      // Log error to Sentry (logger handles dev vs prod automatically)
-      logger.error("Error creating post", error as Error, {
-        isLostFound,
-        hasImage: !!variables.imagePath,
-      });
-
-      // Show the actual error message from Edge Function (already user-friendly)
-      // Edge Function returns: "Post violates community guidelines" or "Image violates community guidelines"
-      const errorMessage = error.message || "Failed to create post. Please try again.";
-
-      // This Alert is what users see - console errors are only for developers
-      Alert.alert("Error", errorMessage);
-    },
+  const createPostMutation = useCreatePostMutation({
+    isLostFound,
+    repostId,
+    currentUserId: session?.user?.id,
   });
 
   const handlePost = async () => {
@@ -361,7 +122,6 @@ export default function CreatePostScreen() {
             "Poll options required",
             "Please provide at least two distinct poll options."
           );
-          setIsSubmitting(false);
           return;
         }
 
@@ -378,12 +138,11 @@ export default function CreatePostScreen() {
             "Error",
             error.message || "Failed to upload image. Please try again."
           );
-          setIsSubmitting(false);
           return;
         }
       }
 
-      // Create post with all necessary data
+      // Fire the mutation (optimistic UI will update feed); no need to await here
       createPostMutation.mutate({
         imagePath,
         postContent: content,
@@ -392,17 +151,19 @@ export default function CreatePostScreen() {
         postCategory: category,
         pollOptions: cleanedPollOptions,
       });
+
+      // Immediately reset and navigate back to the feed; feed overlay will show while mutation completes
+      reset();
+      router.replace("/(protected)/(tabs)");
     } catch (error) {
+      // Errors are already surfaced via mutation onError; nothing extra here
+    } finally {
       setIsSubmitting(false);
     }
   };
 
   // Validation: For feed posts, just content. For L&F posts, content + location. For reposts, content is optional
-  const isPostButtonDisabled = isRepost
-    ? false // Reposts don't require content
-    : isLostFound
-      ? !content.trim() || !location.trim()
-      : !content.trim() && !(isPoll && pollOptions.some((o) => o.trim().length > 0));
+  const isPostButtonDisabled = !canSubmit;
 
   const handleTogglePoll = () => {
     if (isPoll) {

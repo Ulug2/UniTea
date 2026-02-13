@@ -34,13 +34,21 @@ type CommentWithReplies = Comment & {
   replies?: CommentWithReplies[];
   user?: Profile;
   score?: number;
+  post_specific_anon_id?: number | null;
+};
+
+type ParentInfo = {
+  id: string | null;
+  is_anonymous: boolean;
+  post_specific_anon_id?: number | null;
+  username: string | null;
 };
 
 type CommentListItemProps = {
   comment: CommentWithReplies;
   depth: number;
   handleReplyPress: (commentId: string) => void;
-  parentUser?: Profile;
+  parentUser?: ParentInfo;
   onDeleteStart?: (commentId: string) => void;
   onDeleteEnd?: () => void;
 };
@@ -238,10 +246,51 @@ const CommentListItem = ({
     );
   };
 
+  const truncateName = (name: string | null | undefined, max: number) => {
+    if (!name) return null;
+    if (name.length <= max) return name;
+    return name.slice(0, max) + "...";
+  };
+
+  const getAnonLabel = (c: CommentWithReplies) => {
+    if (!c.is_anonymous) {
+      return c.user?.username || "Unknown";
+    }
+    const anonId = c.post_specific_anon_id;
+    if (anonId && typeof anonId === "number") {
+      return `User ${anonId}`;
+    }
+    // Fallback if IDs are not yet backfilled
+    return "Anonymous";
+  };
+
+  const displayName = comment.is_anonymous
+    ? getAnonLabel(comment)
+    : truncateName(comment.user?.username || "Unknown", 15) || "Unknown";
+
+  const parentDisplayName =
+    parentUser && parentUser.is_anonymous
+      ? parentUser.post_specific_anon_id
+        ? `User ${parentUser.post_specific_anon_id}`
+        : "Anonymous"
+      : truncateName(parentUser?.username || null, 15);
+
+  // Only first reply level gets extra indent; deeper replies use no extra padding
+  // so they align with their parent (avoids negative margin and layout gaps).
+  const containerIndentStyle =
+    depth >= 2 ? { paddingLeft: 0 } : undefined;
+
+  // When this comment has visible nested replies, drop bottom padding so the next
+  // sibling (e.g. another reply to the same parent) doesn't get an extra gap.
+  const containerGapFixStyle =
+    hasReplies && showReplies ? { paddingBottom: 0 } : undefined;
+
   return (
     <View
       style={[
         styles.container,
+        containerIndentStyle,
+        containerGapFixStyle,
         {
           backgroundColor: theme.card,
         },
@@ -280,22 +329,26 @@ const CommentListItem = ({
               <Image source={DEFAULT_AVATAR} style={styles.avatar} />
             )}
             <Text style={[styles.username, { color: theme.text }]}>
-              {comment.is_anonymous
-                ? comment.user_id === currentUserId
-                  ? "You"
-                  : "Anonymous"
-                : comment.user?.username || "Unknown"}
+              {displayName}
             </Text>
           </Pressable>
-          {parentUser && (
+          {parentUser && parentDisplayName && (
             <Pressable
               onPress={() => {
-                if (parentUser.id && parentUser.id !== currentUserId) {
+                if (
+                  !parentUser.is_anonymous &&
+                  parentUser.id &&
+                  parentUser.id !== currentUserId
+                ) {
                   setSelectedUserId(parentUser.id);
                   setProfileModalVisible(true);
                 }
               }}
-              disabled={!parentUser.id || parentUser.id === currentUserId}
+              disabled={
+                parentUser.is_anonymous ||
+                !parentUser.id ||
+                parentUser.id === currentUserId
+              }
               style={{ flexDirection: "row", alignItems: "center" }}
             >
               <MaterialCommunityIcons
@@ -307,7 +360,7 @@ const CommentListItem = ({
               <Text
                 style={[styles.replyToUsername, { color: theme.secondaryText }]}
               >
-                {parentUser.username}
+                {parentDisplayName}
               </Text>
             </Pressable>
           )}
@@ -414,7 +467,7 @@ const CommentListItem = ({
                   ? "arrow-up-bold"
                   : "arrow-up-bold-outline"
               }
-              size={18}
+              size={20}
               color={
                 userVote === "upvote" ? theme.primary : theme.secondaryText
               }
@@ -430,7 +483,7 @@ const CommentListItem = ({
                   ? "arrow-down-bold"
                   : "arrow-down-bold-outline"
               }
-              size={18}
+              size={20}
               color={
                 userVote === "downvote" ? theme.primary : theme.secondaryText
               }
@@ -484,7 +537,12 @@ const CommentListItem = ({
                 comment={item}
                 depth={depth + 1}
                 handleReplyPress={handleReplyPress}
-                parentUser={comment.user}
+                parentUser={{
+                  id: comment.user_id ?? null,
+                  is_anonymous: !!comment.is_anonymous,
+                  post_specific_anon_id: comment.post_specific_anon_id,
+                  username: comment.user?.username ?? null,
+                }}
                 onDeleteStart={onDeleteStart}
                 onDeleteEnd={onDeleteEnd}
               />
@@ -576,6 +634,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Poppins_400Regular",
     lineHeight: 22,
+    marginRight: 15,
   },
   actions: {
     flexDirection: "row",

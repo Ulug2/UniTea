@@ -7,6 +7,7 @@ import {
   Text,
   RefreshControl,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -14,49 +15,14 @@ import PostListItem from "../../../components/PostListItem";
 import PostListSkeleton from "../../../components/PostListSkeleton";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
-import {
-  useInfiniteQuery,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient, useIsMutating } from "@tanstack/react-query";
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { Database } from "../../../types/database.types";
+import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useFilterContext } from "./_filterContext";
 import { useAuth } from "../../../context/AuthContext";
 
-type PostSummary = {
-  post_id: string;
-  user_id: string;
-  content: string;
-  image_url: string | null;
-  category: string | null;
-  location: string | null;
-  post_type: string;
-  is_anonymous: boolean | null;
-  is_deleted: boolean | null;
-  is_edited: boolean | null;
-  created_at: string | null;
-  updated_at: string | null;
-  edited_at: string | null;
-  view_count: number | null;
-  username: string;
-  avatar_url: string | null;
-  is_verified: boolean | null;
-  is_banned: boolean | null;
-  comment_count: number;
-  vote_score: number;
-  user_vote: "upvote" | "downvote" | null;
-  reposted_from_post_id: string | null;
-  repost_comment: string | null;
-  repost_count: number;
-  original_post_id?: string | null;
-  original_content?: string | null;
-  original_user_id?: string | null;
-  original_author_username?: string | null;
-  original_author_avatar?: string | null;
-  original_is_anonymous?: boolean | null;
-  original_created_at?: string | null;
-};
+type PostSummary = PostsSummaryViewRow;
 
 const POSTS_PER_PAGE = 10;
 /** On first open only: wait for this many posts' images/avatars before hiding skeleton overlay */
@@ -77,6 +43,9 @@ export default function FeedScreen() {
   const hasCompletedFirstLoadImagesRef = useRef(false);
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const loadingImagesRef = useRef<Set<string>>(new Set());
+
+  // Show a global overlay while any create-post mutation is in flight
+  const isCreatingPost = useIsMutating({ mutationKey: ["create-post"] }) > 0;
 
   // Fetch blocked users
   const { data: blocks = [] } = useQuery({
@@ -391,65 +360,90 @@ export default function FeedScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <FlatList
-        data={posts}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={6}
-        updateCellsBatchingPeriod={150}
-        initialNumToRender={6}
-        windowSize={10}
-        // Disable auto-scroll to top when data changes (prevents jarring jumps)
-        maintainVisibleContentPosition={undefined}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
-            tintColor={theme.primary}
-          />
-        }
-        ListFooterComponent={
-          isFetchingNextPage ? (
-            <View style={{ padding: 16, alignItems: "center" }}>
-              <ActivityIndicator size="small" color={theme.primary} />
+    <>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <FlatList
+          data={posts}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={6}
+          updateCellsBatchingPeriod={150}
+          initialNumToRender={6}
+          windowSize={10}
+          // Disable auto-scroll to top when data changes (prevents jarring jumps)
+          maintainVisibleContentPosition={undefined}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              tintColor={theme.primary}
+            />
+          }
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={{ padding: 16, alignItems: "center" }}>
+                <ActivityIndicator size="small" color={theme.primary} />
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
+                No posts yet
+              </Text>
             </View>
-          ) : null
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
-              No posts yet
-            </Text>
-          </View>
-        }
-        contentInsetAdjustmentBehavior="automatic"
-      />
-      {/* First open only: overlay skeleton until first 3 posts' images/avatars loaded */}
-      {firstLoadImagesLoading && (
-        <View
-          style={[StyleSheet.absoluteFill, { backgroundColor: theme.background }]}
-          pointerEvents="none"
-        >
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.skeletonContent}
+          }
+          contentInsetAdjustmentBehavior="automatic"
+        />
+        {/* First open only: overlay skeleton until first 3 posts' images/avatars loaded */}
+        {firstLoadImagesLoading && (
+          <View
+            style={[StyleSheet.absoluteFill, { backgroundColor: theme.background }]}
+            pointerEvents="none"
           >
-            <PostListSkeleton />
-          </ScrollView>
-        </View>
-      )}
-      {/* Floating Action Button */}
-      <Pressable
-        onPress={() => router.push("/create-post")}
-        style={[styles.fab, { backgroundColor: theme.primary }]}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.skeletonContent}
+            >
+              <PostListSkeleton />
+            </ScrollView>
+          </View>
+        )}
+        {/* Floating Action Button */}
+        <Pressable
+          onPress={() => router.push("/create-post")}
+          style={[styles.fab, { backgroundColor: theme.primary }]}
+        >
+          <FontAwesome name="plus" size={28} color="#fff" />
+        </Pressable>
+      </View>
+      {/* Global create-post overlay: full-screen white transparent cover while post mutation is in flight */}
+      <Modal
+        visible={isCreatingPost}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => {}}
       >
-        <FontAwesome name="plus" size={28} color="#fff" />
-      </Pressable>
-    </View>
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: "rgba(255, 255, 255, 0.6)",
+              justifyContent: "center",
+              alignItems: "center",
+            },
+          ]}
+          // Block all touches while overlay is shown
+          pointerEvents="auto"
+        >
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      </Modal>
+    </>
   );
 }
 

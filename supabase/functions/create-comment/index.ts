@@ -96,6 +96,53 @@ serve(async (req: Request) => {
       commentData.parent_comment_id = parent_comment_id;
     }
 
+    // 5a. Assign post-specific anonymous ID if needed
+    if (commentData.is_anonymous) {
+      // 1) See if this user already has an anon id for this post
+      const { data: existingIds, error: existingError } = await supabase
+        .from("comments")
+        .select("post_specific_anon_id")
+        .eq("post_id", post_id)
+        .eq("user_id", user.id)
+        .eq("is_anonymous", true)
+        .not("post_specific_anon_id", "is", null)
+        .limit(1);
+
+      if (existingError) {
+        console.error("Error fetching existing anon id:", existingError);
+        throw existingError;
+      }
+
+      let anonId: number | null = null;
+
+      if (existingIds && existingIds.length > 0) {
+        anonId = existingIds[0].post_specific_anon_id as number;
+      } else {
+        // 2) Otherwise, assign the next available id for this post
+        const { data: maxRows, error: maxError } = await supabase
+          .from("comments")
+          .select("post_specific_anon_id")
+          .eq("post_id", post_id)
+          .eq("is_anonymous", true)
+          .order("post_specific_anon_id", { ascending: false })
+          .limit(1);
+
+        if (maxError) {
+          console.error("Error fetching max anon id:", maxError);
+          throw maxError;
+        }
+
+        const currentMax =
+          maxRows && maxRows.length > 0 && maxRows[0].post_specific_anon_id
+            ? (maxRows[0].post_specific_anon_id as number)
+            : 0;
+
+        anonId = currentMax + 1;
+      }
+
+      commentData.post_specific_anon_id = anonId;
+    }
+
     // 6. Insert into database
     const { data, error: dbError } = await supabase
       .from("comments")

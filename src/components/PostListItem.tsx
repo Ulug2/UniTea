@@ -100,8 +100,7 @@ const arePropsEqual = (prevProps: PostListItemProps, nextProps: PostListItemProp
     prevProps.originalCreatedAt === nextProps.originalCreatedAt &&
     prevProps.isDetailedPost === nextProps.isDetailedPost &&
     prevProps.disableCommentInteraction === nextProps.disableCommentInteraction &&
-    prevProps.isBookmarked === nextProps.isBookmarked &&
-    prevProps.onImageLoad === nextProps.onImageLoad
+    prevProps.isBookmarked === nextProps.isBookmarked
   );
 };
 

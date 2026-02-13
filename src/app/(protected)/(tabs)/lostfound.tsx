@@ -23,43 +23,12 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { supabase } from "../../../lib/supabase";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { Database } from "../../../types/database.types";
+import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useAuth } from "../../../context/AuthContext";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-type PostSummary = {
-  post_id: string;
-  user_id: string;
-  content: string;
-  image_url: string | null;
-  category: string | null;
-  location: string | null;
-  post_type: string;
-  is_anonymous: boolean | null;
-  is_deleted: boolean | null;
-  is_edited: boolean | null;
-  created_at: string | null;
-  updated_at: string | null;
-  edited_at: string | null;
-  view_count: number | null;
-  username: string;
-  avatar_url: string | null;
-  is_verified: boolean | null;
-  is_banned: boolean | null;
-  comment_count: number;
-  vote_score: number;
-  user_vote: "upvote" | "downvote" | null;
-  reposted_from_post_id: string | null;
-  repost_comment: string | null;
-  repost_count: number;
-  original_post_id?: string | null;
-  original_content?: string | null;
-  original_user_id?: string | null;
-  original_author_username?: string | null;
-  original_author_avatar?: string | null;
-  original_is_anonymous?: boolean | null;
-  original_created_at?: string | null;
-};
+type PostSummary = PostsSummaryViewRow;
 
 const POSTS_PER_PAGE = 10;
 
