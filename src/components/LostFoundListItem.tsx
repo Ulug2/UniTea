@@ -9,6 +9,7 @@ import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
 import UserProfileModal from "./UserProfileModal";
 import { DEFAULT_AVATAR } from "../constants/images";
+import { useMyProfile } from "../features/profile/hooks/useMyProfile";
 
 export type LostFoundPostForMenu = {
   postId: string;
@@ -65,6 +66,8 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   const { theme } = useTheme();
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
+  const { data: currentUser } = useMyProfile(currentUserId);
+  const isAdmin = currentUser?.is_admin === true;
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
 
@@ -438,6 +441,8 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
           visible={profileModalVisible}
           onClose={() => setProfileModalVisible(false)}
           userId={userId}
+          currentUserId={currentUserId}
+          isAdmin={isAdmin}
         />
       )}
     </Pressable>

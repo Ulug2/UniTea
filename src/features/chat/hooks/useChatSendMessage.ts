@@ -6,7 +6,6 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
-import type { Database } from "../../../types/database.types";
 import { uploadImage } from "../../../utils/supabaseImages";
 import { logger } from "../../../utils/logger";
 import type { ChatMessageVM, MessagesQueryData } from "../types";
@@ -98,45 +97,31 @@ export function useChatSendMessage(
         }
       }
 
-      const now = new Date().toISOString();
-      const insertPayload: Database["public"]["Tables"]["chat_messages"]["Insert"] = {
-        chat_id: chatId,
-        user_id: currentUserId,
-        content: messageText || "",
-        is_read: false,
-      };
-      if (imageUrl != null && imageUrl !== "") {
-        insertPayload.image_url = imageUrl;
-      }
-
-      const { data: newMessage, error: messageError } = await supabase
+      const { data: newMessage, error } = await supabase
         .from("chat_messages")
-        .insert(insertPayload)
+        .insert({
+          chat_id: chatId,
+          user_id: currentUserId,
+          content: messageText?.trim() ?? "",
+          image_url: imageUrl ?? null,
+        })
         .select()
         .single();
 
-      if (messageError) {
-        if (
-          messageError.message?.includes("rate limit") ||
-          messageError.message?.includes("too many")
-        ) {
-          throw new Error("RATE_LIMIT_EXCEEDED: You're sending messages too quickly. Please wait a moment.");
-        }
-        throw messageError;
-      }
+      if (error) throw error;
+      if (!newMessage) throw new Error("Failed to create message");
 
-      supabase
+      await supabase
         .from("chats")
-        .update({ last_message_at: now })
-        .eq("id", chatId)
-        .then(() => {
-          queryClient.invalidateQueries({
-            queryKey: ["chat-summaries", currentUserId],
-            refetchType: "none",
-          });
-        });
+        .update({ last_message_at: newMessage.created_at })
+        .eq("id", chatId);
 
-      return { newMessage: newMessage as ChatMessageVM, now };
+      queryClient.invalidateQueries({
+        queryKey: ["chat-summaries", currentUserId],
+        refetchType: "none",
+      });
+
+      return { newMessage: newMessage as ChatMessageVM, now: newMessage.created_at ?? new Date().toISOString() };
     },
     onMutate: async ({ messageText, imageUrl, localImageUri }) => {
       if (!chatId || !currentUserId) throw new Error("Missing chat ID or user ID");

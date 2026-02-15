@@ -23,6 +23,7 @@ import SupabaseImage from "./SupabaseImage";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useDeleteComment } from "../features/comments/hooks/useDeleteComment";
 import ReportModal from "./ReportModal";
 import BlockUserModal from "./BlockUserModal";
 import UserProfileModal from "./UserProfileModal";
@@ -51,6 +52,7 @@ type CommentListItemProps = {
   parentUser?: ParentInfo;
   onDeleteStart?: (commentId: string) => void;
   onDeleteEnd?: () => void;
+  isAdmin?: boolean;
 };
 
 const CommentListItem = ({
@@ -60,12 +62,14 @@ const CommentListItem = ({
   parentUser,
   onDeleteStart,
   onDeleteEnd,
+  isAdmin = false,
 }: CommentListItemProps) => {
   const { theme } = useTheme();
   const { session } = useAuth();
   const queryClient = useQueryClient();
   const currentUserId = session?.user?.id;
   const isCommentOwner = currentUserId === comment.user_id;
+  const canDelete = isCommentOwner || isAdmin;
 
   const hasReplies = comment.replies && comment.replies.length > 0;
   const replyCount = comment.replies?.length || 0;
@@ -110,34 +114,11 @@ const CommentListItem = ({
     commentId: comment.id,
   });
 
-  // Delete comment mutation (hard delete with cascade)
-  const deleteCommentMutation = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase
-        .from("comments")
-        .delete()
-        .eq("id", comment.id);
-
-      if (error) throw error;
-    },
-    onSuccess: async () => {
-      if (comment.post_id && currentUserId) {
-        await queryClient.refetchQueries({
-          queryKey: ["comments", comment.post_id, currentUserId],
-        });
-      }
-      queryClient.invalidateQueries({ queryKey: ["comments"] });
-      queryClient.invalidateQueries({ queryKey: ["post", comment.post_id] });
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      queryClient.invalidateQueries({ queryKey: ["user-posts"] });
-      queryClient.invalidateQueries({ queryKey: ["user-post-comments"] });
-      queryClient.invalidateQueries({ queryKey: ["bookmarked-posts"] });
-      onDeleteEnd?.();
-    },
-    onError: (error: any) => {
-      Alert.alert("Error", error.message || "Failed to delete comment");
-      onDeleteEnd?.();
-    },
+  const deleteCommentMutation = useDeleteComment(comment.id, {
+    postId: comment.post_id,
+    currentUserId,
+    onSuccess: () => onDeleteEnd?.(),
+    onError: () => onDeleteEnd?.(),
   });
 
   const handleDeleteComment = () => {
@@ -392,7 +373,7 @@ const CommentListItem = ({
           onPress={() => setShowMenu(false)}
         >
           <View style={[styles.menuContainer, { backgroundColor: theme.card }]}>
-            {isCommentOwner ? (
+            {canDelete ? (
               <Pressable style={styles.menuItem} onPress={handleDeleteComment}>
                 <MaterialCommunityIcons
                   name="delete"
@@ -403,7 +384,8 @@ const CommentListItem = ({
                   Delete Comment
                 </Text>
               </Pressable>
-            ) : (
+            ) : null}
+            {!isCommentOwner ? (
               <Pressable
                 style={styles.menuItem}
                 onPress={() => {
@@ -420,7 +402,7 @@ const CommentListItem = ({
                   Report Content
                 </Text>
               </Pressable>
-            )}
+            ) : null}
           </View>
         </Pressable>
       </Modal>
@@ -575,6 +557,8 @@ const CommentListItem = ({
             setSelectedUserId(null);
           }}
           userId={selectedUserId}
+          currentUserId={currentUserId}
+          isAdmin={isAdmin}
         />
       )}
     </View>

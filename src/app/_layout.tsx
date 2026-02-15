@@ -34,6 +34,7 @@ async function prefetchInitialData(userId: string, queryClient: any) {
       .from("posts_summary_view")
       .select("*")
       .eq("post_type", "feed")
+      .or("is_banned.is.null,is_banned.eq.false")
       .order("created_at", { ascending: false })
       .range(0, POSTS_PER_PAGE - 1);
 

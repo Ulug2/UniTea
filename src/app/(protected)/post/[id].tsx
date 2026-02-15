@@ -30,6 +30,7 @@ import { usePostComments } from "../../../features/comments/hooks/usePostComment
 import type { CommentNode } from "../../../features/comments/utils/tree";
 import { useCreateComment } from "../../../features/comments/hooks/useCreateComment";
 import { useProfileById } from "../../../features/profile/hooks/useProfileById";
+import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { useBookmarkToggle } from "../../../features/posts/hooks/useBookmarkToggle";
 import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
 import { useReportPost } from "../../../features/posts/hooks/useReportPost";
@@ -80,6 +81,7 @@ export default function PostDetailed() {
         .from("posts_summary_view")
         .select("*")
         .eq("post_id", postId)
+        .or("is_banned.is.null,is_banned.eq.false")
         .limit(1);
       if (error) throw error;
       const row = data && data.length > 0 ? data[0] : null;
@@ -96,7 +98,10 @@ export default function PostDetailed() {
     data: postUser,
     isLoading: isUserLoading,
     error: userError,
-  } = useProfileById(detailedPost?.user_id ?? null);
+  } = useProfileById(detailedPost?.user_id ?? undefined);
+
+  const { data: currentUser } = useMyProfile(currentUserId ?? undefined);
+  const isAdmin = currentUser?.is_admin === true;
 
   // 3. Comments via shared hook (flat + tree), with blocked filtering
   const {
@@ -157,7 +162,7 @@ export default function PostDetailed() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => deletePostMutation.mutate(),
+          onPress: () => deletePostMutation.mutate(undefined),
         },
       ]
     );
@@ -347,8 +352,9 @@ export default function PostDetailed() {
     );
   }
 
-  // Check if current user owns this post
+  // Check if current user owns this post or is admin
   const isPostOwner = session?.user?.id === detailedPost?.user_id;
+  const canDeletePost = isPostOwner || isAdmin;
 
   const content = (
     <>
@@ -385,7 +391,7 @@ export default function PostDetailed() {
           onPress={() => setShowMenu(false)}
         >
           <View style={[styles.menuContainer, { backgroundColor: theme.card }]}>
-            {isPostOwner ? (
+            {canDeletePost ? (
               <Pressable style={styles.menuItem} onPress={handleDeletePost}>
                 <MaterialCommunityIcons
                   name="delete"
@@ -396,7 +402,8 @@ export default function PostDetailed() {
                   Delete Post
                 </Text>
               </Pressable>
-            ) : (
+            ) : null}
+            {!isPostOwner ? (
               <Pressable
                 style={styles.menuItem}
                 onPress={() => {
@@ -413,7 +420,7 @@ export default function PostDetailed() {
                   Report Content
                 </Text>
               </Pressable>
-            )}
+            ) : null}
           </View>
         </Pressable>
       </Modal>
@@ -473,6 +480,7 @@ export default function PostDetailed() {
             onRefresh={refetchComments}
             listRef={commentsListRef}
             style={{ flex: 1 }}
+            isAdmin={isAdmin}
             headerComponent={
               <PostHeaderCard
                 post={detailedPost}

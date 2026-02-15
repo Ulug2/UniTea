@@ -25,6 +25,8 @@ import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { Database } from "../../../types/database.types";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useAuth } from "../../../context/AuthContext";
+import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
+import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -46,7 +48,10 @@ export default function LostFoundScreen() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const { data: currentUser } = useMyProfile(currentUserId);
+  const isAdmin = currentUser?.is_admin === true;
   const isPostOwner = selectedPost && currentUserId === selectedPost.userId;
+  const canDeletePost = isPostOwner || isAdmin;
 
   // Debounce search input to avoid filtering on every keystroke
   useEffect(() => {
@@ -109,6 +114,7 @@ export default function LostFoundScreen() {
         .from("posts_summary_view")
         .select("*")
         .eq("post_type", "lost_found")
+        .or("is_banned.is.null,is_banned.eq.false")
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -173,44 +179,10 @@ export default function LostFoundScreen() {
     });
   }, [lostFoundPosts, debouncedQuery]);
 
-  // Delete post mutation with optimistic update and rollback on error
-  const deletePostMutation = useMutation({
-    mutationFn: async (postId: string) => {
-      const { error } = await supabase.from("posts").delete().eq("id", postId);
-      if (error) throw error;
-    },
-    onMutate: async (postIdToDelete) => {
-      await queryClient.cancelQueries({ queryKey: ["posts", "lost_found"] });
-      const previous = queryClient.getQueryData<{
-        pages: PostSummary[][];
-        pageParams: unknown[];
-      }>(["posts", "lost_found"]);
-      queryClient.setQueryData(
-        ["posts", "lost_found"],
-        (old: { pages: PostSummary[][]; pageParams: unknown[] } | undefined) => {
-          if (!old) return old;
-          return {
-            ...old,
-            pages: old.pages.map((page) =>
-              page.filter((p) => p.post_id !== postIdToDelete)
-            ),
-          };
-        }
-      );
-      return { previous };
-    },
-    onError: (_err, _postId, context) => {
-      if (context?.previous != null) {
-        queryClient.setQueryData(["posts", "lost_found"], context.previous);
-      }
-      Alert.alert("Error", "Failed to delete post. Please try again.");
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["posts", "lost_found"] });
-    },
-    onSuccess: (_data, postId) => {
+  const deletePostMutation = useDeletePost(undefined, {
+    onSuccess: () => {
       setShowMenu(false);
-      setSelectedPost((prev) => (prev?.postId === postId ? null : prev));
+      setSelectedPost(null);
     },
   });
 
@@ -356,14 +328,15 @@ export default function LostFoundScreen() {
           onPress={() => setShowMenu(false)}
         >
           <View style={[menuStyles.menuContainer, { backgroundColor: theme.card }]}>
-            {isPostOwner ? (
+            {canDeletePost ? (
               <Pressable style={menuStyles.menuItem} onPress={handleDeletePost}>
                 <MaterialCommunityIcons name="delete" size={20} color="#EF4444" />
                 <Text style={[menuStyles.menuText, { color: "#EF4444" }]}>
                   Delete Post
                 </Text>
               </Pressable>
-            ) : (
+            ) : null}
+            {!isPostOwner ? (
               <Pressable
                 style={menuStyles.menuItem}
                 onPress={() => {
@@ -376,7 +349,7 @@ export default function LostFoundScreen() {
                   Report Content
                 </Text>
               </Pressable>
-            )}
+            ) : null}
           </View>
         </Pressable>
       </Modal>

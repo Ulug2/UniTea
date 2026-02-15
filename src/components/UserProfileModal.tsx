@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Modal,
   View,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Image,
+  Alert,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
@@ -16,23 +17,41 @@ import { supabase } from "../lib/supabase";
 import { Database } from "../types/database.types";
 import SupabaseImage from "./SupabaseImage";
 import { DEFAULT_AVATAR } from "../constants/images";
+import { useBanUser, type BanDuration } from "../features/profile/hooks/useBanUser";
 
 const screenWidth = Dimensions.get("window").width;
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
+const BAN_OPTIONS: { label: string; value: BanDuration }[] = [
+  { label: "10 Days", value: "10_days" },
+  { label: "1 Month", value: "1_month" },
+  { label: "1 Year", value: "1_year" },
+  { label: "Permanent", value: "permanent" },
+];
+
 interface UserProfileModalProps {
   visible: boolean;
   onClose: () => void;
   userId: string;
+  currentUserId?: string | null;
+  isAdmin?: boolean;
 }
 
 export default function UserProfileModal({
   visible,
   onClose,
   userId,
+  currentUserId,
+  isAdmin = false,
 }: UserProfileModalProps) {
   const { theme } = useTheme();
+  const [showBanDuration, setShowBanDuration] = useState(false);
+  const banUserMutation = useBanUser();
+  const canBan =
+    isAdmin &&
+    Boolean(currentUserId) &&
+    currentUserId !== userId;
 
   // Fetch user profile
   const { data: profile, isLoading: isLoadingProfile } = useQuery<Profile | null>({
@@ -59,7 +78,8 @@ export default function UserProfileModal({
       const { data, error } = await (supabase as any)
         .from("posts_summary_view")
         .select("vote_score")
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .or("is_banned.is.null,is_banned.eq.false");
 
       if (error) throw error;
 
@@ -135,6 +155,24 @@ export default function UserProfileModal({
                 </Text>
               </View>
 
+              {/* Ban User (admin only) */}
+              {canBan ? (
+                <Pressable
+                  style={[styles.banButton, { borderColor: theme.error ?? "#EF4444" }]}
+                  onPress={() => setShowBanDuration(true)}
+                  disabled={banUserMutation.isPending}
+                >
+                  <MaterialCommunityIcons
+                    name="account-cancel"
+                    size={20}
+                    color={theme.error ?? "#EF4444"}
+                  />
+                  <Text style={[styles.banButtonText, { color: theme.error ?? "#EF4444" }]}>
+                    Ban User
+                  </Text>
+                </Pressable>
+              ) : null}
+
               {/* Close Button */}
               <Pressable
                 style={[
@@ -151,6 +189,72 @@ export default function UserProfileModal({
           )}
         </Pressable>
       </Pressable>
+
+      {/* Ban duration modal */}
+      <Modal
+        visible={showBanDuration}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBanDuration(false)}
+      >
+        <Pressable
+          style={styles.overlay}
+          onPress={() => setShowBanDuration(false)}
+        >
+          <Pressable
+            style={[styles.banModalContent, { backgroundColor: theme.card }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.banModalTitle, { color: theme.text }]}>
+              Ban duration
+            </Text>
+            {BAN_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.value}
+                style={[styles.banOption, { backgroundColor: theme.background }]}
+                onPress={() => {
+                  setShowBanDuration(false);
+                  Alert.alert(
+                    "Ban User",
+                    `Ban @${profile?.username ?? "user"} for ${opt.label}?`,
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Ban",
+                        style: "destructive",
+                        onPress: () => {
+                          banUserMutation.mutate(
+                            { userId, duration: opt.value },
+                            {
+                              onSuccess: () => {
+                                Alert.alert("Done", "User has been banned.");
+                                onClose();
+                              },
+                            }
+                          );
+                        },
+                      },
+                    ]
+                  );
+                }}
+                disabled={banUserMutation.isPending}
+              >
+                <Text style={[styles.banOptionText, { color: theme.text }]}>
+                  {opt.label}
+                </Text>
+              </Pressable>
+            ))}
+            <Pressable
+              style={[styles.closeButton, { backgroundColor: theme.border }]}
+              onPress={() => setShowBanDuration(false)}
+            >
+              <Text style={[styles.closeButtonText, { color: theme.text }]}>
+                Cancel
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Modal>
   );
 }
@@ -211,5 +315,44 @@ const styles = StyleSheet.create({
   closeButtonText: {
     fontSize: 16,
     fontWeight: "600",
+  },
+  banButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    width: "100%",
+    marginBottom: 16,
+  },
+  banButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  banModalContent: {
+    width: screenWidth * 0.8,
+    maxWidth: 320,
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "stretch",
+  },
+  banModalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  banOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  banOptionText: {
+    fontSize: 16,
+    fontWeight: "500",
   },
 });

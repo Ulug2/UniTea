@@ -22,6 +22,7 @@ import SupabaseImage from "./SupabaseImage";
 import Poll from "./Poll";
 import UserProfileModal from "./UserProfileModal";
 import { useAuth } from "../context/AuthContext";
+import { useMyProfile } from "../features/profile/hooks/useMyProfile";
 
 type PostListItemProps = {
   // Post data from view
@@ -135,6 +136,8 @@ const PostListItem = React.memo(function PostListItem({
   const { theme } = useTheme();
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
+  const { data: currentUser } = useMyProfile(currentUserId);
+  const isAdmin = currentUser?.is_admin === true;
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [contentExpanded, setContentExpanded] = useState(false);
@@ -676,6 +679,8 @@ const PostListItem = React.memo(function PostListItem({
             setSelectedUserId(null);
           }}
           userId={selectedUserId}
+          currentUserId={currentUserId}
+          isAdmin={isAdmin}
         />
       )}
     </>

@@ -15,10 +15,11 @@ export function useOriginalPostForRepost(repostId: string | string[] | undefined
         .from("posts_summary_view")
         .select("*")
         .eq("post_id", resolvedId)
-        .single<PostsSummaryViewRow>();
+        .or("is_banned.is.null,is_banned.eq.false")
+        .maybeSingle<PostsSummaryViewRow>();
 
       if (error) throw error;
-      return data;
+      return data ?? null;
     },
   });
 

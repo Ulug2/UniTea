@@ -73,7 +73,8 @@ export function useMyPosts(userId: string | undefined, activeTab: ProfileTab) {
       const { data, error } = await supabase
         .from("posts_summary_view")
         .select("*")
-        .in("post_id", postIds);
+        .in("post_id", postIds)
+        .or("is_banned.is.null,is_banned.eq.false");
 
       if (error) throw error;
 

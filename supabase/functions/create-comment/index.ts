@@ -73,13 +73,36 @@ serve(async (req: Request) => {
       throw new Error("Post ID is required");
     }
 
-    // 4. Text Moderation
+    // 4. Text Moderation: OpenAI Moderation + curse-word check (EN/RU/KZ)
     const moderation = await openai.moderations.create({
       input: content.trim(),
     });
 
     if (moderation.results[0].flagged) {
       throw new Error("Comment violates community guidelines");
+    }
+
+    // Curse-word check: EN/RU/KZ in any alphabet (incl. Latin transliteration) and obfuscated spellings; allow general complaints without names
+    const curseCheckPrompt = `Does this text contain curse words, swear words, offensive language, or hate directed at a specifically named person in English, Russian, or Kazakh?
+
+You MUST flag (reply YES):
+- Curse words, swear words, obscenities in ANY alphabet (Cyrillic, Latin, mixed), including Kazakh/Russian in Latin (e.g. Kotakbas, Qotaqbas) and obfuscated spellings (e.g. pid@ras, p1daras).
+- Hate or harassment directed at a specifically named person (real name).
+
+Do NOT flag (reply NO):
+- General complaints, venting, or "spilling tea" when no specific person is named (e.g. complaining about "the professor", "the director", "administration", "our dean" without naming them). Students may complain about situations or roles; only flag if someone is named and attacked.
+
+Reply only YES or NO.
+
+Text: "${content.trim().slice(0, 2000)}"`;
+    const curseCheck = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: curseCheckPrompt }],
+      max_tokens: 10,
+    });
+    const curseAnswer = curseCheck.choices[0]?.message?.content?.trim().toUpperCase();
+    if (curseAnswer?.includes("YES")) {
+      throw new Error("Comment contains language that is not allowed");
     }
 
     // 5. Prepare comment data for database insertion

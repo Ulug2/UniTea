@@ -92,7 +92,8 @@ export default function FeedScreen() {
       let query = (supabase as any)
         .from("posts_summary_view")
         .select("*")
-        .eq("post_type", "feed");
+        .eq("post_type", "feed")
+        .or("is_banned.is.null,is_banned.eq.false");
 
       // Apply sorting based on selected filter
       switch (selectedFilter) {

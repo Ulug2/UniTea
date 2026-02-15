@@ -187,6 +187,7 @@ export type Database = {
           is_deleted: boolean | null
           parent_comment_id: string | null
           post_id: string
+          post_specific_anon_id: number | null
           updated_at: string | null
           user_id: string | null
         }
@@ -198,6 +199,7 @@ export type Database = {
           is_deleted?: boolean | null
           parent_comment_id?: string | null
           post_id: string
+          post_specific_anon_id?: number | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -209,6 +211,7 @@ export type Database = {
           is_deleted?: boolean | null
           parent_comment_id?: string | null
           post_id?: string
+          post_specific_anon_id?: number | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -555,33 +558,39 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          banned_until: string | null
           bio: string | null
           created_at: string | null
           id: string
           is_admin: boolean | null
           is_banned: boolean | null
+          is_permanently_banned: boolean | null
           is_verified: boolean | null
           updated_at: string | null
           username: string
         }
         Insert: {
           avatar_url?: string | null
+          banned_until?: string | null
           bio?: string | null
           created_at?: string | null
           id: string
           is_admin?: boolean | null
           is_banned?: boolean | null
+          is_permanently_banned?: boolean | null
           is_verified?: boolean | null
           updated_at?: string | null
           username: string
         }
         Update: {
           avatar_url?: string | null
+          banned_until?: string | null
           bio?: string | null
           created_at?: string | null
           id?: string
           is_admin?: boolean | null
           is_banned?: boolean | null
+          is_permanently_banned?: boolean | null
           is_verified?: boolean | null
           updated_at?: string | null
           username?: string

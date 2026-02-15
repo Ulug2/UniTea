@@ -33,6 +33,7 @@ import SupabaseImage from "../../../components/SupabaseImage";
 import { logger } from "../../../utils/logger";
 import { pickChatImage } from "../../../features/chat/utils/imagePicker";
 import UserProfileModal from "../../../components/UserProfileModal";
+import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { DEFAULT_AVATAR } from "../../../constants/images";
 import { useBlocks } from "../../../hooks/useBlocks";
 import { setCurrentViewedChatPartnerId } from "../../../hooks/usePushNotifications";
@@ -69,6 +70,8 @@ export default function ChatDetailScreen() {
   const [fullScreenImagePath, setFullScreenImagePath] = useState<string | null>(null);
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
+  const { data: currentUser } = useMyProfile(currentUserId);
+  const isAdmin = currentUser?.is_admin === true;
   const queryClient = useQueryClient();
 
   // Track pending message IDs to prevent duplicate processing from real-time
@@ -904,6 +907,8 @@ export default function ChatDetailScreen() {
           visible={profileModalVisible}
           onClose={() => setProfileModalVisible(false)}
           userId={otherUserId}
+          currentUserId={currentUserId}
+          isAdmin={isAdmin}
         />
       )}
 

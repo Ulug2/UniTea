@@ -5,10 +5,17 @@ import { useAuth } from "../../context/AuthContext";
 import { View } from "react-native";
 import { useEffect } from "react";
 import * as Linking from "expo-linking";
+import { useMyProfile } from "../../features/profile/hooks/useMyProfile";
+import BannedScreen from "../../components/BannedScreen";
 
 export default function AppLayout() {
   const { theme } = useTheme();
   const { session, loading } = useAuth();
+  const { data: profile, isLoading: profileLoading } = useMyProfile(session?.user?.id);
+  const isBanned =
+    profile &&
+    (profile.is_permanently_banned === true ||
+      (profile.banned_until != null && new Date(profile.banned_until) > new Date()));
 
   useEffect(() => {
     if (!loading && !session) {
@@ -58,6 +65,15 @@ export default function AppLayout() {
   if (!loading && !session) {
     // This will be handled by the useEffect above, but return null to avoid flash
     return null;
+  }
+
+  if (session && !profileLoading && isBanned && profile) {
+    return (
+      <BannedScreen
+        isPermanent={profile.is_permanently_banned === true}
+        bannedUntil={profile.banned_until}
+      />
+    );
   }
 
   return (

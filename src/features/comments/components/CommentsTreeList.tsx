@@ -18,6 +18,7 @@ type CommentsTreeListProps = {
   listRef?: RefObject<FlatList<CommentNode> | null>;
   style?: ViewStyle;
   headerComponent?: ReactElement | null;
+  isAdmin?: boolean;
 };
 
 export function CommentsTreeList({
@@ -30,6 +31,7 @@ export function CommentsTreeList({
   listRef,
   style,
   headerComponent,
+  isAdmin = false,
 }: CommentsTreeListProps) {
   const renderCommentItem = useCallback(
     ({ item }: { item: CommentNode }) => (
@@ -39,9 +41,10 @@ export function CommentsTreeList({
         handleReplyPress={onReply}
         onDeleteStart={onDeleteStart}
         onDeleteEnd={onDeleteEnd}
+        isAdmin={isAdmin}
       />
     ),
-    [onReply, onDeleteStart, onDeleteEnd]
+    [onReply, onDeleteStart, onDeleteEnd, isAdmin]
   );
 
   const keyExtractor = useCallback((item: CommentNode) => item.id, []);
