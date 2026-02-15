@@ -7,6 +7,7 @@ export const lightTheme = {
     primary: '#2FC9C1',         // Turquoise primary
     primaryDark: '#28B3AC',     // Darker turquoise for hover states
     accent: '#183153',          // Midnight blue accent
+    error: '#EF4444',           // Red for errors / destructive actions
 };
 
 export const darkTheme = {
@@ -18,6 +19,7 @@ export const darkTheme = {
     primary: '#2FC9C1',         // Turquoise primary (same as light)
     primaryDark: '#28B3AC',     // Darker turquoise for hover states
     accent: '#2FC9C1',          // Turquoise accent in dark mode
+    error: '#EF4444',           // Red for errors / destructive actions
 };
 
 // Midnight blue variant for dark theme (alternative)
@@ -30,4 +32,5 @@ export const darkThemeMidnight = {
     primary: '#2FC9C1',         // Turquoise primary
     primaryDark: '#28B3AC',     // Darker turquoise for hover states
     accent: '#2FC9C1',          // Turquoise accent
+    error: '#EF4444',           // Red for errors / destructive actions
 };

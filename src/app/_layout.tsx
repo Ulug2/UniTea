@@ -14,6 +14,7 @@ import { supabase } from "../lib/supabase";
 import * as SplashScreen from "expo-splash-screen";
 import { hideSplashSafe } from "../utils/splash";
 import { initSentry } from "../utils/sentry";
+import { logger } from "../utils/logger";
 import ErrorBoundary from "../components/ErrorBoundary";
 
 // Initialize Sentry before anything else

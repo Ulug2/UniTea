@@ -10,6 +10,7 @@ import SupabaseImage from "./SupabaseImage";
 import UserProfileModal from "./UserProfileModal";
 import { DEFAULT_AVATAR } from "../constants/images";
 import { useMyProfile } from "../features/profile/hooks/useMyProfile";
+import { sharePost } from "../utils/sharePost";
 
 export type LostFoundPostForMenu = {
   postId: string;
@@ -286,21 +287,45 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
       color: theme.secondaryText,
       lineHeight: 22,
     },
+    actionRow: {
+      flexDirection: "row",
+      alignItems: "stretch",
+      justifyContent: "center",
+      gap: 10,
+      marginTop: 12,
+      width: "100%",
+    },
     chatButton: {
+      flex: 1,
       backgroundColor: "#5DBEBC",
-      paddingVertical: 12,
-      paddingHorizontal: 20,
-      borderRadius: 25,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      borderRadius: 12,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
       gap: 8,
-      marginTop: 4,
     },
     chatButtonText: {
       color: "#FFFFFF",
       fontSize: 16,
       fontFamily: "Poppins_600SemiBold",
+    },
+    shareButton: {
+      flex: 1,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      borderRadius: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    shareButtonText: {
+      fontSize: 16,
+      fontFamily: "Poppins_500Medium",
     },
     imageContainer: {
       marginTop: 12,
@@ -414,26 +439,40 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
         </View>
       )}
 
-      {/* CHAT BUTTON - Only show if not own post */}
-      {!isOwnPost && (
+      {/* CHAT AND SHARE BUTTONS */}
+      <View style={styles.actionRow}>
+        {!isOwnPost && (
+          <Pressable
+            style={[styles.chatButton, isCreatingChat && { opacity: 0.6 }]}
+            onPress={(e) => {
+              e.preventDefault();
+              handleChatPress();
+            }}
+            disabled={isCreatingChat}
+          >
+            <MaterialCommunityIcons
+              name="message-outline"
+              size={20}
+              color="#FFFFFF"
+            />
+            <Text style={styles.chatButtonText}>
+              {isCreatingChat ? "Loading..." : "Chat"}
+            </Text>
+          </Pressable>
+        )}
         <Pressable
-          style={[styles.chatButton, isCreatingChat && { opacity: 0.6 }]}
+          style={styles.shareButton}
           onPress={(e) => {
             e.preventDefault();
-            handleChatPress();
+            sharePost(postId);
           }}
-          disabled={isCreatingChat}
         >
-          <MaterialCommunityIcons
-            name="message-outline"
-            size={20}
-            color="#FFFFFF"
-          />
-          <Text style={styles.chatButtonText}>
-            {isCreatingChat ? "Loading..." : "Chat"}
+          <Ionicons name="share-outline" size={20} color={theme.text} />
+          <Text style={[styles.shareButtonText, { color: theme.text }]}>
+            Share
           </Text>
         </Pressable>
-      )}
+      </View>
 
       {/* User Profile Modal */}
       {!isAnonymous && userId && userId !== currentUserId && (

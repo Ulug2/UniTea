@@ -15,7 +15,7 @@ type SupabaseImageProps = {
   loadingIndicatorColor?: string;
   /** Called when the image has finished loading (or when there is no image to load) */
   onLoad?: () => void;
-} & Omit<ComponentProps<typeof Image>, "source">;
+} & Omit<ComponentProps<typeof Image>, "source" | "onLoad">;
 
 // Cache for bucket public/private status (persists across component mounts)
 const bucketCache = new Map<string, boolean>();
@@ -201,7 +201,7 @@ function SupabaseImage({
 
   const handleLoad = () => {
     onLoadRef.current?.();
-    imageProps.onLoad?.();
+    onLoad?.();
   };
 
   return (

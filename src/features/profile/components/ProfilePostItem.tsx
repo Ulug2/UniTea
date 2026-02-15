@@ -2,10 +2,11 @@ import React, { memo, useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { formatDistanceToNowStrict } from "date-fns";
 import { router } from "expo-router";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import type { Database } from "../../../types/database.types";
 import type { Theme } from "../../../context/ThemeContext";
+import { sharePost } from "../../../utils/sharePost";
 
 type Post = Database["public"]["Tables"]["posts"]["Row"];
 
@@ -76,6 +77,19 @@ const ProfilePostItem = memo(
               {commentCount}
             </Text>
           </View>
+          <Pressable
+            style={styles.postStat}
+            onPress={(e) => {
+              e.stopPropagation();
+              sharePost(postId);
+            }}
+          >
+            <Ionicons
+              name="share-outline"
+              size={16}
+              color={theme.secondaryText}
+            />
+          </Pressable>
         </View>
       </Pressable>
     );

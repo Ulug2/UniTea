@@ -121,7 +121,9 @@ export default function AppLayout() {
         name="chat/[id]"
         options={{
           headerShown: false,
-          animation: "none",
+          animation: "slide_from_right",
+          gestureEnabled: true,
+          fullScreenGestureEnabled: true,
         }}
       />
       <Stack.Screen
@@ -129,6 +131,8 @@ export default function AppLayout() {
         options={{
           headerShown: false,
           animation: "slide_from_right",
+          gestureEnabled: true,
+          fullScreenGestureEnabled: true,
         }}
       />
     </Stack>

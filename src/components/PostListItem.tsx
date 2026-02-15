@@ -5,8 +5,6 @@ import {
   Text,
   View,
   StyleSheet,
-  // Share,
-  // Platform,
   Alert,
 } from "react-native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
@@ -23,6 +21,7 @@ import Poll from "./Poll";
 import UserProfileModal from "./UserProfileModal";
 import { useAuth } from "../context/AuthContext";
 import { useMyProfile } from "../features/profile/hooks/useMyProfile";
+import { sharePost } from "../utils/sharePost";
 
 type PostListItemProps = {
   // Post data from view
@@ -194,34 +193,11 @@ const PostListItem = React.memo(function PostListItem({
     router.push(`/create-post?repostId=${originalPostId}`);
   };
 
-  // Share functionality commented out for now (does not work)
-  // const handleShareClick = async (e: any) => {
-  //   e.preventDefault();
-  //   e.stopPropagation();
-  //   try {
-  //     const deepLink = `myunitea://post/${postId}`;
-  //     const webUrl = `https://unitea.app/post/${postId}`;
-  //     if (Platform.OS === "ios") {
-  //       const result = await Share.share({
-  //         message: "Check out this post on UniTee!",
-  //         url: deepLink,
-  //         title: "Share Post",
-  //       });
-  //       if (result.action === Share.sharedAction) {
-  //         if (result.activityType) console.log("Shared via:", result.activityType);
-  //         else console.log("Post shared successfully");
-  //       } else if (result.action === Share.dismissedAction) console.log("Share dismissed");
-  //     } else {
-  //       const shareMessage = `Check out this post on UniTee!\n\n${deepLink}\n\nOr open: ${webUrl}`;
-  //       const result = await Share.share({ message: shareMessage, title: "Share Post" });
-  //       if (result.action === Share.sharedAction) console.log("Post shared successfully");
-  //       else if (result.action === Share.dismissedAction) console.log("Share dismissed");
-  //     }
-  //   } catch (error: any) {
-  //     console.error("Error sharing post:", error);
-  //     Alert.alert("Error", "Failed to share post. Please try again.");
-  //   }
-  // };
+  const handleShareClick = (e: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    sharePost(postId);
+  };
 
   const styles = StyleSheet.create({
     link: {
@@ -633,10 +609,21 @@ const PostListItem = React.memo(function PostListItem({
                 <Ionicons name="repeat-outline" size={22} color={theme.text} />
                 <Text style={styles.iconText}>{repostCount}</Text>
               </Pressable>
+              <Pressable
+                onPress={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleShareClick(e);
+                }}
+                style={styles.iconBox}
+              >
+                <Ionicons name="share-outline" size={22} color={theme.text} />
+              </Pressable>
               {isDetailedPost && onBookmarkPress && (
                 <Pressable
                   onPress={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     onBookmarkPress();
                   }}
                   style={styles.iconBox}
@@ -649,23 +636,6 @@ const PostListItem = React.memo(function PostListItem({
                 </Pressable>
               )}
             </View>
-            {/* Share button commented out for now (does not work) */}
-            {/* <View style={styles.footerRight}>
-              <Pressable
-                onPress={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleShareClick(e);
-                }}
-                style={styles.iconBox}
-              >
-                <MaterialCommunityIcons
-                  name="share-outline"
-                  size={22}
-                  color={theme.text}
-                />
-              </Pressable>
-            </View> */}
           </View>
         </Pressable>
       </Link>
