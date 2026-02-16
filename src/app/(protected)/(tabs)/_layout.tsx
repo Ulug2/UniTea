@@ -11,7 +11,7 @@ import * as Notifications from "expo-notifications";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
 import { useBlocks } from "../../../hooks/useBlocks";
-import { FilterProvider, useFilterContext } from "./_filterContext";
+import { FilterProvider, useFilterContext } from "../../../context/FilterContext";
 
 // Hook to get global unread count for chat tab badge
 function useGlobalUnreadCount() {

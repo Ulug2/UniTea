@@ -20,7 +20,7 @@ import { supabase } from "../../../lib/supabase";
 import { useInfiniteQuery, useQuery, useQueryClient, useIsMutating } from "@tanstack/react-query";
 import { useCallback, useMemo, useEffect, useRef } from "react";
 import type { PostsSummaryViewRow } from "../../../types/posts";
-import { useFilterContext } from "./_filterContext";
+import { useFilterContext } from "../../../context/FilterContext";
 import { useAuth } from "../../../context/AuthContext";
 
 type PostSummary = PostsSummaryViewRow;

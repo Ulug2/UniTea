@@ -34,6 +34,11 @@
               "scheme": "https",
               "host": "unitea.app",
               "pathPrefix": "/--"
+            },
+            {
+              "scheme": "https",
+              "host": "unitea.app",
+              "pathPrefix": "/post"
             }
           ],
           "category": [

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-// Create a context for filter state
-type FeedFilter = "hot" | "new" | "top";
+export type FeedFilter = "hot" | "new" | "top";
+
 const FilterContext = createContext<{
   selectedFilter: FeedFilter;
   setSelectedFilter: (filter: FeedFilter) => void;

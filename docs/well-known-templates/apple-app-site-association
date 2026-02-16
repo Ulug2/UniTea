@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "G95BC6MGSL.com.unitea.app",
+        "paths": ["/post/*"]
+      }
+    ]
+  }
+}

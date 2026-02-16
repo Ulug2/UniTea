@@ -16,11 +16,3 @@ Type Aliases are better for union types, tuples, and aliasing primitives.
 Utilize Utility Types: Use TypeScript's built-in utility types (like Partial, Required, Readonly, etc.) to reduce boilerplate code and manage complex type transformations effectively.
 Mind the Return Type of Callbacks: When a function is not intended to return a value, explicitly use void as the return type to maintain type checking integrity and prevent accidental use of potential return values.
 Use Strict TypeScript Settings: Configure your tsconfig.json with strict settings (e.g., strict: true, noImplicitAny: true) to benefit from stronger type safety. 
-
-
-3) CUT_PLAN_profile_screen.md (src/app/(protected)/(tabs)/profile.tsx)
-Many concerns, but still mostly self-contained. Good place to centralize shared types/links.
-4) CUT_PLAN_post_detail.md (src/app/(protected)/post/[id].tsx)
-Higher risk because comment tree + optimistic inserts + cache behavior. Do after you’ve standardized types/util patterns.
-5) CUT_PLAN_chat_detail.md (src/app/(protected)/chat/[id].tsx)
-Highest complexity/risk (realtime + optimistic + pagination + gestures). Best last, after you’ve built confidence and shared utilities.
