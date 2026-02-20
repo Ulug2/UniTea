@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Image, Pressable, Text, View, StyleSheet, Alert } from "react-native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Ionicons } from "@expo/vector-icons";
@@ -204,7 +204,7 @@ const PostListItem = React.memo(function PostListItem({
     sharePost(postId);
   };
 
-  const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
     link: {
       textDecorationLine: "none",
     },
@@ -257,6 +257,7 @@ const PostListItem = React.memo(function PostListItem({
     originalDate: {
       fontSize: 12,
       color: theme.secondaryText,
+      marginTop: 8,
     },
     header: {
       flexDirection: "row",
@@ -335,7 +336,7 @@ const PostListItem = React.memo(function PostListItem({
       marginHorizontal: 7,
       alignSelf: "center",
     },
-  });
+  }), [theme]);
 
   const postCreatedAt = createdAt ? new Date(createdAt) : new Date();
 
