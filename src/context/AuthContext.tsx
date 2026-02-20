@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useCallback,
   ReactNode,
   useRef,
 } from "react";
@@ -14,6 +15,7 @@ type AuthContextValue = {
   session: Session | null;
   loading: boolean;
   error: Error | null;
+  signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -23,6 +25,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const isInitialized = useRef(false);
+
+  // Force-sign-out: clears local session state regardless of server response.
+  // Without this, Supabase's SIGNED_OUT event may never fire when the server-side
+  // session is already missing/expired, leaving AuthContext with a stale session
+  // and causing the auth layout to bounce the user back to the protected screen.
+  const signOut = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // ignore — we clear local state regardless
+    }
+    // Force clear regardless of whether supabase fired SIGNED_OUT
+    setSession(null);
+    setError(null);
+    logger.clearUser();
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -63,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             logger.setUser(
               initialSession.user.id,
               initialSession.user.email,
-              undefined
+              undefined,
             );
           }
         }
@@ -109,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             logger.setUser(
               newSession.user.id,
               newSession.user.email,
-              undefined
+              undefined,
             );
           }
           break;
@@ -122,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             logger.setUser(
               newSession.user.id,
               newSession.user.email,
-              undefined
+              undefined,
             );
           }
           break;
@@ -141,7 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             logger.setUser(
               newSession.user.id,
               newSession.user.email,
-              undefined
+              undefined,
             );
           }
       }
@@ -154,7 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ session, loading, error }}>
+    <AuthContext.Provider value={{ session, loading, error, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,12 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-  Image,
-  Pressable,
-  Text,
-  View,
-  StyleSheet,
-  Alert,
-} from "react-native";
+import { Image, Pressable, Text, View, StyleSheet, Alert } from "react-native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNowStrict } from "date-fns";
@@ -53,6 +46,7 @@ type PostListItemProps = {
   repostedFromPostId?: string | null;
   repostComment?: string | null;
   originalContent?: string | null;
+  originalImageUrl?: string | null;
   originalUserId?: string | null;
   originalAuthorUsername?: string | null;
   originalAuthorAvatar?: string | null;
@@ -69,7 +63,10 @@ type PostListItemProps = {
 };
 
 // Custom comparison function for better memoization (prevents unnecessary re-renders)
-const arePropsEqual = (prevProps: PostListItemProps, nextProps: PostListItemProps) => {
+const arePropsEqual = (
+  prevProps: PostListItemProps,
+  nextProps: PostListItemProps,
+) => {
   // Compare all props that affect rendering
   return (
     prevProps.postId === nextProps.postId &&
@@ -94,12 +91,14 @@ const arePropsEqual = (prevProps: PostListItemProps, nextProps: PostListItemProp
     prevProps.repostedFromPostId === nextProps.repostedFromPostId &&
     prevProps.repostComment === nextProps.repostComment &&
     prevProps.originalContent === nextProps.originalContent &&
+    prevProps.originalImageUrl === nextProps.originalImageUrl &&
     prevProps.originalAuthorUsername === nextProps.originalAuthorUsername &&
     prevProps.originalAuthorAvatar === nextProps.originalAuthorAvatar &&
     prevProps.originalIsAnonymous === nextProps.originalIsAnonymous &&
     prevProps.originalCreatedAt === nextProps.originalCreatedAt &&
     prevProps.isDetailedPost === nextProps.isDetailedPost &&
-    prevProps.disableCommentInteraction === nextProps.disableCommentInteraction &&
+    prevProps.disableCommentInteraction ===
+      nextProps.disableCommentInteraction &&
     prevProps.isBookmarked === nextProps.isBookmarked
   );
 };
@@ -121,6 +120,7 @@ const PostListItem = React.memo(function PostListItem({
   repostedFromPostId,
   repostComment,
   originalContent,
+  originalImageUrl,
   originalUserId,
   originalAuthorUsername,
   originalAuthorAvatar,
@@ -146,7 +146,8 @@ const PostListItem = React.memo(function PostListItem({
 
   // Check if this is a repost
   const isRepost = !!repostedFromPostId;
-  const hasAvatar = !!(isRepost ? originalAuthorAvatar : avatarUrl) || isAnonymous;
+  const hasAvatar =
+    !!(isRepost ? originalAuthorAvatar : avatarUrl) || isAnonymous;
   const hasImage = !!imageUrl;
 
   // Notify parent when all media has loaded (for feed skeleton)
@@ -162,7 +163,11 @@ const PostListItem = React.memo(function PostListItem({
   }, [onImageLoad, hasAvatar, hasImage, avatarLoaded, imageLoaded]);
 
   // Handle profile view - only for other users, not yourself
-  const handleProfilePress = (e: any, targetUserId: string, isAnon: boolean) => {
+  const handleProfilePress = (
+    e: any,
+    targetUserId: string,
+    isAnon: boolean,
+  ) => {
     e.preventDefault();
     e.stopPropagation();
     // Only show modal for other users (not current user) and non-anonymous users
@@ -226,6 +231,7 @@ const PostListItem = React.memo(function PostListItem({
       fontSize: 15,
       color: theme.text,
       fontFamily: "Poppins_400Regular",
+      marginTop: 8,
       marginBottom: 10,
     },
     originalPostCard: {
@@ -337,59 +343,34 @@ const PostListItem = React.memo(function PostListItem({
     <>
       <Link href={`/post/${postId}`} asChild style={styles.link}>
         <Pressable style={styles.card}>
-          {/* REPOST HEADER */}
-          {isRepost && (
-            <View style={styles.repostHeader}>
-              <Ionicons name="repeat" size={16} color={theme.secondaryText} />
-              <Text style={styles.repostText}>{username} reposted</Text>
-            </View>
-          )}
+          {/* REPOST HEADER - intentionally removed; reposter identity shown in avatar/username row */}
 
           {/* HEADER */}
           <View style={styles.header}>
             <Pressable
               style={styles.userInfo}
               onPress={(e) => {
-                if (isRepost && originalUserId && !originalIsAnonymous) {
-                  handleProfilePress(e, originalUserId, false);
-                } else if (!isAnonymous && userId) {
+                if (!isAnonymous && userId) {
                   handleProfilePress(e, userId, false);
                 }
               }}
-              disabled={
-                isRepost
-                  ? originalIsAnonymous || !originalUserId || originalUserId === currentUserId
-                  : isAnonymous || !userId || userId === currentUserId
-              }
+              disabled={isAnonymous || !userId || userId === currentUserId}
             >
               {isRepost ? (
-                // Show original author for reposts
-                originalIsAnonymous ? (
-                  <Image source={nuLogo} style={styles.avatar} onLoad={() => setAvatarLoaded(true)} />
-                ) : originalAuthorAvatar ? (
-                  originalAuthorAvatar.startsWith("http") ? (
-                    <Image
-                      source={{ uri: originalAuthorAvatar }}
-                      style={styles.avatar}
-                      onLoad={() => setAvatarLoaded(true)}
-                    />
-                  ) : (
-                    <SupabaseImage
-                      path={originalAuthorAvatar}
-                      bucket="avatars"
-                      style={styles.avatar}
-                      onLoad={() => setAvatarLoaded(true)}
-                    />
-                  )
-                ) : (
-                  <Image source={DEFAULT_AVATAR} style={styles.avatar} onLoad={() => setAvatarLoaded(true)} />
-                )
-              ) : // Show regular post author
+                // Show reposter's identity
                 isAnonymous ? (
-                  <Image source={nuLogo} style={styles.avatar} onLoad={() => setAvatarLoaded(true)} />
+                  <Image
+                    source={nuLogo}
+                    style={styles.avatar}
+                    onLoad={() => setAvatarLoaded(true)}
+                  />
                 ) : avatarUrl ? (
                   avatarUrl.startsWith("http") ? (
-                    <Image source={{ uri: avatarUrl }} style={styles.avatar} onLoad={() => setAvatarLoaded(true)} />
+                    <Image
+                      source={{ uri: avatarUrl }}
+                      style={styles.avatar}
+                      onLoad={() => setAvatarLoaded(true)}
+                    />
                   ) : (
                     <SupabaseImage
                       path={avatarUrl}
@@ -399,20 +380,47 @@ const PostListItem = React.memo(function PostListItem({
                     />
                   )
                 ) : (
-                  <Image source={DEFAULT_AVATAR} style={styles.avatar} onLoad={() => setAvatarLoaded(true)} />
-                )}
+                  <Image
+                    source={DEFAULT_AVATAR}
+                    style={styles.avatar}
+                    onLoad={() => setAvatarLoaded(true)}
+                  />
+                )
+              ) : // Show regular post author
+              isAnonymous ? (
+                <Image
+                  source={nuLogo}
+                  style={styles.avatar}
+                  onLoad={() => setAvatarLoaded(true)}
+                />
+              ) : avatarUrl ? (
+                avatarUrl.startsWith("http") ? (
+                  <Image
+                    source={{ uri: avatarUrl }}
+                    style={styles.avatar}
+                    onLoad={() => setAvatarLoaded(true)}
+                  />
+                ) : (
+                  <SupabaseImage
+                    path={avatarUrl}
+                    bucket="avatars"
+                    style={styles.avatar}
+                    onLoad={() => setAvatarLoaded(true)}
+                  />
+                )
+              ) : (
+                <Image
+                  source={DEFAULT_AVATAR}
+                  style={styles.avatar}
+                  onLoad={() => setAvatarLoaded(true)}
+                />
+              )}
               <Text style={styles.username}>
-                {isRepost
-                  ? originalIsAnonymous
-                    ? originalUserId === currentUserId
-                      ? "You"
-                      : "Anonymous"
-                    : originalAuthorUsername
-                  : isAnonymous
-                    ? userId === currentUserId
-                      ? "You"
-                      : "Anonymous"
-                    : username}
+                {isAnonymous
+                  ? userId === currentUserId
+                    ? "You"
+                    : "Anonymous"
+                  : username}
               </Text>
             </Pressable>
             <Text style={styles.time}>
@@ -443,8 +451,17 @@ const PostListItem = React.memo(function PostListItem({
           {/* CONTENT */}
           <View style={{ marginTop: 1 }}>
             {isRepost ? (
-              // Show original post content in a card
-              <View style={styles.originalPostCard}>
+              // Show original post content in a card — tap to navigate to original post
+              <Pressable
+                style={styles.originalPostCard}
+                onPress={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (repostedFromPostId) {
+                    router.push(`/post/${repostedFromPostId}`);
+                  }
+                }}
+              >
                 <Text
                   numberOfLines={
                     isDetailedPost || originalContentExpanded ? undefined : 4
@@ -472,17 +489,29 @@ const PostListItem = React.memo(function PostListItem({
                           color: theme.primary,
                         }}
                       >
-                        {originalContentExpanded ? "show less" : "... read more"}
+                        {originalContentExpanded
+                          ? "show less"
+                          : "... read more"}
                       </Text>
                     </Pressable>
                   )}
+                {/* Original post image (when present in the reposted post) */}
+                {originalImageUrl && (
+                  <SupabaseImage
+                    path={originalImageUrl}
+                    bucket="post-images"
+                    style={[styles.postImage, { marginTop: 8 }]}
+                  />
+                )}
+                {/* Original post poll (Poll renders null if the post has no poll) */}
+                {repostedFromPostId && <Poll postId={repostedFromPostId} />}
                 {originalCreatedAt && (
                   <Text style={styles.originalDate}>
                     Original post:{" "}
                     {formatDistanceToNowStrict(new Date(originalCreatedAt))} ago
                   </Text>
                 )}
-              </View>
+              </Pressable>
             ) : (
               // Regular post content
               <>
@@ -529,9 +558,7 @@ const PostListItem = React.memo(function PostListItem({
                   </View>
                 )}
                 {/* POLL (only for original feed posts, not repost wrappers) */}
-                {!isRepost && (
-                  <Poll postId={postId} />
-                )}
+                {!isRepost && <Poll postId={postId} />}
               </>
             )}
           </View>

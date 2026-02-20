@@ -10,14 +10,18 @@ import {
   Modal,
   Dimensions,
 } from "react-native";
-import PagerView from "react-native-pager-view";
 import { FontAwesome } from "@expo/vector-icons";
 import { router } from "expo-router";
 import PostListItem from "../../../components/PostListItem";
 import PostListSkeleton from "../../../components/PostListSkeleton";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
-import { useInfiniteQuery, useQuery, useQueryClient, useIsMutating } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+  useIsMutating,
+} from "@tanstack/react-query";
 import { useCallback, useMemo, useEffect, useRef } from "react";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useFilterContext } from "../../../context/FilterContext";
@@ -147,7 +151,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
     if (allPosts.length === 0) return [];
 
     const uniquePosts = Array.from(
-      new Map(allPosts.map((post) => [post.post_id, post])).values()
+      new Map(allPosts.map((post) => [post.post_id, post])).values(),
     );
 
     // Filter blocked users (but keep anonymous posts visible)
@@ -168,9 +172,10 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
         const isPostAuthorBlocked = blocks.includes(post.user_id);
 
         // For reposts, check if original author is blocked (but keep if original is anonymous)
-        const isRepostAuthorBlocked = post.original_user_id && !post.original_is_anonymous
-          ? blocks.includes(post.original_user_id)
-          : false;
+        const isRepostAuthorBlocked =
+          post.original_user_id && !post.original_is_anonymous
+            ? blocks.includes(post.original_user_id)
+            : false;
 
         // Show post if neither author is blocked (or if original is anonymous)
         return !isPostAuthorBlocked && !isRepostAuthorBlocked;
@@ -227,6 +232,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
         repostedFromPostId={item.reposted_from_post_id}
         repostComment={item.repost_comment}
         originalContent={item.original_content}
+        originalImageUrl={item.original_image_url}
         originalUserId={item.original_user_id}
         originalAuthorUsername={item.original_author_username}
         originalAuthorAvatar={item.original_author_avatar}
@@ -234,7 +240,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
         originalCreatedAt={item.original_created_at}
       />
     ),
-    []
+    [],
   );
 
   if (isPending) {
@@ -295,24 +301,34 @@ export default function FeedScreen() {
   const { theme } = useTheme();
   const { selectedFilter, setSelectedFilter } = useFilterContext();
   const queryClient = useQueryClient();
-  const pagerRef = useRef<PagerView>(null);
+  const pagerRef = useRef<ScrollView>(null);
 
   const isCreatingPost = useIsMutating({ mutationKey: ["create-post"] }) > 0;
 
-  // When user taps a filter pill, switch page with animation
+  // When user taps a filter pill, scroll to the corresponding page
   useEffect(() => {
-    const pageIndex = FEED_FILTER_ORDER.indexOf(selectedFilter as FeedFilterType);
+    const pageIndex = FEED_FILTER_ORDER.indexOf(
+      selectedFilter as FeedFilterType,
+    );
     if (pageIndex < 0) return;
-    pagerRef.current?.setPage(pageIndex);
+    pagerRef.current?.scrollTo({
+      x: pageIndex * SCREEN_WIDTH,
+      y: 0,
+      animated: true,
+    });
   }, [selectedFilter]);
 
   const handlePageSelected = useCallback(
-    (e: { nativeEvent: { position: number } }) => {
-      const position = e.nativeEvent.position;
-      const filter = FEED_FILTER_ORDER[Math.min(position, FEED_FILTER_ORDER.length - 1)];
+    (e: { nativeEvent: { contentOffset: { x: number } } }) => {
+      const position = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+      const safePosition = Math.min(
+        Math.max(position, 0),
+        FEED_FILTER_ORDER.length - 1,
+      );
+      const filter = FEED_FILTER_ORDER[safePosition];
       setSelectedFilter(filter);
     },
-    [setSelectedFilter]
+    [setSelectedFilter],
   );
 
   useEffect(() => {
@@ -333,7 +349,7 @@ export default function FeedScreen() {
               });
             }
           }, 1000);
-        }
+        },
       )
       .subscribe();
     return () => {
@@ -344,23 +360,32 @@ export default function FeedScreen() {
     };
   }, [queryClient]);
 
-  const initialPageIndex = FEED_FILTER_ORDER.indexOf(selectedFilter as FeedFilterType);
+  const initialPageIndex = FEED_FILTER_ORDER.indexOf(
+    selectedFilter as FeedFilterType,
+  );
 
   return (
     <>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <PagerView
+        <ScrollView
           ref={pagerRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onMomentumScrollEnd={handlePageSelected}
+          contentOffset={{
+            x: Math.max(0, initialPageIndex) * SCREEN_WIDTH,
+            y: 0,
+          }}
           style={styles.pager}
-          initialPage={Math.max(0, initialPageIndex)}
-          onPageSelected={handlePageSelected}
         >
           {FEED_FILTER_ORDER.map((filter) => (
             <View key={filter} style={styles.pageWrapper}>
               <FeedPageContent filter={filter} />
             </View>
           ))}
-        </PagerView>
+        </ScrollView>
         <Pressable
           onPress={() => router.push("/create-post")}
           style={[styles.fab, { backgroundColor: theme.primary }]}
@@ -406,6 +431,7 @@ const styles = StyleSheet.create({
   },
   pageWrapper: {
     flex: 1,
+    width: SCREEN_WIDTH,
   },
   skeletonContent: {
     paddingBottom: 100,

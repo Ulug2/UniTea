@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import * as Linking from "expo-linking";
 import { useMyProfile } from "../../features/profile/hooks/useMyProfile";
 import BannedScreen from "../../components/BannedScreen";
+import { FilterProvider } from "../../context/FilterContext";
 
 export default function AppLayout() {
   const { theme } = useTheme();
@@ -77,11 +78,12 @@ export default function AppLayout() {
   }
 
   return (
-    <Stack
-      screenOptions={{
-        animation: "fade",
-      }}
-    >
+    <FilterProvider>
+      <Stack
+        screenOptions={{
+          animation: "fade",
+        }}
+      >
       <Stack.Screen
         name="(tabs)"
         options={{
@@ -136,5 +138,6 @@ export default function AppLayout() {
         }}
       />
     </Stack>
+    </FilterProvider>
   );
 }

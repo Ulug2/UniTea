@@ -41,9 +41,10 @@ export function useMyPosts(userId: string | undefined, activeTab: ProfileTab) {
         .range(from, to);
 
       if (error) throw error;
-      return data || [];
+      return (data || []) as PostSummary[];
     },
     enabled: Boolean(userId),
+    initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) =>
       lastPage.length === PAGE_SIZE ? allPages.length : undefined,
     staleTime: 1000 * 30,
@@ -78,15 +79,14 @@ export function useMyPosts(userId: string | undefined, activeTab: ProfileTab) {
 
       if (error) throw error;
 
-      const sortedData =
-        data?.sort((a, b) => {
-          const aBookmark = bookmarks.find((bm) => bm.post_id === a.post_id);
-          const bBookmark = bookmarks.find((bm) => bm.post_id === b.post_id);
-          return (
-            new Date(bBookmark?.created_at || 0).getTime() -
-            new Date(aBookmark?.created_at || 0).getTime()
-          );
-        }) || [];
+      const sortedData = ((data || []) as PostSummary[]).sort((a, b) => {
+        const aBookmark = bookmarks.find((bm) => bm.post_id === a.post_id);
+        const bBookmark = bookmarks.find((bm) => bm.post_id === b.post_id);
+        return (
+          new Date(bBookmark?.created_at || 0).getTime() -
+          new Date(aBookmark?.created_at || 0).getTime()
+        );
+      });
 
       return sortedData;
     },

@@ -24,7 +24,7 @@ import { useAvatarUpload } from "../../../features/profile/hooks/useAvatarUpload
 
 export default function ProfileScreen() {
   const { theme, isDark, toggleTheme } = useTheme();
-  const { session } = useAuth();
+  const { session, signOut: authSignOut } = useAuth();
   const navigation = useNavigation();
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [manageAccountVisible, setManageAccountVisible] = useState(false);
@@ -98,31 +98,22 @@ export default function ProfileScreen() {
     setSettingsVisible(false);
     setManageAccountVisible(false);
     const userId = session?.user?.id;
-    try {
-      // Clear this user's push token before signing out so this device stops
-      // receiving push notifications for the logged-out account (e.g. after
-      // switching to another account on the same device).
-      if (userId) {
+    // Clear push token first (best-effort)
+    if (userId) {
+      try {
         await supabase
           .from("notification_settings")
           .update({ push_token: null })
           .eq("user_id", userId);
+      } catch {
+        // non-fatal
       }
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        // Network errors can occur when offline – log but still navigate to auth
-        console.error("Sign out error:", error.message);
-      }
-    } catch (err: any) {
-      console.error(
-        "Unexpected sign out error:",
-        err?.message ? err.message : err,
-      );
-    } finally {
-      // Always navigate back to auth, even if the network request failed.
-      // Local session will be cleared on next successful auth call.
-      router.replace("/(auth)");
     }
+    // Force-clear the session via AuthContext. This also handles the case where
+    // the server-side session is already missing ("Auth session missing" error)
+    // by explicitly setting session = null, which makes the protected layout
+    // redirect to /(auth) without the auth layout bouncing the user back.
+    await authSignOut();
   }
 
   // Unblock all users mutation via shared hook
@@ -132,7 +123,8 @@ export default function ProfileScreen() {
   const deleteAccountMutation = useDeleteAccount();
   const updateProfileMutation = useUpdateProfile();
   const updatePasswordMutation = useUpdatePassword();
-  const { startAvatarUpload } = useAvatarUpload();
+  const { startAvatarUpload, isUploading: isUpdatingAvatar } =
+    useAvatarUpload();
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -169,10 +161,13 @@ export default function ProfileScreen() {
     );
   };
 
-  // Handle avatar update via hook
-  const handleAvatarUpdate = () => {
-    startAvatarUpload();
-    setManageAccountVisible(false);
+  // Handle avatar update via hook – keep modal open until upload succeeds or fails
+  const handleAvatarUpdate = async () => {
+    const result = await startAvatarUpload();
+    if (result.status === "success") {
+      setManageAccountVisible(false);
+    }
+    // on cancel or error: keep the modal open so the user can try again
   };
 
   // Handle username update
@@ -281,7 +276,9 @@ export default function ProfileScreen() {
         isDeleting={deleteAccountMutation.isPending}
         isUnblocking={unblockAllMutation.isPending}
         isUpdating={
-          updateProfileMutation.isPending || updatePasswordMutation.isPending
+          isUpdatingAvatar ||
+          updateProfileMutation.isPending ||
+          updatePasswordMutation.isPending
         }
         currentUsername={currentUser?.username || ""}
       />

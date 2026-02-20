@@ -1,17 +1,17 @@
 import { Tabs } from "expo-router";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import { useTheme } from "../../../context/ThemeContext";
-import React, {
-  useEffect,
-  useRef,
-} from "react";
+import React, { useEffect, useRef } from "react";
 import { View, Pressable, StyleSheet, AppState } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
 import { useBlocks } from "../../../hooks/useBlocks";
-import { FilterProvider, useFilterContext } from "../../../context/FilterContext";
+import {
+  FilterProvider,
+  useFilterContext,
+} from "../../../context/FilterContext";
 
 // Hook to get global unread count for chat tab badge
 function useGlobalUnreadCount() {
@@ -20,8 +20,12 @@ function useGlobalUnreadCount() {
   const queryClient = useQueryClient();
 
   // Debounce refs to prevent cascading invalidations
-  const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
-  const updateDebounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const updateDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
 
   // Fetch blocked users using the reusable hook
   const { data: blocks = [] } = useBlocks();
@@ -35,10 +39,10 @@ function useGlobalUnreadCount() {
       const { data, error } = await (supabase as any)
         .from("user_chats_summary")
         .select(
-          "unread_count_p1, unread_count_p2, participant_1_id, participant_2_id"
+          "unread_count_p1, unread_count_p2, participant_1_id, participant_2_id",
         )
         .or(
-          `participant_1_id.eq.${currentUserId},participant_2_id.eq.${currentUserId}`
+          `participant_1_id.eq.${currentUserId},participant_2_id.eq.${currentUserId}`,
         );
 
       if (error) throw error;
@@ -102,7 +106,7 @@ function useGlobalUnreadCount() {
               exact: false, // Match all variants (with or without blocks)
             });
           }, 500);
-        }
+        },
       )
       .on(
         "postgres_changes",
@@ -117,7 +121,7 @@ function useGlobalUnreadCount() {
             queryKey: ["global-unread-count", currentUserId],
             exact: false,
           });
-        }
+        },
       )
       .subscribe();
 
@@ -215,7 +219,7 @@ export default function TabLayout() {
   }, [globalUnreadCount]);
 
   return (
-    <FilterProvider>
+    <>
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: theme.primary,
@@ -308,7 +312,7 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
-    </FilterProvider>
+    </>
   );
 }
 

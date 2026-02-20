@@ -807,6 +807,7 @@ export type Database = {
           original_author_username: string | null
           original_content: string | null
           original_created_at: string | null
+          original_image_url: string | null
           original_is_anonymous: boolean | null
           original_post_id: string | null
           original_user_id: string | null

@@ -44,6 +44,7 @@ export function PostHeaderCard({
       repostedFromPostId={post.reposted_from_post_id}
       repostComment={post.repost_comment}
       originalContent={post.original_content}
+      originalImageUrl={post.original_image_url}
       originalUserId={post.original_user_id}
       originalAuthorUsername={post.original_author_username}
       originalAuthorAvatar={post.original_author_avatar}
@@ -56,4 +57,3 @@ export function PostHeaderCard({
     />
   );
 }
-

@@ -77,8 +77,12 @@ export default function CreatePostScreen() {
 
   const goBack = () => {
     reset();
-    // Use replace instead of back to avoid navigation errors
-    router.replace("/(protected)/(tabs)");
+    // Return to the tab the user came from so they stay in context
+    if (isLostFound) {
+      router.replace("/(protected)/(tabs)/lostfound");
+    } else {
+      router.replace("/(protected)/(tabs)");
+    }
   };
 
   const pickImage = async () => {
@@ -152,9 +156,13 @@ export default function CreatePostScreen() {
         pollOptions: cleanedPollOptions,
       });
 
-      // Immediately reset and navigate back to the feed; feed overlay will show while mutation completes
+      // Immediately reset and navigate back to the originating tab; feed overlay will show while mutation completes
       reset();
-      router.replace("/(protected)/(tabs)");
+      if (isLostFound) {
+        router.replace("/(protected)/(tabs)/lostfound");
+      } else {
+        router.replace("/(protected)/(tabs)");
+      }
     } catch (error) {
       // Errors are already surfaced via mutation onError; nothing extra here
     } finally {

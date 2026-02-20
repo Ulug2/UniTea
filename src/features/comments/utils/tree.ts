@@ -29,6 +29,7 @@ export function buildCommentTree(
 
   const commentMap: Record<string, CommentNode> = {};
   const roots: CommentNode[] = [];
+  const addedToRoots = new Set<string>();
 
   filtered.forEach((c) => {
     commentMap[c.id] = { ...c, replies: [] };
@@ -37,7 +38,8 @@ export function buildCommentTree(
   filtered.forEach((c) => {
     if (c.parent_comment_id && commentMap[c.parent_comment_id]) {
       commentMap[c.parent_comment_id].replies.push(commentMap[c.id]);
-    } else {
+    } else if (!addedToRoots.has(c.id)) {
+      addedToRoots.add(c.id);
       roots.push(commentMap[c.id]);
     }
   });

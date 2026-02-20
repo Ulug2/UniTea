@@ -21,11 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../../context/ThemeContext";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { Database } from "../../../types/database.types";
-import {
-  useQuery,
-  useQueryClient,
-  useMutation,
-} from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
 import ChatDetailSkeleton from "../../../components/ChatDetailSkeleton";
@@ -46,7 +42,10 @@ import { useChatMessagesRealtime } from "../../../features/chat/hooks/useChatMes
 import { useChatSendMessage } from "../../../features/chat/hooks/useChatSendMessage";
 import { useChatMessageActions } from "../../../features/chat/hooks/useChatMessageActions";
 import { useChatAutoScroll } from "../../../features/chat/hooks/useChatAutoScroll";
-import { makeChatDetailStyles, chatDetailStyles } from "../../../features/chat/styles";
+import {
+  makeChatDetailStyles,
+  chatDetailStyles,
+} from "../../../features/chat/styles";
 import { ChatHeader } from "../../../features/chat/components/ChatHeader";
 import { ChatComposer } from "../../../features/chat/components/ChatComposer";
 import { ChatMessageList } from "../../../features/chat/components/ChatMessageList";
@@ -61,13 +60,15 @@ export default function ChatDetailScreen() {
   const insets = useSafeAreaInsets();
   const dynamicStyles = useMemo(
     () => makeChatDetailStyles(theme, isDark, insets),
-    [theme, isDark, insets]
+    [theme, isDark, insets],
   );
   const [message, setMessage] = useState("");
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
-  const [fullScreenImagePath, setFullScreenImagePath] = useState<string | null>(null);
+  const [fullScreenImagePath, setFullScreenImagePath] = useState<string | null>(
+    null,
+  );
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const { data: currentUser } = useMyProfile(currentUserId);
@@ -101,20 +102,26 @@ export default function ChatDetailScreen() {
     hasScrolledInitiallyRef,
   } = useChatAutoScroll(flatListRef);
 
-  const { send, retry, isSending } = useChatSendMessage(id ?? "", currentUserId ?? "", {
-    pendingMessageIdsRef: pendingMessageIds,
-    optimisticImageUrisRef: optimisticImageUris,
-    flatListRef,
-    onRestoreInput: (messageText, localImageUri) => {
-      setMessage(messageText);
-      setSelectedImage(localImageUri);
+  const { send, retry, isSending } = useChatSendMessage(
+    id ?? "",
+    currentUserId ?? "",
+    {
+      pendingMessageIdsRef: pendingMessageIds,
+      optimisticImageUrisRef: optimisticImageUris,
+      flatListRef,
+      onRestoreInput: (messageText, localImageUri) => {
+        setMessage(messageText);
+        setSelectedImage(localImageUri);
+      },
     },
-  });
+  );
 
   // Track keyboard visibility - use "Will" events on iOS for instant effect
   useEffect(() => {
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
 
     const showSubscription = Keyboard.addListener(showEvent, () => {
       setIsKeyboardVisible(true);
@@ -163,7 +170,7 @@ export default function ChatDetailScreen() {
     useCallback(() => {
       setCurrentViewedChatPartnerId(otherUserId ?? null);
       return () => setCurrentViewedChatPartnerId(null);
-    }, [otherUserId])
+    }, [otherUserId]),
   );
 
   // Fetch blocked users
@@ -211,10 +218,13 @@ export default function ChatDetailScreen() {
   // Flatten and filter out blocked users' messages
   const messages = useMemo(
     () => selectMessages(messagesData, blocks),
-    [messagesData, blocks]
+    [messagesData, blocks],
   );
 
-  const { openMessageActionSheet } = useChatMessageActions(id ?? "", currentUserId ?? undefined);
+  const { openMessageActionSheet } = useChatMessageActions(
+    id ?? "",
+    currentUserId ?? undefined,
+  );
 
   const handleIncomingMessage = useCallback(() => {
     if (isAtBottomRef.current) {
@@ -236,28 +246,31 @@ export default function ChatDetailScreen() {
     const markAsRead = async () => {
       // Check if there are any unread messages from other user
       const hasUnread = messages.some(
-        (msg) => !msg.is_read && msg.user_id !== currentUserId
+        (msg) => !msg.is_read && msg.user_id !== currentUserId,
       );
 
       if (!hasUnread) return;
 
       // 1. Optimistically update chat-summaries cache immediately (set unread_count to 0)
-      queryClient.setQueryData<any[]>(["chat-summaries", currentUserId], (oldSummaries: any[] | undefined) => {
-        if (!oldSummaries) return oldSummaries;
+      queryClient.setQueryData<any[]>(
+        ["chat-summaries", currentUserId],
+        (oldSummaries: any[] | undefined) => {
+          if (!oldSummaries) return oldSummaries;
 
-        return oldSummaries.map((summary: any) => {
-          if (summary.chat_id === id) {
-            // Update unread count based on which participant is current user
-            const isP1 = summary.participant_1_id === currentUserId;
-            return {
-              ...summary,
-              unread_count_p1: isP1 ? 0 : summary.unread_count_p1,
-              unread_count_p2: !isP1 ? 0 : summary.unread_count_p2,
-            };
-          }
-          return summary;
-        });
-      });
+          return oldSummaries.map((summary: any) => {
+            if (summary.chat_id === id) {
+              // Update unread count based on which participant is current user
+              const isP1 = summary.participant_1_id === currentUserId;
+              return {
+                ...summary,
+                unread_count_p1: isP1 ? 0 : summary.unread_count_p1,
+                unread_count_p2: !isP1 ? 0 : summary.unread_count_p2,
+              };
+            }
+            return summary;
+          });
+        },
+      );
 
       // 2. Optimistically update global unread count (immediate, no delay)
       // Note: Query key may include blocks, so we invalidate all variants to ensure update
@@ -268,11 +281,11 @@ export default function ChatDetailScreen() {
 
           // Count unread messages in this chat before marking as read
           const unreadInThisChat = messages.filter(
-            (msg) => !msg.is_read && msg.user_id !== currentUserId
+            (msg) => !msg.is_read && msg.user_id !== currentUserId,
           ).length;
 
           return Math.max(0, oldCount - unreadInThisChat);
-        }
+        },
       );
 
       // 3. Optimistically update messages cache
@@ -285,7 +298,7 @@ export default function ChatDetailScreen() {
               return { ...msg, is_read: true };
             }
             return msg;
-          })
+          }),
         );
 
         return {
@@ -310,8 +323,12 @@ export default function ChatDetailScreen() {
               operation: "markAsRead",
             });
             // On error, invalidate to refetch correct state
-            queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
-            queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });
+            queryClient.invalidateQueries({
+              queryKey: ["chat-summaries", currentUserId],
+            });
+            queryClient.invalidateQueries({
+              queryKey: ["global-unread-count", currentUserId],
+            });
           }
         });
 
@@ -322,13 +339,17 @@ export default function ChatDetailScreen() {
         { queryKey: ["global-unread-count", currentUserId], exact: false },
         () => {
           // Get updated chat summaries from cache
-          const updatedSummaries = queryClient.getQueryData<any[]>(["chat-summaries", currentUserId]);
+          const updatedSummaries = queryClient.getQueryData<any[]>([
+            "chat-summaries",
+            currentUserId,
+          ]);
           if (!updatedSummaries || !Array.isArray(updatedSummaries)) {
             return undefined; // Let queryFn handle it
           }
 
           // Get blocks from cache (needed for calculation)
-          const cachedBlocks = queryClient.getQueryData<string[]>(["blocks", currentUserId]) || [];
+          const cachedBlocks =
+            queryClient.getQueryData<string[]>(["blocks", currentUserId]) || [];
 
           // Calculate total unread count from cached summaries
           const total = updatedSummaries.reduce((sum: number, chat: any) => {
@@ -350,7 +371,7 @@ export default function ChatDetailScreen() {
           }, 0);
 
           return total;
-        }
+        },
       );
     };
 
@@ -359,11 +380,15 @@ export default function ChatDetailScreen() {
     return () => clearTimeout(timer);
   }, [id, currentUserId, messages, queryClient]);
 
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Scroll to bottom when messages are first loaded for a chat
   useEffect(() => {
-    if (messages.length > 0 && flatListRef.current && hasScrolledInitiallyRef.current !== id) {
+    if (
+      messages.length > 0 &&
+      flatListRef.current &&
+      hasScrolledInitiallyRef.current !== id
+    ) {
       if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
       scrollTimeoutRef.current = setTimeout(() => {
         if (flatListRef.current) {
@@ -392,7 +417,7 @@ export default function ChatDetailScreen() {
         hasScrolledInitiallyRef.current = null;
       }
 
-      let scrollTimer: NodeJS.Timeout | null = null;
+      let scrollTimer: ReturnType<typeof setTimeout> | null = null;
 
       const timer = setTimeout(() => {
         queryClient.invalidateQueries({
@@ -413,7 +438,7 @@ export default function ChatDetailScreen() {
           clearTimeout(scrollTimer);
         }
       };
-    }, [id, queryClient])
+    }, [id, queryClient]),
   );
 
   const getMessageTime = useCallback((dateString: string | null) => {
@@ -432,12 +457,13 @@ export default function ChatDetailScreen() {
 
   const shouldShowDateDivider = useCallback(
     (currentMsg: ChatMessageVM, nextMsg: ChatMessageVM | null) => {
-      if (!nextMsg || !currentMsg.created_at || !nextMsg.created_at) return true;
+      if (!nextMsg || !currentMsg.created_at || !nextMsg.created_at)
+        return true;
       const currentDate = new Date(currentMsg.created_at);
       const nextDate = new Date(nextMsg.created_at);
       return !isSameDay(currentDate, nextDate);
     },
-    []
+    [],
   );
 
   const handleSend = useCallback(() => {
@@ -458,12 +484,10 @@ export default function ChatDetailScreen() {
         throw new Error("User not authenticated");
       }
 
-      const { error } = await supabase
-        .from("blocks")
-        .insert({
-          blocker_id: currentUserId,
-          blocked_id: blockedUserId,
-        });
+      const { error } = await supabase.from("blocks").insert({
+        blocker_id: currentUserId,
+        blocked_id: blockedUserId,
+      });
 
       if (error) {
         // If already blocked, ignore the error
@@ -478,9 +502,13 @@ export default function ChatDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ["blocks", currentUserId] });
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       queryClient.invalidateQueries({ queryKey: ["comments"] });
-      queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+      queryClient.invalidateQueries({
+        queryKey: ["chat-summaries", currentUserId],
+      });
       queryClient.invalidateQueries({ queryKey: ["chat-messages", id] }); // Refresh messages to filter blocked user
-      queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] }); // Update unread count
+      queryClient.invalidateQueries({
+        queryKey: ["global-unread-count", currentUserId],
+      }); // Update unread count
 
       console.log("Success", "User has been blocked");
       router.back();
@@ -512,7 +540,9 @@ export default function ChatDetailScreen() {
         .single();
 
       if (chatCheckError || !chatData) {
-        throw new Error("Chat not found or you don't have permission to delete it");
+        throw new Error(
+          "Chat not found or you don't have permission to delete it",
+        );
       }
 
       const isParticipant =
@@ -544,11 +574,15 @@ export default function ChatDetailScreen() {
           .eq("chat_id", id);
 
         if (softDeleteError) {
-          throw new Error(`Failed to delete messages: ${messagesError.message}`);
+          throw new Error(
+            `Failed to delete messages: ${messagesError.message}`,
+          );
         }
         console.log("Soft-deleted messages due to RLS restrictions");
       } else {
-        console.log(`Deleted ${deletedMessages?.length || 0} messages for chat ${id}`);
+        console.log(
+          `Deleted ${deletedMessages?.length || 0} messages for chat ${id}`,
+        );
       }
 
       // Then, delete the chat itself
@@ -564,7 +598,9 @@ export default function ChatDetailScreen() {
         console.error("Error deleting chat:", chatError);
         console.error("Chat error code:", chatError.code);
         console.error("Chat error details:", chatError.details);
-        throw new Error(`Failed to delete chat: ${chatError.message} (Code: ${chatError.code})`);
+        throw new Error(
+          `Failed to delete chat: ${chatError.message} (Code: ${chatError.code})`,
+        );
       }
 
       // Check if any rows were actually deleted
@@ -586,43 +622,66 @@ export default function ChatDetailScreen() {
           if (!isParticipant) {
             throw new Error("You are not a participant in this chat");
           } else {
-            throw new Error("Chat deletion was blocked. Please check your RLS policies allow participants to delete chats.");
+            throw new Error(
+              "Chat deletion was blocked. Please check your RLS policies allow participants to delete chats.",
+            );
           }
         } else {
           // Chat doesn't exist - deletion might have succeeded but we can't verify
           console.log("Chat doesn't exist - assuming deletion succeeded");
-          return { deletedChat: null, deletedMessagesCount: deletedMessages?.length || 0 };
+          return {
+            deletedChat: null,
+            deletedMessagesCount: deletedMessages?.length || 0,
+          };
         }
       }
 
       console.log(`Successfully deleted chat ${id}`);
-      return { deletedChat: deletedChats[0], deletedMessagesCount: deletedMessages?.length || 0 };
+      return {
+        deletedChat: deletedChats[0],
+        deletedMessagesCount: deletedMessages?.length || 0,
+      };
     },
     onMutate: async () => {
       // Don't await - cancel queries in background, don't block UI
-      queryClient.cancelQueries({ queryKey: ["chat-summaries", currentUserId] });
+      queryClient.cancelQueries({
+        queryKey: ["chat-summaries", currentUserId],
+      });
 
-      const previousSummaries = queryClient.getQueryData<any[]>(["chat-summaries", currentUserId]);
+      const previousSummaries = queryClient.getQueryData<any[]>([
+        "chat-summaries",
+        currentUserId,
+      ]);
 
       // Optimistically remove chat from summaries IMMEDIATELY
-      queryClient.setQueryData<any[]>(["chat-summaries", currentUserId], (oldSummaries: any[] | undefined) => {
-        if (!oldSummaries) return oldSummaries;
-        return oldSummaries.filter((summary: any) => summary.chat_id !== id);
-      });
+      queryClient.setQueryData<any[]>(
+        ["chat-summaries", currentUserId],
+        (oldSummaries: any[] | undefined) => {
+          if (!oldSummaries) return oldSummaries;
+          return oldSummaries.filter((summary: any) => summary.chat_id !== id);
+        },
+      );
 
       // Optimistically update global unread count (subtract unread messages from this chat)
-      queryClient.setQueryData<number>(["global-unread-count", currentUserId], (oldCount: number | undefined) => {
-        if (oldCount === undefined || !previousSummaries) return oldCount;
+      queryClient.setQueryData<number>(
+        ["global-unread-count", currentUserId],
+        (oldCount: number | undefined) => {
+          if (oldCount === undefined || !previousSummaries) return oldCount;
 
-        // Find the chat being deleted and subtract its unread count
-        const deletedChat = previousSummaries.find((s: any) => s.chat_id === id);
-        if (!deletedChat) return oldCount;
+          // Find the chat being deleted and subtract its unread count
+          const deletedChat = previousSummaries.find(
+            (s: any) => s.chat_id === id,
+          );
+          if (!deletedChat) return oldCount;
 
-        const isP1 = deletedChat.participant_1_id === currentUserId;
-        const unreadInDeletedChat = isP1 ? (deletedChat.unread_count_p1 || 0) : (deletedChat.unread_count_p2 || 0);
+          const isP1 = deletedChat.participant_1_id === currentUserId;
+          const unreadInDeletedChat = isP1
+            ? deletedChat.unread_count_p1 || 0
+            : deletedChat.unread_count_p2 || 0;
 
-        return Math.max(0, oldCount - unreadInDeletedChat);
-      });
+          return Math.max(0, oldCount - unreadInDeletedChat);
+        },
+      );
 
       return { previousSummaries };
     },
@@ -663,23 +722,25 @@ export default function ChatDetailScreen() {
 
       // Rollback optimistic update
       if (context?.previousSummaries) {
-        queryClient.setQueryData(["chat-summaries", currentUserId], context.previousSummaries);
+        queryClient.setQueryData(
+          ["chat-summaries", currentUserId],
+          context.previousSummaries,
+        );
       }
 
       // Show detailed error message
-      const errorMessage = error instanceof Error ? error.message : "Failed to delete chat. Please try again.";
-      Alert.alert(
-        "Error",
-        errorMessage,
-        [
-          { text: "OK", style: "default" },
-          {
-            text: "Retry",
-            style: "default",
-            onPress: () => deleteChatMutation.mutate(),
-          },
-        ]
-      );
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to delete chat. Please try again.";
+      Alert.alert("Error", errorMessage, [
+        { text: "OK", style: "default" },
+        {
+          text: "Retry",
+          style: "default",
+          onPress: () => deleteChatMutation.mutate(),
+        },
+      ]);
     },
   });
 
@@ -702,7 +763,7 @@ export default function ChatDetailScreen() {
               style: "destructive",
               onPress: () => blockUserMutation.mutate(otherUserId!),
             },
-          ]
+          ],
         );
       },
       () => {
@@ -716,10 +777,10 @@ export default function ChatDetailScreen() {
               style: "destructive",
               onPress: () => deleteChatMutation.mutate(),
             },
-          ]
+          ],
         );
       },
-      () => { }
+      () => {},
     );
 
     if (Platform.OS === "ios") {
@@ -732,54 +793,56 @@ export default function ChatDetailScreen() {
         (buttonIndex) => {
           const action = actions[buttonIndex];
           if (action) action();
-        }
+        },
       );
     } else {
-      Alert.alert(
-        "Chat Options",
-        undefined,
-        [
-          {
-            text: "Block User",
-            style: "destructive",
-            onPress: () => {
-              Alert.alert(
-                "Block User",
-                `Are you sure you want to block ${otherUserName}?`,
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Block",
-                    style: "destructive",
-                    onPress: () => blockUserMutation.mutate(otherUserId!),
-                  },
-                ]
-              );
-            },
+      Alert.alert("Chat Options", undefined, [
+        {
+          text: "Block User",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert(
+              "Block User",
+              `Are you sure you want to block ${otherUserName}?`,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Block",
+                  style: "destructive",
+                  onPress: () => blockUserMutation.mutate(otherUserId!),
+                },
+              ],
+            );
           },
-          {
-            text: "Delete Chat",
-            style: "destructive",
-            onPress: () => {
-              Alert.alert(
-                "Delete Chat",
-                "Are you sure you want to delete this conversation? This action cannot be undone.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: () => deleteChatMutation.mutate(),
-                  },
-                ]
-              );
-            },
+        },
+        {
+          text: "Delete Chat",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert(
+              "Delete Chat",
+              "Are you sure you want to delete this conversation? This action cannot be undone.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: () => deleteChatMutation.mutate(),
+                },
+              ],
+            );
           },
-          { text: "Cancel", style: "cancel" },
-        ]
-      );
+        },
+        { text: "Cancel", style: "cancel" },
+      ]);
     }
-  }, [otherUserId, isAnonymous, otherUserName, blockUserMutation, deleteChatMutation]);
+  }, [
+    otherUserId,
+    isAnonymous,
+    otherUserName,
+    blockUserMutation,
+    deleteChatMutation,
+  ]);
 
   const renderMessage = useCallback(
     ({ item, index }: { item: ChatMessageVM; index: number }) => {
@@ -808,7 +871,7 @@ export default function ChatDetailScreen() {
       getMessageTime,
       getDateDivider,
       shouldShowDateDivider,
-    ]
+    ],
   );
 
   // Show skeleton loading screen while chat or user data is loading
@@ -819,22 +882,23 @@ export default function ChatDetailScreen() {
     return <ChatDetailSkeleton />;
   }
 
-  const headerAvatar = !isAnonymous && otherUser?.avatar_url ? (
-    otherUser.avatar_url.startsWith("http") ? (
-      <Image
-        source={{ uri: otherUser.avatar_url }}
-        style={dynamicStyles.avatarImage}
-      />
+  const headerAvatar =
+    !isAnonymous && otherUser?.avatar_url ? (
+      otherUser.avatar_url.startsWith("http") ? (
+        <Image
+          source={{ uri: otherUser.avatar_url }}
+          style={dynamicStyles.avatarImage}
+        />
+      ) : (
+        <SupabaseImage
+          path={otherUser.avatar_url}
+          bucket="avatars"
+          style={dynamicStyles.avatarImage}
+        />
+      )
     ) : (
-      <SupabaseImage
-        path={otherUser.avatar_url}
-        bucket="avatars"
-        style={dynamicStyles.avatarImage}
-      />
-    )
-  ) : (
-    <Image source={DEFAULT_AVATAR} style={dynamicStyles.avatarImage} />
-  );
+      <Image source={DEFAULT_AVATAR} style={dynamicStyles.avatarImage} />
+    );
 
   return (
     <View style={dynamicStyles.container}>

@@ -19,7 +19,7 @@ import BlockUserModal from "../../../components/BlockUserModal";
 import CustomInput from "../../../components/CustomInput";
 import { router } from "expo-router";
 import { FontAwesome, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { Database } from "../../../types/database.types";
@@ -52,6 +52,8 @@ export default function LostFoundScreen() {
   const isAdmin = currentUser?.is_admin === true;
   const isPostOwner = selectedPost && currentUserId === selectedPost.userId;
   const canDeletePost = isPostOwner || isAdmin;
+
+  const isCreatingPost = useIsMutating({ mutationKey: ["create-post"] }) > 0;
 
   // Debounce search input to avoid filtering on every keystroke
   useEffect(() => {
@@ -429,6 +431,29 @@ export default function LostFoundScreen() {
       >
         <FontAwesome name="plus" size={28} color="#fff" />
       </Pressable>
+
+      {/* Loading overlay while a lost&found post is being submitted */}
+      <Modal
+        visible={isCreatingPost}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => {}}
+      >
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: "rgba(255, 255, 255, 0.6)",
+              justifyContent: "center",
+              alignItems: "center",
+            },
+          ]}
+          pointerEvents="auto"
+        >
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      </Modal>
     </View>
   );
 }

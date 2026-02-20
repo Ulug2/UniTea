@@ -4,10 +4,15 @@ import { supabase } from "../../../lib/supabase";
 import { uploadImage } from "../../../utils/supabaseImages";
 import { useUpdateProfile } from "./useUpdateProfile";
 
+export type AvatarUploadResult = {
+  status: "success" | "cancelled" | "error";
+  message?: string;
+};
+
 export function useAvatarUpload() {
   const updateProfileMutation = useUpdateProfile();
 
-  const startAvatarUpload = async () => {
+  const startAvatarUpload = async (): Promise<AvatarUploadResult> => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
@@ -16,7 +21,7 @@ export function useAvatarUpload() {
         quality: 0.8,
       });
 
-      if (result.canceled) return;
+      if (result.canceled) return { status: "cancelled" };
 
       const imagePath = await uploadImage(
         result.assets[0].uri,
@@ -24,18 +29,21 @@ export function useAvatarUpload() {
         "avatars"
       );
 
-      updateProfileMutation.mutate({ avatar_url: imagePath });
+      await updateProfileMutation.mutateAsync({ avatar_url: imagePath });
+      return { status: "success" };
     } catch (error: unknown) {
       const message =
         error instanceof Error
           ? error.message
           : "Failed to update avatar. Please try again.";
       Alert.alert("Error", message);
+      return { status: "error", message };
     }
   };
 
   return {
     startAvatarUpload,
+    isUploading: updateProfileMutation.isPending,
     updateProfileMutation,
   };
 }

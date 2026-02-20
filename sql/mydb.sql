@@ -55,6 +55,7 @@ CREATE TABLE public.comments (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   is_anonymous boolean DEFAULT false,
+  post_specific_anon_id integer,
   CONSTRAINT comments_pkey PRIMARY KEY (id),
   CONSTRAINT comments_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
   CONSTRAINT comments_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id),
@@ -80,11 +81,40 @@ CREATE TABLE public.notifications (
   message text NOT NULL,
   is_read boolean DEFAULT false,
   created_at timestamp with time zone DEFAULT now(),
+  push_sent boolean DEFAULT false,
   CONSTRAINT notifications_pkey PRIMARY KEY (id),
   CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
   CONSTRAINT notifications_related_user_id_fkey FOREIGN KEY (related_user_id) REFERENCES auth.users(id),
   CONSTRAINT notifications_related_post_id_fkey FOREIGN KEY (related_post_id) REFERENCES public.posts(id),
   CONSTRAINT notifications_related_comment_id_fkey FOREIGN KEY (related_comment_id) REFERENCES public.comments(id)
+);
+CREATE TABLE public.poll_options (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  poll_id uuid NOT NULL,
+  option_text text NOT NULL,
+  position integer NOT NULL DEFAULT 0,
+  CONSTRAINT poll_options_pkey PRIMARY KEY (id),
+  CONSTRAINT poll_options_poll_id_fkey FOREIGN KEY (poll_id) REFERENCES public.polls(id)
+);
+CREATE TABLE public.poll_votes (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  poll_id uuid NOT NULL,
+  option_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT poll_votes_pkey PRIMARY KEY (id),
+  CONSTRAINT poll_votes_poll_id_fkey FOREIGN KEY (poll_id) REFERENCES public.polls(id),
+  CONSTRAINT poll_votes_option_id_fkey FOREIGN KEY (option_id) REFERENCES public.poll_options(id),
+  CONSTRAINT poll_votes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.polls (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  post_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  expires_at timestamp with time zone,
+  allow_multiple boolean NOT NULL DEFAULT false,
+  CONSTRAINT polls_pkey PRIMARY KEY (id),
+  CONSTRAINT polls_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id)
 );
 CREATE TABLE public.posts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -117,6 +147,8 @@ CREATE TABLE public.profiles (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   is_admin boolean DEFAULT false,
+  banned_until timestamp with time zone,
+  is_permanently_banned boolean DEFAULT false,
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );

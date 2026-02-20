@@ -47,8 +47,13 @@ export function useUpdateProfile() {
     },
     onSuccess: (_data, updates) => {
       queryClient.invalidateQueries({ queryKey: ["current-user-profile"] });
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      queryClient.invalidateQueries({ queryKey: ["user-posts"] });
+      // Only invalidate heavy feed / post-list queries when the avatar changes.
+      // Username-only changes do not need to bust the feed cache and would otherwise
+      // cause scroll-position jumps on the profile posts list on iOS.
+      if (updates.avatar_url) {
+        queryClient.invalidateQueries({ queryKey: ["posts"] });
+        queryClient.invalidateQueries({ queryKey: ["user-posts"] });
+      }
       queryClient.invalidateQueries({ queryKey: ["chat-summaries"] });
       queryClient.invalidateQueries({ queryKey: ["chat-users"] });
       queryClient.invalidateQueries({ queryKey: ["chat-other-user"] });
