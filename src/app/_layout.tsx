@@ -5,11 +5,11 @@ import {
   Poppins_500Medium,
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { Animated, View, Text, Pressable, StyleSheet } from "react-native";
 import { ThemeProvider } from "../context/ThemeContext";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import * as SplashScreen from "expo-splash-screen";
 import { hideSplashSafe } from "../utils/splash";
@@ -91,6 +91,17 @@ function RootLayoutContent() {
   const { loading: authLoading, session } = useAuth();
   const queryClient = useQueryClient();
 
+  // Animated opacity for the fade-in transition after splash screen hides
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const fadeInAfterSplash = () => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  };
+
   // App icon badge is set by (protected)/(tabs)/_layout.tsx from globalUnreadCount when logged in.
   // Do not reset badge here so the correct unread count is preserved.
 
@@ -102,12 +113,14 @@ function RootLayoutContent() {
         await prefetchInitialData(session.user.id, queryClient);
         // Hide splash screen after prefetch completes
         await hideSplashSafe();
+        fadeInAfterSplash();
       })();
     } else if (fontsLoaded && !authLoading && !session) {
       // No user session - hide splash screen immediately
       // Wrap in IIFE to ensure promise is handled even if called without await
       (async () => {
         await hideSplashSafe();
+        fadeInAfterSplash();
       })().catch(() => {
         // Error already handled in hideSplashSafe, just prevent unhandled rejection
       });
@@ -119,7 +132,11 @@ function RootLayoutContent() {
     return null;
   }
 
-  return <Slot />;
+  return (
+    <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+      <Slot />
+    </Animated.View>
+  );
 }
 
 function RecoveryFallback() {
