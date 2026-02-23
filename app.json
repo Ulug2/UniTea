@@ -14,7 +14,7 @@
       "backgroundColor": "#2FC9C1"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.unitea.app",
       "associatedDomains": [
         "applinks:unitea.app"
