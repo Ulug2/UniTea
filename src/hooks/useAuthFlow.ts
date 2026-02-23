@@ -67,6 +67,10 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     return value.trim().toLowerCase();
   }, []);
 
+  const isAllowedDomain = useCallback((sanitizedEmail: string): boolean => {
+    return sanitizedEmail.endsWith("@nu.edu.kz");
+  }, []);
+
   const logAuthEvent = useCallback(
     (event: string, details?: Record<string, unknown>) => {
       logger.breadcrumb(event, "auth", details);
@@ -298,6 +302,10 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       setEmailError("Please enter your email address.");
       return;
     }
+    if (!isAllowedDomain(sanitizedEmail)) {
+      setEmailError("Only @nu.edu.kz email addresses are allowed.");
+      return;
+    }
     if (!password) {
       setPasswordError("Please enter your password.");
       return;
@@ -396,6 +404,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     privacyAccepted,
     minPasswordLength,
     sanitizeEmail,
+    isAllowedDomain,
     checkRateLimitOrAlert,
     logAuthEvent,
     splash,

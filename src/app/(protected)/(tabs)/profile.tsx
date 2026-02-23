@@ -23,7 +23,7 @@ import { useDeleteAccount } from "../../../features/profile/hooks/useDeleteAccou
 import { useAvatarUpload } from "../../../features/profile/hooks/useAvatarUpload";
 
 export default function ProfileScreen() {
-  const { theme, isDark, toggleTheme } = useTheme();
+  const { theme, isDark, isManualDark, toggleTheme } = useTheme();
   const { session, signOut: authSignOut } = useAuth();
   const navigation = useNavigation();
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -250,6 +250,7 @@ export default function ProfileScreen() {
         onClose={() => setSettingsVisible(false)}
         theme={theme}
         isDark={isDark}
+        isManualDark={isManualDark}
         toggleTheme={toggleTheme}
         onPressNotifications={() => {
           setSettingsVisible(false);

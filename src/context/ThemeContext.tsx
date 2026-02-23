@@ -13,7 +13,10 @@ export type Theme = typeof lightTheme;
 
 interface ThemeContextType {
   theme: Theme;
+  /** True when the app is actually rendering in dark mode (manual or system). */
   isDark: boolean;
+  /** True when the user has manually forced dark mode via the toggle. */
+  isManualDark: boolean;
   toggleTheme: () => void;
   setTheme: (isDark: boolean) => void;
 }
@@ -23,63 +26,65 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 const THEME_STORAGE_KEY = "@unitea_theme_preference";
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  // Reactive: updates whenever the user changes the iPhone's appearance.
   const systemColorScheme = useColorScheme();
-  const [isDark, setIsDark] = useState(systemColorScheme === "dark");
-  const [isLoading, setIsLoading] = useState(true);
 
-  // Load saved theme preference on mount
+  // false = follow system (default). true = force dark mode.
+  const [isManualDark, setIsManualDark] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Load saved preference once on mount.
   useEffect(() => {
-    const loadThemePreference = async () => {
+    const load = async () => {
       try {
-        const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-        if (savedTheme !== null) {
-          setIsDark(savedTheme === "dark");
-        } else {
-          // If no saved preference, use system preference
-          setIsDark(systemColorScheme === "dark");
+        const saved = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+        if (saved === "manual_dark") {
+          setIsManualDark(true);
         }
+        // null or anything else → follow system (isManualDark stays false)
       } catch (error) {
         console.error("Error loading theme preference:", error);
-        // Fallback to system preference on error
-        setIsDark(systemColorScheme === "dark");
       } finally {
-        setIsLoading(false);
+        setIsInitialized(true);
       }
     };
-
-    loadThemePreference();
+    load();
   }, []);
 
-  // Save theme preference whenever it changes
+  // Persist whenever the preference changes (but never before the initial load).
   useEffect(() => {
-    if (!isLoading) {
-      const saveThemePreference = async () => {
-        try {
-          await AsyncStorage.setItem(
-            THEME_STORAGE_KEY,
-            isDark ? "dark" : "light"
-          );
-        } catch (error) {
-          console.error("Error saving theme preference:", error);
+    if (!isInitialized) return;
+    const save = async () => {
+      try {
+        if (isManualDark) {
+          await AsyncStorage.setItem(THEME_STORAGE_KEY, "manual_dark");
+        } else {
+          await AsyncStorage.removeItem(THEME_STORAGE_KEY);
         }
-      };
+      } catch (error) {
+        console.error("Error saving theme preference:", error);
+      }
+    };
+    save();
+  }, [isManualDark, isInitialized]);
 
-      saveThemePreference();
-    }
-  }, [isDark, isLoading]);
+  // When toggle is OFF, follow the iPhone appearance live. When ON, always dark.
+  const isDark = isManualDark || systemColorScheme === "dark";
 
   const toggleTheme = () => {
-    setIsDark((prev) => !prev);
+    setIsManualDark((prev) => !prev);
   };
 
   const setTheme = (dark: boolean) => {
-    setIsDark(dark);
+    setIsManualDark(dark);
   };
 
   const theme = isDark ? darkTheme : lightTheme;
 
   return (
-    <ThemeContext.Provider value={{ theme, isDark, toggleTheme, setTheme }}>
+    <ThemeContext.Provider
+      value={{ theme, isDark, isManualDark, toggleTheme, setTheme }}
+    >
       {children}
     </ThemeContext.Provider>
   );

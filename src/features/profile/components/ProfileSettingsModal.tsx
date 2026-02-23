@@ -16,6 +16,7 @@ type ProfileSettingsModalProps = {
   onClose: () => void;
   theme: Theme;
   isDark: boolean;
+  isManualDark: boolean;
   toggleTheme: () => void;
   onPressNotifications: () => void;
   onPressTerms: () => void;
@@ -28,6 +29,7 @@ export function ProfileSettingsModal({
   onClose,
   theme,
   isDark,
+  isManualDark,
   toggleTheme,
   onPressNotifications,
   onPressTerms,
@@ -60,12 +62,24 @@ export function ProfileSettingsModal({
             >
               <View style={styles.settingLeft}>
                 <Ionicons name="moon-outline" size={22} color={theme.text} />
-                <Text style={[styles.settingLabel, { color: theme.text }]}>
-                  Dark Mode
-                </Text>
+                <View>
+                  <Text style={[styles.settingLabel, { color: theme.text }]}>
+                    Dark Mode
+                  </Text>
+                  <Text
+                    style={[
+                      styles.settingSubLabel,
+                      { color: theme.secondaryText },
+                    ]}
+                  >
+                    {isManualDark
+                      ? "Forced dark"
+                      : "Following iPhone appearance"}
+                  </Text>
+                </View>
               </View>
               <Switch
-                value={isDark}
+                value={isManualDark}
                 onValueChange={toggleTheme}
                 trackColor={{ false: theme.border, true: theme.primary }}
                 thumbColor={isDark ? "#fff" : "#f4f3f4"}
@@ -211,5 +225,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Poppins_500Medium",
   },
+  settingSubLabel: {
+    fontSize: 12,
+    fontFamily: "Poppins_400Regular",
+    marginTop: 1,
+  },
 });
-

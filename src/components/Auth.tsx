@@ -89,7 +89,8 @@ export default function Auth() {
     try {
       await openExternalLink(url);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Please try again later.";
+      const message =
+        err instanceof Error ? err.message : "Please try again later.";
       Alert.alert("Unable to open link", message);
     }
   }, []);
@@ -135,7 +136,7 @@ export default function Auth() {
               if (showResendOption) dismissResendOption();
             }}
             value={email}
-            placeholder="your.name@nu.edu.kz"
+            placeholder="name.surname@nu.edu.kz"
             autoCapitalize="none"
             keyboardType="email-address"
             errorMessage={emailError}
@@ -205,7 +206,7 @@ export default function Auth() {
                   I agree to the collection of my personal data and the{" "}
                   <Text
                     style={[styles.linkText, { color: theme.primary }]}
-                      onPress={() => handleOpenExternalLink(PRIVACY_URL)}
+                    onPress={() => handleOpenExternalLink(PRIVACY_URL)}
                   >
                     Privacy Policy
                   </Text>
@@ -260,8 +261,8 @@ export default function Auth() {
             }
           >
             {(mode === "login" && loadingState.login) ||
-              (mode === "signup" && loadingState.signup) ||
-              (mode === "forgot" && loadingState.forgot) ? (
+            (mode === "signup" && loadingState.signup) ||
+            (mode === "forgot" && loadingState.forgot) ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
               <Text style={styles.primaryButtonText}>

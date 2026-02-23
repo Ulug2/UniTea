@@ -6,9 +6,13 @@ import {
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
 import { Animated, View, Text, Pressable, StyleSheet } from "react-native";
-import { ThemeProvider } from "../context/ThemeContext";
+import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import { AuthProvider, useAuth } from "../context/AuthContext";
-import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import * as SplashScreen from "expo-splash-screen";
@@ -50,14 +54,8 @@ async function prefetchInitialData(userId: string, queryClient: any) {
 
     // Prefetch blocked users
     const [blockedByMe, blockedMe] = await Promise.all([
-      supabase
-        .from("blocks")
-        .select("blocked_id")
-        .eq("blocker_id", userId),
-      supabase
-        .from("blocks")
-        .select("blocker_id")
-        .eq("blocked_id", userId),
+      supabase.from("blocks").select("blocked_id").eq("blocker_id", userId),
+      supabase.from("blocks").select("blocker_id").eq("blocked_id", userId),
     ]);
 
     const blockedUserIds = new Set<string>();
@@ -90,6 +88,7 @@ function RootLayoutContent() {
   });
   const { loading: authLoading, session } = useAuth();
   const queryClient = useQueryClient();
+  const { theme } = useTheme();
 
   // Animated opacity for the fade-in transition after splash screen hides
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -133,9 +132,11 @@ function RootLayoutContent() {
   }
 
   return (
-    <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-      <Slot />
-    </Animated.View>
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
+      <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+        <Slot />
+      </Animated.View>
+    </View>
   );
 }
 
