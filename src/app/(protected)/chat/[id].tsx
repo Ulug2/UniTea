@@ -34,7 +34,10 @@ import { DEFAULT_AVATAR } from "../../../constants/images";
 import { useBlocks } from "../../../hooks/useBlocks";
 import { setCurrentViewedChatPartnerId } from "../../../hooks/usePushNotifications";
 import { hashStringToNumber } from "../../../features/chat/utils/anon";
-import type { ChatMessageVM } from "../../../features/chat/types";
+import type {
+  ChatMessageVM,
+  ReplyingToState,
+} from "../../../features/chat/types";
 import { selectMessages } from "../../../features/chat/types";
 import { FullscreenImageModal } from "../../../features/chat/components/FullscreenImageModal";
 import { useChatMessagesInfinite } from "../../../features/chat/hooks/useChatMessagesInfinite";
@@ -69,6 +72,7 @@ export default function ChatDetailScreen() {
   const [fullScreenImagePath, setFullScreenImagePath] = useState<string | null>(
     null,
   );
+  const [replyingTo, setReplyingTo] = useState<ReplyingToState | null>(null);
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const { data: currentUser } = useMyProfile(currentUserId);
@@ -221,9 +225,18 @@ export default function ChatDetailScreen() {
     [messagesData, blocks],
   );
 
+  const handleReply = useCallback(
+    (msg: ChatMessageVM) => {
+      const senderName = msg.user_id === currentUserId ? "You" : otherUserName;
+      setReplyingTo({ message: msg, senderName });
+    },
+    [currentUserId, otherUserName],
+  );
+
   const { openMessageActionSheet } = useChatMessageActions(
     id ?? "",
     currentUserId ?? undefined,
+    { onReply: handleReply },
   );
 
   const handleIncomingMessage = useCallback(() => {
@@ -466,11 +479,46 @@ export default function ChatDetailScreen() {
     [],
   );
 
+  // Build an id→index map for scroll-to-original reply taps.
+  // The FlatList is inverted so index 0 = newest; scrollToIndex with the
+  // message's position brings the original message into view.
+  const replyIndexMap = useMemo(
+    () => new Map(messages.map((m, i) => [m.id, i])),
+    [messages],
+  );
+
+  const handleReplyQuotePress = useCallback(
+    (replyToId: string) => {
+      const index = replyIndexMap.get(replyToId);
+      if (index === undefined || !flatListRef.current) return;
+      try {
+        flatListRef.current.scrollToIndex({
+          index,
+          animated: true,
+          viewPosition: 0.5,
+        });
+      } catch {
+        // scrollToIndex can throw if the index is out of range (not yet loaded)
+      }
+    },
+    [replyIndexMap],
+  );
+
+  const getReplyAuthorName = useCallback(
+    (userId: string) => (userId === currentUserId ? "You" : otherUserName),
+    [currentUserId, otherUserName],
+  );
+
   const handleSend = useCallback(() => {
-    send({ text: message, localImageUri: selectedImage });
+    send({
+      text: message,
+      localImageUri: selectedImage,
+      replyToId: replyingTo?.message.id ?? null,
+    });
     setMessage("");
     setSelectedImage(null);
-  }, [message, selectedImage, send]);
+    setReplyingTo(null);
+  }, [message, selectedImage, replyingTo, send]);
 
   const handlePickImage = useCallback(async () => {
     const result = await pickChatImage();
@@ -859,6 +907,9 @@ export default function ChatDetailScreen() {
           getMessageTime={getMessageTime}
           getDateDivider={getDateDivider}
           shouldShowDateDivider={shouldShowDateDivider}
+          onReplyQuotePress={handleReplyQuotePress}
+          getReplyAuthorName={getReplyAuthorName}
+          isDark={isDark}
         />
       );
     },
@@ -866,11 +917,14 @@ export default function ChatDetailScreen() {
       messages.length,
       currentUserId,
       theme,
+      isDark,
       openMessageActionSheet,
       retry,
       getMessageTime,
       getDateDivider,
       shouldShowDateDivider,
+      handleReplyQuotePress,
+      getReplyAuthorName,
     ],
   );
 
@@ -960,6 +1014,11 @@ export default function ChatDetailScreen() {
           disabled={!message.trim() && !selectedImage}
           textColor={theme.text}
           placeholderColor={theme.secondaryText}
+          primaryColor={theme.primary}
+          replyingTo={replyingTo}
+          onCancelReply={() => setReplyingTo(null)}
+          replyPreviewBg={theme.card}
+          replyPreviewBorderColor={theme.border}
           styles={dynamicStyles}
           paddingBottom={isKeyboardVisible ? 15 : insets.bottom}
         />

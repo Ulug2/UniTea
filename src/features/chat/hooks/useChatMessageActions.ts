@@ -10,8 +10,17 @@ import type { MessagesQueryData } from "../types";
 
 const MESSAGES_QUERY_KEY = "chat-messages";
 
-export function useChatMessageActions(chatId: string, currentUserId: string | undefined) {
+type ChatMessageActionsOptions = {
+  onReply?: (message: ChatMessageVM) => void;
+};
+
+export function useChatMessageActions(
+  chatId: string,
+  currentUserId: string | undefined,
+  options?: ChatMessageActionsOptions
+) {
   const queryClient = useQueryClient();
+  const { onReply } = options ?? {};
 
   const deleteMutation = useMutation({
     mutationFn: async ({
@@ -115,6 +124,12 @@ export function useChatMessageActions(chatId: string, currentUserId: string | un
         deleteForMe(message.id, isCurrentUser);
       };
 
+      // "Reply" is shown for all non-tombstone messages
+      if (!deletedForEveryone) {
+        options.push("Reply");
+        actions.push(() => onReply?.(message));
+      }
+
       if (isCurrentUser && !deletedForEveryone) {
         options.push("Delete for me", "Delete for everyone", "Cancel");
         actions.push(
@@ -136,7 +151,9 @@ export function useChatMessageActions(chatId: string, currentUserId: string | un
         ActionSheetIOS.showActionSheetWithOptions(
           {
             options,
-            destructiveButtonIndex: options.indexOf("Delete for everyone"),
+            destructiveButtonIndex: options.indexOf("Delete for everyone") >= 0
+              ? options.indexOf("Delete for everyone")
+              : undefined,
             cancelButtonIndex: options.indexOf("Cancel"),
           },
           (buttonIndex) => {
@@ -152,10 +169,10 @@ export function useChatMessageActions(chatId: string, currentUserId: string | un
           const onPress = actions[idx];
           return { text: label, onPress };
         });
-        Alert.alert("Delete message", undefined, androidButtons);
+        Alert.alert("Message", undefined, androidButtons);
       }
     },
-    [currentUserId, deleteMutation]
+    [currentUserId, deleteMutation, onReply]
   );
 
   return { deleteForMe, deleteForEveryone, openMessageActionSheet };

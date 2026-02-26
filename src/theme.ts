@@ -8,11 +8,12 @@ export const lightTheme = {
     primaryDark: '#28B3AC',     // Darker turquoise for hover states
     accent: '#183153',          // Midnight blue accent
     error: '#EF4444',           // Red for errors / destructive actions
+    messageBubble: '#FFFFFF',   // Partner message bubble (same as card in light)
 };
 
 export const darkTheme = {
     background: '#0F1419',      // Very dark background
-    card: '#0F1419',            // Dark card with blue tint
+    card: '#0F1419',            // Dark card (same as background)
     text: '#F8F9FB',            // Off-white text
     secondaryText: '#9CA3AF',   // Light gray for secondary text
     border: '#374151',          // Dark gray border
@@ -20,6 +21,7 @@ export const darkTheme = {
     primaryDark: '#28B3AC',     // Darker turquoise for hover states
     accent: '#2FC9C1',          // Turquoise accent in dark mode
     error: '#EF4444',           // Red for errors / destructive actions
+    messageBubble: '#1E2732',   // Partner message bubble — elevated surface for contrast
 };
 
 // Midnight blue variant for dark theme (alternative)
@@ -33,4 +35,5 @@ export const darkThemeMidnight = {
     primaryDark: '#28B3AC',     // Darker turquoise for hover states
     accent: '#2FC9C1',          // Turquoise accent
     error: '#EF4444',           // Red for errors / destructive actions
+    messageBubble: '#1E3A5F',   // Partner message bubble — slightly elevated midnight blue
 };

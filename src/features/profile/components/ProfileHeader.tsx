@@ -1,8 +1,8 @@
 import React from "react";
-import { View, Text, Pressable, Image, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import SupabaseImage from "../../../components/SupabaseImage";
-import { DEFAULT_AVATAR } from "../../../constants/images";
+import { FlippableAvatar } from "./FlippableAvatar";
+import { FoundingBadge } from "./FoundingBadge";
 import type { Theme } from "../../../context/ThemeContext";
 import type { Database } from "../../../types/database.types";
 
@@ -27,24 +27,10 @@ export function ProfileHeader({
 }: ProfileHeaderProps) {
   return (
     <View style={[styles.userCard, { backgroundColor: theme.card }]}>
-      <Pressable style={styles.avatarContainer} onPress={onAvatarPress}>
-        {currentUser?.avatar_url ? (
-          currentUser.avatar_url.startsWith("http") ? (
-            <Image
-              source={{ uri: currentUser.avatar_url }}
-              style={styles.avatar}
-            />
-          ) : (
-            <SupabaseImage
-              path={currentUser.avatar_url}
-              bucket="avatars"
-              style={styles.avatar}
-            />
-          )
-        ) : (
-          <Image source={DEFAULT_AVATAR} style={styles.avatar} />
-        )}
-      </Pressable>
+      <FlippableAvatar
+        currentUser={currentUser}
+        onAvatarPress={onAvatarPress}
+      />
       <View style={styles.userInfo}>
         <Text style={[styles.userName, { color: theme.text }]}>
           {userDisplayName}
@@ -67,6 +53,9 @@ export function ProfileHeader({
             {totalVotes} total votes
           </Text>
         </View>
+        {currentUser?.is_founding_member === true && (
+          <FoundingBadge theme={theme} />
+        )}
       </View>
     </View>
   );
@@ -80,17 +69,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     gap: 16,
-  },
-  avatarContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 90,
-    overflow: "hidden",
-  },
-  avatar: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 36,
   },
   userInfo: {
     flex: 1,
@@ -115,4 +93,3 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_500Medium",
   },
 });
-

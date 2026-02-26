@@ -118,7 +118,7 @@ export const chatDetailStyles = StyleSheet.create({
     fontFamily: "Poppins_500Medium",
   },
   messageContainer: {
-    marginBottom: 12,
+    marginBottom: 4,
     maxWidth: "75%",
   },
   currentUserMessage: {

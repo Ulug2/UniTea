@@ -2,6 +2,25 @@ import type { Database } from "../../types/database.types";
 
 type ChatMessageRow = Database["public"]["Tables"]["chat_messages"]["Row"];
 
+/**
+ * Minimal shape of a replied-to message embedded in a bubble.
+ * Populated via a JOIN when fetching messages (reply_message alias).
+ */
+export type ReplyPreview = {
+  id: string;
+  content: string | null;
+  image_url: string | null;
+  user_id: string;
+};
+
+/**
+ * State held by the screen while the user has chosen a message to reply to.
+ */
+export type ReplyingToState = {
+  message: ChatMessageVM;
+  senderName: string;
+};
+
 export type ChatMessageVM = ChatMessageRow & {
   image_url?: string | null;
   sendStatus?: "sending" | "failed";
@@ -9,7 +28,13 @@ export type ChatMessageVM = ChatMessageRow & {
     messageText: string;
     imageUrl?: string | null;
     localImageUri?: string | null;
+    /** Preserved across retry so replies survive failed-send recovery. */
+    replyToId?: string | null;
   } | null;
+  /** FK to the original message being replied to (mirrors DB column). */
+  reply_to_id?: string | null;
+  /** Denormalised original message data, populated from JOIN or optimistic update. */
+  replyToMessage?: ReplyPreview | null;
 };
 
 export type MessagesQueryData = {

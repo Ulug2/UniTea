@@ -8,7 +8,7 @@ import {
 import { supabase } from "../../../lib/supabase";
 import { uploadImage } from "../../../utils/supabaseImages";
 import { logger } from "../../../utils/logger";
-import type { ChatMessageVM, MessagesQueryData } from "../types";
+import type { ChatMessageVM, MessagesQueryData, ReplyPreview } from "../types";
 import {
   addOptimisticMessage,
   replaceOptimisticMessage,
@@ -20,7 +20,7 @@ const RATE_LIMIT_MESSAGES = 10;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const PENDING_CLEANUP_MS = 5000;
 
-type SendParams = { text: string; localImageUri?: string | null };
+type SendParams = { text: string; localImageUri?: string | null; replyToId?: string | null };
 
 type Options = {
   pendingMessageIdsRef: React.MutableRefObject<Set<string>>;
@@ -81,10 +81,10 @@ export function useChatSendMessage(
   const mutation = useMutation<
     { newMessage: ChatMessageVM; now: string },
     Error,
-    { messageText: string; imageUrl?: string | null; localImageUri?: string | null },
+    { messageText: string; imageUrl?: string | null; localImageUri?: string | null; replyToId?: string | null },
     MutationContext | undefined
   >({
-    mutationFn: async ({ messageText, imageUrl }) => {
+    mutationFn: async ({ messageText, imageUrl, replyToId }) => {
       if (!chatId || !currentUserId) {
         throw new Error("Missing chat ID or user ID");
       }
@@ -104,8 +104,9 @@ export function useChatSendMessage(
           user_id: currentUserId,
           content: messageText?.trim() ?? "",
           image_url: imageUrl ?? null,
+          reply_to_id: replyToId ?? null,
         })
-        .select()
+        .select("*, reply_message:reply_to_id(id, content, image_url, user_id)")
         .single();
 
       if (error) throw error;
@@ -123,7 +124,7 @@ export function useChatSendMessage(
 
       return { newMessage: newMessage as ChatMessageVM, now: newMessage.created_at ?? new Date().toISOString() };
     },
-    onMutate: async ({ messageText, imageUrl, localImageUri }) => {
+    onMutate: async ({ messageText, imageUrl, localImageUri, replyToId }) => {
       if (!chatId || !currentUserId) throw new Error("Missing chat ID or user ID");
 
       queryClient.cancelQueries({ queryKey: ["chat-messages", chatId] });
@@ -136,6 +137,26 @@ export function useChatSendMessage(
         optimisticImageUrisRef.current.set(tempId, localImageUri);
       }
 
+      // Look up the replied-to message from cache so the optimistic bubble renders immediately
+      let optimisticReplyToMessage: ReplyPreview | null = null;
+      if (replyToId) {
+        const cachedMessages = queryClient.getQueryData<MessagesQueryData>([
+          "chat-messages",
+          chatId,
+        ]);
+        if (cachedMessages) {
+          const found = cachedMessages.pages.flat().find((m) => m.id === replyToId);
+          if (found) {
+            optimisticReplyToMessage = {
+              id: found.id,
+              content: found.content ?? null,
+              image_url: found.image_url ?? null,
+              user_id: found.user_id,
+            };
+          }
+        }
+      }
+
       const optimisticMessage: ChatMessageVM = {
         id: tempId,
         chat_id: chatId,
@@ -146,11 +167,14 @@ export function useChatSendMessage(
         is_read: false,
         deleted_by_receiver: null,
         deleted_by_sender: null,
+        reply_to_id: replyToId ?? null,
+        replyToMessage: optimisticReplyToMessage,
         sendStatus: "sending",
         _clientPayload: {
           messageText,
           imageUrl: imageUrl ?? null,
           localImageUri: localImageUri ?? null,
+          replyToId: replyToId ?? null,
         },
       };
 
@@ -201,7 +225,17 @@ export function useChatSendMessage(
     },
     onSuccess: (data, _variables, context) => {
       if (!context || !chatId) return;
-      const { newMessage } = data;
+      const rawNewMessage = data.newMessage;
+      // Map the nested reply_message alias from the JOIN → replyToMessage on the VM.
+      // Guard on .id to avoid accepting PostgREST {} empty-object for null FKs.
+      const rawReply = (rawNewMessage as any).reply_message;
+      const newMessage: ChatMessageVM = {
+        ...rawNewMessage,
+        replyToMessage:
+          rawReply?.id
+            ? rawReply
+            : context.optimisticMessage.replyToMessage ?? null,
+      };
       const { tempId } = context;
 
       pendingMessageIdsRef.current.delete(tempId);
@@ -287,7 +321,7 @@ export function useChatSendMessage(
     async (params: SendParams) => {
       if (isSendingRef.current || isSending) return;
       if (!chatId || !currentUserId) return;
-      const { text: messageText, localImageUri } = params;
+      const { text: messageText, localImageUri, replyToId } = params;
       if (!messageText?.trim() && !localImageUri) return;
 
       isSendingRef.current = true;
@@ -326,7 +360,7 @@ export function useChatSendMessage(
       }
 
       mutation.mutate(
-        { messageText: messageText?.trim() ?? "", imageUrl, localImageUri },
+        { messageText: messageText?.trim() ?? "", imageUrl, localImageUri, replyToId: replyToId ?? null },
         {
           onSettled: () => {
             isSendingRef.current = false;
@@ -352,6 +386,7 @@ export function useChatSendMessage(
       send({
         text: payload?.messageText ?? msg.content ?? "",
         localImageUri: localUri ?? null,
+        replyToId: payload?.replyToId ?? null,
       });
     },
     [chatId, currentUserId, queryClient, send, optimisticImageUrisRef]

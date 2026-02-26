@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.1"
   }
   public: {
     Tables: {
@@ -88,6 +88,7 @@ export type Database = {
           id: string
           image_url: string | null
           is_read: boolean | null
+          reply_to_id: string | null
           user_id: string
         }
         Insert: {
@@ -99,6 +100,7 @@ export type Database = {
           id?: string
           image_url?: string | null
           is_read?: boolean | null
+          reply_to_id?: string | null
           user_id: string
         }
         Update: {
@@ -110,6 +112,7 @@ export type Database = {
           id?: string
           image_url?: string | null
           is_read?: boolean | null
+          reply_to_id?: string | null
           user_id?: string
         }
         Relationships: [
@@ -126,6 +129,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_chats_summary"
             referencedColumns: ["chat_id"]
+          },
+          {
+            foreignKeyName: "chat_messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -564,6 +574,7 @@ export type Database = {
           id: string
           is_admin: boolean | null
           is_banned: boolean | null
+          is_founding_member: boolean
           is_permanently_banned: boolean | null
           is_verified: boolean | null
           updated_at: string | null
@@ -577,6 +588,7 @@ export type Database = {
           id: string
           is_admin?: boolean | null
           is_banned?: boolean | null
+          is_founding_member?: boolean
           is_permanently_banned?: boolean | null
           is_verified?: boolean | null
           updated_at?: string | null
@@ -590,6 +602,7 @@ export type Database = {
           id?: string
           is_admin?: boolean | null
           is_banned?: boolean | null
+          is_founding_member?: boolean
           is_permanently_banned?: boolean | null
           is_verified?: boolean | null
           updated_at?: string | null
@@ -920,6 +933,7 @@ export type Database = {
         Returns: boolean
       }
       delete_user_account: { Args: never; Returns: undefined }
+      get_my_is_admin: { Args: never; Returns: boolean }
       get_repost_count: { Args: { post_id: string }; Returns: number }
     }
     Enums: {
