@@ -1,4 +1,11 @@
-import { View, Text, StyleSheet, Pressable, Alert } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Alert,
+  Linking,
+} from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
 import { useState, useEffect, useCallback } from "react";
@@ -53,6 +60,22 @@ export default function ProfileScreen() {
       Alert.alert("Unable to open link", message);
     });
   }, [openExternalLink]);
+
+  const handleContactSupport = useCallback(() => {
+    const subject = encodeURIComponent(
+      "[UniTee Support] Report Inappropriate Activity / Technical Issue",
+    );
+    const body = encodeURIComponent(
+      "Please describe the issue or report the specific content/user here...",
+    );
+    const mailtoUrl = `mailto:unitee.app@gmail.com?subject=${subject}&body=${body}`;
+    Linking.openURL(mailtoUrl).catch(() => {
+      Alert.alert(
+        "Cannot open mail app",
+        "Please email us directly at unitee.app@gmail.com",
+      );
+    });
+  }, []);
 
   // Fetch current user profile via hook
   const {
@@ -262,6 +285,7 @@ export default function ProfileScreen() {
           setSettingsVisible(false);
           setManageAccountVisible(true);
         }}
+        onPressContactSupport={handleContactSupport}
       />
 
       {/* Manage Account Modal */}

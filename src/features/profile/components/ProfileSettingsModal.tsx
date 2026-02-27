@@ -22,6 +22,7 @@ type ProfileSettingsModalProps = {
   onPressTerms: () => void;
   onPressPrivacy: () => void;
   onPressManageAccount: () => void;
+  onPressContactSupport: () => void;
 };
 
 export function ProfileSettingsModal({
@@ -35,6 +36,7 @@ export function ProfileSettingsModal({
   onPressTerms,
   onPressPrivacy,
   onPressManageAccount,
+  onPressContactSupport,
 }: ProfileSettingsModalProps) {
   return (
     <Modal
@@ -99,6 +101,24 @@ export function ProfileSettingsModal({
                 />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
                   Notifications
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={theme.secondaryText}
+              />
+            </Pressable>
+
+            {/* Contact Support */}
+            <Pressable
+              style={[styles.settingRow, { borderBottomColor: theme.border }]}
+              onPress={onPressContactSupport}
+            >
+              <View style={styles.settingLeft}>
+                <Ionicons name="mail-outline" size={22} color={theme.text} />
+                <Text style={[styles.settingLabel, { color: theme.text }]}>
+                  Contact Support
                 </Text>
               </View>
               <Ionicons
@@ -174,6 +194,10 @@ export function ProfileSettingsModal({
               />
             </Pressable>
           </ScrollView>
+          <Text style={[styles.disclaimer, { color: theme.secondaryText }]}>
+            UniTee is an independent student project and is not affiliated with,
+            endorsed by, or an official product of Nazarbayev University.
+          </Text>
         </View>
       </Pressable>
     </Modal>
@@ -229,5 +253,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Poppins_400Regular",
     marginTop: 1,
+  },
+  disclaimer: {
+    fontSize: 11,
+    fontFamily: "Poppins_400Regular",
+    textAlign: "center",
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    lineHeight: 16,
   },
 });

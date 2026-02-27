@@ -204,139 +204,144 @@ const PostListItem = React.memo(function PostListItem({
     sharePost(postId);
   };
 
-  const styles = useMemo(() => StyleSheet.create({
-    link: {
-      textDecorationLine: "none",
-    },
-    card: {
-      paddingHorizontal: 15,
-      paddingVertical: 12,
-      backgroundColor: theme.card,
-      borderBottomWidth: 0.5,
-      borderBottomColor: theme.border,
-      gap: 1,
-    },
-    repostHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginBottom: 8,
-    },
-    repostText: {
-      fontSize: 13,
-      color: theme.secondaryText,
-      fontFamily: "Poppins_400Regular",
-    },
-    repostComment: {
-      fontSize: 15,
-      color: theme.text,
-      fontFamily: "Poppins_400Regular",
-      marginTop: 8,
-      marginBottom: 10,
-    },
-    originalPostCard: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 12,
-      padding: 12,
-      backgroundColor: theme.background,
-      marginTop: 8,
-    },
-    originalAuthor: {
-      fontSize: 14,
-      color: theme.text,
-      fontFamily: "Poppins_500Medium",
-      marginBottom: 6,
-    },
-    originalContent: {
-      fontSize: 15,
-      color: theme.text,
-      fontFamily: "Poppins_400Regular",
-      marginBottom: 6,
-    },
-    originalDate: {
-      fontSize: 12,
-      color: theme.secondaryText,
-      marginTop: 8,
-    },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    userInfo: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    avatar: {
-      width: 35,
-      height: 35,
-      borderRadius: 20,
-      backgroundColor: theme.border,
-    },
-    username: {
-      fontSize: 15,
-      color: theme.text,
-      fontFamily: "Poppins_500Medium",
-    },
-    time: {
-      fontSize: 12,
-      color: theme.secondaryText,
-      marginLeft: 10,
-    },
-    postImage: {
-      width: "100%",
-      aspectRatio: 4 / 3,
-      borderRadius: 15,
-      marginTop: 8,
-    },
-    contentText: {
-      fontSize: 16,
-      marginTop: 6,
-      fontFamily: "Poppins_400Regular",
-      color: theme.text,
-    },
-    footer: {
-      flexDirection: "row",
-      marginTop: 10,
-      alignItems: "center",
-    },
-    footerLeft: {
-      flexDirection: "row",
-      gap: 16,
-    },
-    footerRight: {
-      marginLeft: "auto",
-      flexDirection: "row",
-      gap: 10,
-    },
-    iconBox: {
-      flexDirection: "row",
-      alignItems: "center",
-      borderWidth: 0.5,
-      borderColor: theme.border,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 20,
-      backgroundColor: theme.background,
-      marginLeft: -5,
-      minHeight: 40, // Better touch target (accessibility standard is 44x44)
-      minWidth: 40,
-    },
-    iconText: {
-      fontWeight: "500",
-      marginLeft: 5,
-      fontFamily: "Poppins_400Regular",
-      color: theme.text,
-    },
-    divider: {
-      width: 1,
-      backgroundColor: theme.border,
-      height: 14,
-      marginHorizontal: 7,
-      alignSelf: "center",
-    },
-  }), [theme]);
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        link: {
+          textDecorationLine: "none",
+        },
+        card: {
+          paddingHorizontal: 15,
+          paddingVertical: 12,
+          backgroundColor: theme.card,
+          borderBottomWidth: 0.5,
+          borderBottomColor: theme.border,
+          gap: 1,
+        },
+        repostHeader: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          marginBottom: 8,
+        },
+        repostText: {
+          fontSize: 13,
+          color: theme.secondaryText,
+          fontFamily: "Poppins_400Regular",
+        },
+        repostComment: {
+          fontSize: 15,
+          color: theme.text,
+          fontFamily: "Poppins_400Regular",
+          marginTop: 8,
+          marginBottom: 10,
+        },
+        originalPostCard: {
+          borderWidth: 1,
+          borderColor: theme.border,
+          borderRadius: 12,
+          padding: 12,
+          backgroundColor: theme.background,
+          marginTop: 8,
+        },
+        originalAuthor: {
+          fontSize: 14,
+          color: theme.text,
+          fontFamily: "Poppins_500Medium",
+          marginBottom: 6,
+        },
+        originalContent: {
+          fontSize: 15,
+          color: theme.text,
+          fontFamily: "Poppins_400Regular",
+          marginBottom: 6,
+        },
+        originalDate: {
+          fontSize: 12,
+          color: theme.secondaryText,
+          marginTop: 8,
+        },
+        header: {
+          flexDirection: "row",
+          alignItems: "center",
+        },
+        userInfo: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+        },
+        avatar: {
+          width: 35,
+          height: 35,
+          borderRadius: 20,
+          backgroundColor: theme.border,
+        },
+        username: {
+          fontSize: 15,
+          color: theme.text,
+          fontFamily: "Poppins_500Medium",
+        },
+        time: {
+          fontSize: 12,
+          color: theme.secondaryText,
+          marginLeft: 10,
+        },
+        postImage: {
+          width: "100%",
+          aspectRatio: 4 / 3,
+          borderRadius: 15,
+          marginTop: 8,
+        },
+        contentText: {
+          fontSize: 16,
+          marginTop: 6,
+          fontFamily: "Poppins_400Regular",
+          color: theme.text,
+        },
+        footer: {
+          flexDirection: "row",
+          marginTop: 10,
+          alignItems: "center",
+        },
+        footerLeft: {
+          flexDirection: "row",
+          gap: 16,
+        },
+        footerRight: {
+          marginLeft: "auto",
+          flexDirection: "row",
+          gap: 10,
+          alignItems: "center",
+        },
+        iconBox: {
+          flexDirection: "row",
+          alignItems: "center",
+          borderWidth: 0.5,
+          borderColor: theme.border,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderRadius: 20,
+          backgroundColor: theme.background,
+          marginLeft: -5,
+          minHeight: 40, // Better touch target (accessibility standard is 44x44)
+          minWidth: 40,
+        },
+        iconText: {
+          fontWeight: "500",
+          marginLeft: 5,
+          fontFamily: "Poppins_400Regular",
+          color: theme.text,
+        },
+        divider: {
+          width: 1,
+          backgroundColor: theme.border,
+          height: 14,
+          marginHorizontal: 7,
+          alignSelf: "center",
+        },
+      }),
+    [theme],
+  );
 
   const postCreatedAt = createdAt ? new Date(createdAt) : new Date();
 

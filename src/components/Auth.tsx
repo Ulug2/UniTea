@@ -203,14 +203,22 @@ export default function Auth() {
                   style={styles.checkboxIcon}
                 />
                 <Text style={[styles.checkboxText, { color: theme.text }]}>
-                  I agree to the collection of my personal data and the{" "}
+                  I agree to the{" "}
+                  <Text
+                    style={[styles.linkText, { color: theme.primary }]}
+                    onPress={() => handleOpenExternalLink(TERMS_URL)}
+                  >
+                    Terms of Service
+                  </Text>{" "}
+                  and{" "}
                   <Text
                     style={[styles.linkText, { color: theme.primary }]}
                     onPress={() => handleOpenExternalLink(PRIVACY_URL)}
                   >
                     Privacy Policy
                   </Text>
-                  .
+                  . I understand there is zero tolerance for objectionable
+                  content or abusive users.
                 </Text>
               </Pressable>
               {!!privacyError && (
@@ -319,22 +327,9 @@ export default function Auth() {
             )}
           </View>
         </View>
-
-        <Text style={[styles.tosText, { color: theme.secondaryText }]}>
-          By continuing, you agree to our{" "}
-          <Text
-            style={[styles.linkText, { color: theme.primary }]}
-            onPress={() => handleOpenExternalLink(TERMS_URL)}
-          >
-            Terms of Service
-          </Text>{" "}
-          and{" "}
-          <Text
-            style={[styles.linkText, { color: theme.primary }]}
-            onPress={() => handleOpenExternalLink(PRIVACY_URL)}
-          >
-            Privacy Policy
-          </Text>
+        <Text style={[styles.disclaimer, { color: theme.secondaryText }]}>
+          UniTee is an independent student project and is not affiliated with,
+          endorsed by, or an official product of Nazarbayev University.
         </Text>
       </View>
     </SafeAreaView>
@@ -475,14 +470,16 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.lg,
     fontWeight: "600",
   },
-  tosText: {
-    marginTop: SPACING.lg,
-    textAlign: "center",
-    fontSize: FONT_SIZES.xs,
-    lineHeight: BORDER_RADIUS.lg,
-  },
   linkText: {
     textDecorationLine: "underline",
     fontWeight: "600",
+  },
+  disclaimer: {
+    fontSize: 11,
+    fontFamily: "Poppins_400Regular",
+    textAlign: "center",
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    lineHeight: 16,
   },
 });

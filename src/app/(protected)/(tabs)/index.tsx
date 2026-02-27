@@ -41,6 +41,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
   const { theme } = useTheme();
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
+  const { hiddenPostIds } = useFilterContext();
 
   const { data: blocks = [] } = useQuery({
     queryKey: ["blocks", currentUserId],
@@ -183,21 +184,25 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
     }
 
     if (filter === "hot") {
-      return filteredPosts.sort((a, b) => {
-        const engagementA =
-          Math.abs(a.vote_score || 0) +
-          (a.comment_count || 0) +
-          (a.repost_count || 0);
-        const engagementB =
-          Math.abs(b.vote_score || 0) +
-          (b.comment_count || 0) +
-          (b.repost_count || 0);
-        return engagementB - engagementA;
-      });
+      return filteredPosts
+        .filter((post) => !hiddenPostIds.includes(post.post_id))
+        .sort((a, b) => {
+          const engagementA =
+            Math.abs(a.vote_score || 0) +
+            (a.comment_count || 0) +
+            (a.repost_count || 0);
+          const engagementB =
+            Math.abs(b.vote_score || 0) +
+            (b.comment_count || 0) +
+            (b.repost_count || 0);
+          return engagementB - engagementA;
+        });
     }
 
-    return filteredPosts;
-  }, [postsData, blocks, filter]);
+    return filteredPosts.filter(
+      (post) => !hiddenPostIds.includes(post.post_id),
+    );
+  }, [postsData, blocks, filter, hiddenPostIds]);
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {

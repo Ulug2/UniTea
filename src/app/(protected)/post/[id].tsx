@@ -35,12 +35,16 @@ import { useBookmarkToggle } from "../../../features/posts/hooks/useBookmarkTogg
 import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
 import { useReportPost } from "../../../features/posts/hooks/useReportPost";
 import { useBlockUser } from "../../../features/posts/hooks/useBlockUser";
+import { useFilterContext } from "../../../context/FilterContext";
 import { CommentsTreeList } from "../../../features/comments/components/CommentsTreeList";
 import { CommentComposer } from "../../../features/comments/components/CommentComposer";
 import { PostHeaderCard } from "../../../features/posts/components/PostHeaderCard";
 
 export default function PostDetailed() {
-  const { id, fromDeeplink } = useLocalSearchParams<{ id: string; fromDeeplink?: string }>();
+  const { id, fromDeeplink } = useLocalSearchParams<{
+    id: string;
+    fromDeeplink?: string;
+  }>();
   const postId = typeof id === "string" ? id : id?.[0];
   const isFromDeeplink = fromDeeplink === "1";
   const insets = useSafeAreaInsets();
@@ -51,18 +55,21 @@ export default function PostDetailed() {
   const [commentText, setCommentText] = useState<string>("");
   const [parentCommentId, setParentCommentId] = useState<string | null>(null);
   const [replyingToUsername, setReplyingToUsername] = useState<string | null>(
-    null
+    null,
   );
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [isAnonymousMode, setIsAnonymousMode] = useState(true);
-  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
+    null,
+  );
   const inputRef = useRef<TextInput | null>(null);
   const commentsListRef = useRef<FlatList<CommentNode> | null>(null);
 
   // Get current user ID
   const currentUserId = session?.user?.id || null;
+  const { hidePost } = useFilterContext();
 
   // Fetch blocked users via shared hook
   const { data: blocks = [] } = useBlocks();
@@ -164,7 +171,7 @@ export default function PostDetailed() {
           style: "destructive",
           onPress: () => deletePostMutation.mutate(undefined),
         },
-      ]
+      ],
     );
   };
 
@@ -207,15 +214,13 @@ export default function PostDetailed() {
           style: "destructive",
           onPress: () => blockUserMutation.mutate(detailedPost.user_id),
         },
-      ]
+      ],
     );
   };
 
   const handleReplyPress = (commentId: string) => {
     // Find the comment to get the username
-    const findComment = (
-      comments: CommentNode[]
-    ): CommentNode | null => {
+    const findComment = (comments: CommentNode[]): CommentNode | null => {
       for (const comment of comments) {
         if (comment.id === commentId) {
           return comment;
@@ -293,14 +298,21 @@ export default function PostDetailed() {
   }
 
   if (postError || userError || commentsError) {
-    if (postError) logger.error("Failed to load post", postError as Error, { postId });
-    if (userError) logger.error("Failed to load post user", userError as Error, { postId });
-    if (commentsError) logger.error("Failed to load comments", commentsError as Error, { postId });
+    if (postError)
+      logger.error("Failed to load post", postError as Error, { postId });
+    if (userError)
+      logger.error("Failed to load post user", userError as Error, { postId });
+    if (commentsError)
+      logger.error("Failed to load comments", commentsError as Error, {
+        postId,
+      });
 
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <Text style={[styles.errorText, { color: theme.text }]}>
-          {isFromDeeplink ? "This post isn't available right now." : "Failed to load content."}
+          {isFromDeeplink
+            ? "This post isn't available right now."
+            : "Failed to load content."}
         </Text>
         <Pressable
           style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
@@ -373,7 +385,12 @@ export default function PostDetailed() {
           ),
           headerRight: () => (
             <Pressable onPress={() => setShowMenu(true)}>
-              <Entypo name="dots-three-horizontal" size={24} color="white" style={{ marginLeft: 5 }} />
+              <Entypo
+                name="dots-three-horizontal"
+                size={24}
+                color="white"
+                style={{ marginLeft: 5 }}
+              />
             </Pressable>
           ),
         }}
@@ -400,6 +417,38 @@ export default function PostDetailed() {
                 />
                 <Text style={[styles.menuText, { color: "#EF4444" }]}>
                   Delete Post
+                </Text>
+              </Pressable>
+            ) : null}
+            {!isPostOwner && postId ? (
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  Alert.alert(
+                    "Hide Post",
+                    "This post will be removed from your feed.",
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Hide",
+                        style: "destructive",
+                        onPress: () => {
+                          hidePost(postId);
+                          router.back();
+                        },
+                      },
+                    ],
+                  );
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="eye-off-outline"
+                  size={20}
+                  color={theme.text}
+                />
+                <Text style={[styles.menuText, { color: theme.text }]}>
+                  Hide Post
                 </Text>
               </Pressable>
             ) : null}
@@ -452,7 +501,9 @@ export default function PostDetailed() {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1, backgroundColor: theme.background }}
-        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : insets.top}
+        keyboardVerticalOffset={
+          Platform.OS === "ios" ? insets.top + 44 : insets.top
+        }
       >
         <View style={{ flex: 1 }}>
           {(createCommentMutation.isPending || deletingCommentId) && (
@@ -503,9 +554,7 @@ export default function PostDetailed() {
             onToggleAnonymous={() => setIsAnonymousMode((prev) => !prev)}
             replyingToUsername={replyingToUsername}
             isSubmitting={createCommentMutation.isPending}
-            currentUserLabel={
-              session?.user?.user_metadata?.username || "You"
-            }
+            currentUserLabel={session?.user?.user_metadata?.username || "You"}
           />
         </View>
       </KeyboardAvoidingView>
