@@ -113,6 +113,20 @@ serve(async (req: Request) => {
       );
     }
 
+    // Audit log (only log admin-initiated removals, not owner self-deletes)
+    if (isAdmin) {
+      const { error: logError } = await supabaseAdmin
+        .from("admin_action_logs")
+        .insert({
+          admin_id: user.id,
+          action: "delete_post",
+          target_user_id: post.user_id,
+          target_post_id: post_id,
+          metadata: { deleted_by_owner: isOwner },
+        });
+      if (logError) console.error("delete-post: failed to insert audit log:", logError);
+    }
+
     return new Response(
       JSON.stringify({ success: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

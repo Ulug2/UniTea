@@ -105,6 +105,17 @@ serve(async (req: Request) => {
       );
     }
 
+    // Audit log
+    const { error: logError } = await supabaseAdmin
+      .from("admin_action_logs")
+      .insert({
+        admin_id: user.id,
+        action: "unban",
+        target_user_id,
+        metadata: {},
+      });
+    if (logError) console.error("unban-user: failed to insert audit log:", logError);
+
     return new Response(
       JSON.stringify({ success: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

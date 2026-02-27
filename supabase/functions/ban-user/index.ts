@@ -136,6 +136,21 @@ serve(async (req: Request) => {
       );
     }
 
+    // Audit log
+    const { error: logError } = await supabaseAdmin
+      .from("admin_action_logs")
+      .insert({
+        admin_id: user.id,
+        action: "ban",
+        target_user_id,
+        metadata: {
+          duration,
+          banned_until: update.banned_until ?? null,
+          is_permanently_banned: isPermanent,
+        },
+      });
+    if (logError) console.error("ban-user: failed to insert audit log:", logError);
+
     return new Response(
       JSON.stringify({
         success: true,
