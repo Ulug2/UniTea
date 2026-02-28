@@ -176,6 +176,22 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     setLoadingState((prev) => ({ ...prev, forgot: true }));
     logAuthEvent("password_reset_started", { email: sanitizedEmail });
     try {
+      // Best-effort check: block sending a reset email if no account exists for this address.
+      // If the Edge Function itself errors (network, timeout), we fall through and let Supabase handle it.
+      try {
+        const { data: checkData } = await supabase.functions.invoke(
+          "check-email-exists",
+          { body: { email: sanitizedEmail } }
+        );
+        if (checkData?.exists === false) {
+          setEmailError("No account found with this email address.");
+          logAuthEvent("password_reset_email_not_found", { email: sanitizedEmail });
+          return;
+        }
+      } catch {
+        // Ignore — proceed and rely on Supabase's own response.
+      }
+
       const { error } = await race(
         supabase.auth.resetPasswordForEmail(sanitizedEmail, {
           redirectTo: "myunitea://reset-password",
