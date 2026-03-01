@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Image } from "react-native";
 import { Database } from "../types/database.types";
 import { useTheme } from "../context/ThemeContext";
@@ -18,6 +18,8 @@ type ChatListItemProps = {
   lastMessageHasImage?: boolean;
   unreadCount: number;
   isAnonymous?: boolean;
+  /** Called when avatar has finished loading (for skeleton reveal) */
+  onImageLoad?: () => void;
 };
 
 // Custom comparison function for better memoization
@@ -31,7 +33,8 @@ const arePropsEqual = (prevProps: ChatListItemProps, nextProps: ChatListItemProp
     prevProps.isAnonymous === nextProps.isAnonymous &&
     prevProps.otherUser?.id === nextProps.otherUser?.id &&
     prevProps.otherUser?.avatar_url === nextProps.otherUser?.avatar_url &&
-    prevProps.otherUser?.username === nextProps.otherUser?.username
+    prevProps.otherUser?.username === nextProps.otherUser?.username &&
+    prevProps.onImageLoad === nextProps.onImageLoad
   );
 };
 
@@ -43,8 +46,25 @@ const ChatListItem = React.memo(function ChatListItem({
   lastMessageHasImage = false,
   unreadCount,
   isAnonymous,
+  onImageLoad,
 }: ChatListItemProps) {
   const { theme } = useTheme();
+  const onImageLoadCalledRef = useRef(false);
+
+  const hasRemoteAvatar = !isAnonymous && !!otherUser?.avatar_url;
+
+  useEffect(() => {
+    if (!onImageLoad || hasRemoteAvatar) return;
+    if (onImageLoadCalledRef.current) return;
+    onImageLoadCalledRef.current = true;
+    onImageLoad();
+  }, [onImageLoad, hasRemoteAvatar]);
+
+  const handleAvatarLoad = () => {
+    if (!onImageLoad || onImageLoadCalledRef.current) return;
+    onImageLoadCalledRef.current = true;
+    onImageLoad();
+  };
 
   const getInitial = () => {
     if (isAnonymous || !otherUser?.username) return "?";
@@ -172,16 +192,22 @@ const ChatListItem = React.memo(function ChatListItem({
               <Image
                 source={{ uri: otherUser.avatar_url }}
                 style={styles.avatarImage}
+                onLoad={handleAvatarLoad}
               />
             ) : (
               <SupabaseImage
                 path={otherUser.avatar_url}
                 bucket="avatars"
                 style={styles.avatarImage}
+                onLoad={handleAvatarLoad}
               />
             )
           ) : (
-            <Image source={DEFAULT_AVATAR} style={styles.avatarImage} />
+            <Image
+              source={DEFAULT_AVATAR}
+              style={styles.avatarImage}
+              onLoad={handleAvatarLoad}
+            />
           )}
           {unreadCount > 0 && (
             <View style={styles.unreadBadge}>

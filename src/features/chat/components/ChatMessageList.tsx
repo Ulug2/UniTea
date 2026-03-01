@@ -32,6 +32,8 @@ type ChatMessageListProps<T = ChatMessageVM> = {
   isAtBottom: boolean;
   newMessagesPillStyles: { pill: StyleProp<ViewStyle>; text: StyleProp<TextStyle> };
   theme: { primary: string };
+  /** When true, maintainVisibleContentPosition is disabled to avoid list jump/lag when scrolling with keyboard open. */
+  isKeyboardVisible?: boolean;
 };
 
 export function ChatMessageList<T = ChatMessageVM>({
@@ -51,6 +53,7 @@ export function ChatMessageList<T = ChatMessageVM>({
   isAtBottom,
   newMessagesPillStyles,
   theme,
+  isKeyboardVisible = false,
 }: ChatMessageListProps<T>) {
   const listFooter =
     isFetchingNextPage ? (
@@ -77,7 +80,9 @@ export function ChatMessageList<T = ChatMessageVM>({
         keyExtractor={keyExtractor}
         contentContainerStyle={contentContainerStyle}
         inverted={inverted}
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        maintainVisibleContentPosition={
+          isKeyboardVisible ? undefined : { minIndexForVisible: 0 }
+        }
         windowSize={10}
         maxToRenderPerBatch={20}
         initialNumToRender={20}

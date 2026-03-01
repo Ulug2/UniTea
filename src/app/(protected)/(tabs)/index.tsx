@@ -26,6 +26,7 @@ import { useCallback, useMemo, useEffect, useRef } from "react";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useFilterContext } from "../../../context/FilterContext";
 import { useAuth } from "../../../context/AuthContext";
+import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 
 type PostSummary = PostsSummaryViewRow;
 
@@ -212,8 +213,13 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
 
   const keyExtractor = useCallback((item: PostSummary) => item.post_id, []);
 
+  const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
+    minItems: 3,
+    timeoutMs: 2500,
+  });
+
   const renderItem = useCallback(
-    ({ item }: { item: PostSummary }) => (
+    ({ item, index }: { item: PostSummary; index: number }) => (
       <PostListItem
         postId={item.post_id}
         userId={item.user_id}
@@ -243,9 +249,10 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
         originalAuthorAvatar={item.original_author_avatar}
         originalIsAnonymous={item.original_is_anonymous}
         originalCreatedAt={item.original_created_at}
+        onImageLoad={index < 5 ? onItemReady : undefined}
       />
     ),
-    [],
+    [onItemReady],
   );
 
   if (isPending) {
@@ -263,40 +270,64 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <FlatList
-        data={posts}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={6}
-        updateCellsBatchingPeriod={150}
-        initialNumToRender={6}
-        windowSize={10}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
-            tintColor={theme.primary}
-          />
-        }
-        ListFooterComponent={
-          isFetchingNextPage ? (
-            <View style={{ padding: 16, alignItems: "center" }}>
-              <ActivityIndicator size="small" color={theme.primary} />
+      <View
+        style={{
+          flex: 1,
+          opacity: shouldReveal ? 1 : 0,
+          pointerEvents: shouldReveal ? "auto" : "none",
+        }}
+      >
+        <FlatList
+          data={posts}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={6}
+          updateCellsBatchingPeriod={150}
+          initialNumToRender={6}
+          windowSize={10}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              tintColor={theme.primary}
+            />
+          }
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={{ padding: 16, alignItems: "center" }}>
+                <ActivityIndicator size="small" color={theme.primary} />
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
+                No posts yet
+              </Text>
             </View>
-          ) : null
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
-              No posts yet
-            </Text>
-          </View>
-        }
-        contentInsetAdjustmentBehavior="automatic"
-      />
+          }
+          contentInsetAdjustmentBehavior="automatic"
+        />
+      </View>
+      {!shouldReveal && (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: theme.background },
+          ]}
+          pointerEvents="none"
+        >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.skeletonContent}
+          >
+            <PostListSkeleton />
+          </ScrollView>
+        </View>
+      )}
     </View>
   );
 }

@@ -23,6 +23,7 @@ import { useInfiniteQuery, useIsMutating, useMutation, useQuery, useQueryClient 
 import { supabase } from "../../../lib/supabase";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { Database } from "../../../types/database.types";
+import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useAuth } from "../../../context/AuthContext";
 import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
@@ -287,8 +288,13 @@ export default function LostFoundScreen() {
     setShowMenu(true);
   }, []);
 
+  const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
+    minItems: 3,
+    timeoutMs: 2500,
+  });
+
   const renderItem = useCallback(
-    ({ item }: { item: PostSummary }) => (
+    ({ item, index }: { item: PostSummary; index: number }) => (
       <LostFoundListItem
         postId={item.post_id}
         userId={item.user_id}
@@ -302,9 +308,10 @@ export default function LostFoundScreen() {
         avatarUrl={item.avatar_url}
         isVerified={item.is_verified}
         onLongPress={handleItemLongPress}
+        onImageLoad={index < 5 ? onItemReady : undefined}
       />
     ),
-    [handleItemLongPress]
+    [handleItemLongPress, onItemReady]
   );
 
   // Show skeleton while loading initial data
@@ -318,6 +325,77 @@ export default function LostFoundScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <View
+        style={{
+          flex: 1,
+          opacity: shouldReveal ? 1 : 0,
+          pointerEvents: shouldReveal ? "auto" : "none",
+        }}
+      >
+        <FlatList
+          data={filteredPosts}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={6}
+          updateCellsBatchingPeriod={150}
+          initialNumToRender={6}
+          windowSize={10}
+          ListHeaderComponent={
+            <View style={styles.searchHeader}>
+              <CustomInput
+                placeholder="Search by item, location, lost or found..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                leftIcon={{ type: "font-awesome", name: "search" }}
+                returnKeyType="search"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.searchInput}
+              />
+            </View>
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              tintColor={theme.primary}
+            />
+          }
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={{ padding: 16, alignItems: "center" }}>
+                <ActivityIndicator size="small" color={theme.primary} />
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            !isLoading ? (
+              <View style={styles.emptyContainer}>
+                <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
+                  {debouncedQuery
+                    ? "No results for your search"
+                    : "No lost & found posts yet"}
+                </Text>
+              </View>
+            ) : null
+          }
+          contentInsetAdjustmentBehavior="automatic"
+        />
+      </View>
+      {!shouldReveal && (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: theme.background },
+          ]}
+          pointerEvents="none"
+        >
+          <LostFoundListSkeleton />
+        </View>
+      )}
       {/* Menu Modal (long-press: Delete own / Report other) */}
       <Modal
         visible={showMenu}
@@ -372,58 +450,6 @@ export default function LostFoundScreen() {
         username={selectedPost?.username ?? "User"}
       />
 
-      <FlatList
-        data={filteredPosts}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={6}
-        updateCellsBatchingPeriod={150}
-        initialNumToRender={6}
-        windowSize={10}
-        ListHeaderComponent={
-          <View style={styles.searchHeader}>
-            <CustomInput
-              placeholder="Search by item, location, lost or found..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              leftIcon={{ type: "font-awesome", name: "search" }}
-              returnKeyType="search"
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={styles.searchInput}
-            />
-          </View>
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
-            tintColor={theme.primary}
-          />
-        }
-        ListFooterComponent={
-          isFetchingNextPage ? (
-            <View style={{ padding: 16, alignItems: "center" }}>
-              <ActivityIndicator size="small" color={theme.primary} />
-            </View>
-          ) : null
-        }
-        ListEmptyComponent={
-          !isLoading ? (
-            <View style={styles.emptyContainer}>
-              <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
-                {debouncedQuery
-                  ? "No results for your search"
-                  : "No lost & found posts yet"}
-              </Text>
-            </View>
-          ) : null
-        }
-        contentInsetAdjustmentBehavior="automatic"
-      />
       {/* Floating Action Button */}
       <Pressable
         onPress={() => router.push("/create-post?type=lost_found")}

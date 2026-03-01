@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { supabase } from "../../lib/supabase";
+import { logger } from "../../utils/logger";
 import CustomInput from "../../components/CustomInput";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -37,12 +38,24 @@ export default function ResetPasswordScreen() {
         return;
       }
       try {
-        // exchangeCodeForSession fires a PASSWORD_RECOVERY auth event,
-        // which AuthContext catches but does NOT set session, so the
-        // auth layout won't redirect away from this screen.
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        setVerified(!error);
-      } catch {
+        // Mirror the same data?.session check used in callback.tsx — do NOT rely
+        // on !error alone, because Supabase can return both a session AND an error
+        // object in some PKCE edge cases, which would falsely show "link expired".
+        const { data, error } =
+          await supabase.auth.exchangeCodeForSession(code);
+        if (data?.session) {
+          setVerified(true);
+        } else {
+          logger.warn("[ResetPassword] exchangeCodeForSession failed", {
+            error: error?.message,
+          });
+          setVerified(false);
+        }
+      } catch (err) {
+        logger.error(
+          "[ResetPassword] Unexpected error during code exchange",
+          err as Error,
+        );
         setVerified(false);
       } finally {
         setVerifying(false);

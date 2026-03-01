@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { View, Text, Pressable, StyleSheet, Image, Alert } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
@@ -31,6 +31,8 @@ type LostFoundListItemProps = {
   avatarUrl: string | null;
   isVerified: boolean | null;
   onLongPress?: (post: LostFoundPostForMenu) => void;
+  /** Called when avatar and post image (if any) have finished loading (for skeleton reveal) */
+  onImageLoad?: () => void;
 };
 
 // Custom comparison function for better memoization (prevents unnecessary re-renders)
@@ -47,7 +49,8 @@ const arePropsEqual = (prevProps: LostFoundListItemProps, nextProps: LostFoundLi
     prevProps.username === nextProps.username &&
     prevProps.avatarUrl === nextProps.avatarUrl &&
     prevProps.isVerified === nextProps.isVerified &&
-    prevProps.onLongPress === nextProps.onLongPress
+    prevProps.onLongPress === nextProps.onLongPress &&
+    prevProps.onImageLoad === nextProps.onImageLoad
   );
 };
 
@@ -63,6 +66,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   username,
   avatarUrl,
   onLongPress,
+  onImageLoad,
 }: LostFoundListItemProps) {
   const { theme } = useTheme();
   const { session } = useAuth();
@@ -71,6 +75,33 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   const isAdmin = currentUser?.is_admin === true;
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [avatarLoaded, setAvatarLoaded] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const onImageLoadCalledRef = useRef(false);
+
+  const hasImage = !!imageUrl;
+
+  // Notify parent when all media has loaded (for skeleton reveal)
+  useEffect(() => {
+    if (!onImageLoad) return;
+    if (onImageLoadCalledRef.current) return;
+    const avatarReady = !avatarUrl || avatarLoaded;
+    const imageReady = !hasImage || imageLoaded;
+    if (avatarReady && imageReady) {
+      onImageLoadCalledRef.current = true;
+      onImageLoad();
+    }
+  }, [onImageLoad, avatarUrl, avatarLoaded, hasImage, imageLoaded]);
+
+  // No avatar URL means we show DEFAULT_AVATAR (local) – consider loaded
+  useEffect(() => {
+    if (!avatarUrl) setAvatarLoaded(true);
+  }, [avatarUrl]);
+
+  // No post image – consider loaded
+  useEffect(() => {
+    if (!imageUrl) setImageLoaded(true);
+  }, [imageUrl]);
 
   // Prevent duplicate chat creation requests
   const chatCreationInProgress = useRef(false);
@@ -367,16 +398,25 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
         >
           {avatarUrl ? (
             avatarUrl.startsWith("http") ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+              <Image
+                source={{ uri: avatarUrl }}
+                style={styles.avatarImage}
+                onLoad={() => setAvatarLoaded(true)}
+              />
             ) : (
               <SupabaseImage
                 path={avatarUrl}
                 bucket="avatars"
                 style={styles.avatarImage}
+                onLoad={() => setAvatarLoaded(true)}
               />
             )
           ) : (
-            <Image source={DEFAULT_AVATAR} style={styles.avatarImage} />
+            <Image
+              source={DEFAULT_AVATAR}
+              style={styles.avatarImage}
+              onLoad={() => setAvatarLoaded(true)}
+            />
           )}
           <Text style={styles.username}>
             {isAnonymous
@@ -428,12 +468,14 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
               source={{ uri: imageUrl }}
               style={styles.postImage}
               resizeMode="cover"
+              onLoad={() => setImageLoaded(true)}
             />
           ) : (
             <SupabaseImage
               path={imageUrl}
               bucket="post-images"
               style={styles.postImage}
+              onLoad={() => setImageLoaded(true)}
             />
           )}
         </View>

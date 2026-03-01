@@ -1,4 +1,10 @@
-import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+} from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import ChatListItem from "../../../components/ChatListItem";
 import ChatListSkeleton from "../../../components/ChatListSkeleton";
@@ -10,6 +16,7 @@ import { useMemo, useEffect, useRef, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { logger } from "../../../utils/logger";
 import { useBlocks } from "../../../hooks/useBlocks";
+import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
 type User = Database["public"]["Tables"]["profiles"]["Row"];
@@ -540,9 +547,14 @@ export default function ChatScreen() {
       : chat.unread_count_p2;
   }, [currentUserId]);
 
+  const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
+    minItems: 3,
+    timeoutMs: 2500,
+  });
+
   // Render function for FlatList - must be defined at component level (Rules of Hooks)
   const renderChatItem = useCallback(
-    ({ item }: { item: ChatSummary }) => {
+    ({ item, index }: { item: ChatSummary; index: number }) => {
       const { user, isAnonymous } = getOtherUser(item);
       return (
         <ChatListItem
@@ -553,10 +565,11 @@ export default function ChatScreen() {
           lastMessageHasImage={item.last_message_has_image === true}
           unreadCount={getUnreadCount(item)}
           isAnonymous={isAnonymous}
+          onImageLoad={index < 5 ? onItemReady : undefined}
         />
       );
     },
-    [getOtherUser, getUnreadCount]
+    [getOtherUser, getUnreadCount, onItemReady]
   );
 
   const styles = StyleSheet.create({
@@ -586,30 +599,49 @@ export default function ChatScreen() {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={filteredChatSummaries}
-        keyExtractor={(item) => item.chat_id}
-        renderItem={renderChatItem}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetchingChats}
-            onRefresh={refetchChats}
-            tintColor={theme.primary}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
-              No conversations yet
-            </Text>
-          </View>
-        }
-        contentContainerStyle={
-          filteredChatSummaries.length === 0 ? { flexGrow: 1 } : undefined
-        }
-        contentInsetAdjustmentBehavior="automatic"
-        removeClippedSubviews={true}
-      />
+      <View
+        style={{
+          flex: 1,
+          opacity: shouldReveal ? 1 : 0,
+          pointerEvents: shouldReveal ? "auto" : "none",
+        }}
+      >
+        <FlatList
+          data={filteredChatSummaries}
+          keyExtractor={(item) => item.chat_id}
+          renderItem={renderChatItem}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetchingChats}
+              onRefresh={refetchChats}
+              tintColor={theme.primary}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
+                No conversations yet
+              </Text>
+            </View>
+          }
+          contentContainerStyle={
+            filteredChatSummaries.length === 0 ? { flexGrow: 1 } : undefined
+          }
+          contentInsetAdjustmentBehavior="automatic"
+          removeClippedSubviews={true}
+        />
+      </View>
+      {!shouldReveal && (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: theme.background },
+          ]}
+          pointerEvents="none"
+        >
+          <ChatListSkeleton />
+        </View>
+      )}
     </View>
   );
 }

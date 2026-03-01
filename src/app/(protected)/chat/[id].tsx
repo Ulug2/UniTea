@@ -828,7 +828,7 @@ export default function ChatDetailScreen() {
           ],
         );
       },
-      () => {},
+      () => { },
     );
 
     if (Platform.OS === "ios") {
@@ -1001,6 +1001,7 @@ export default function ChatDetailScreen() {
             text: chatDetailStyles.newMessagesPillText as StyleProp<TextStyle>,
           }}
           theme={theme}
+          isKeyboardVisible={isKeyboardVisible}
         />
 
         <ChatComposer

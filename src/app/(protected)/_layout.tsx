@@ -125,7 +125,9 @@ export default function AppLayout() {
           headerShown: false,
           animation: "slide_from_right",
           gestureEnabled: true,
-          fullScreenGestureEnabled: true,
+          fullScreenGestureEnabled: false,
+          // Narrower edge zone so back swipe only triggers from the very edge; reduces conflict with list scrolling
+          gestureResponseDistance: { start: 15 },
         }}
       />
       <Stack.Screen

@@ -88,10 +88,10 @@ function ChatMessageRowInner({
         isCurrentUser
           ? replyQuoteStyles.containerCurrentUser
           : {
-              backgroundColor: isDark
-                ? "rgba(255,255,255,0.10)"
-                : "rgba(0,0,0,0.06)",
-            },
+            backgroundColor: isDark
+              ? "rgba(255,255,255,0.10)"
+              : "rgba(0,0,0,0.06)",
+          },
       ]}
       onPress={() => {
         if (item.reply_to_id && onReplyQuotePress) {
@@ -156,6 +156,10 @@ function ChatMessageRowInner({
           isCurrentUser
             ? chatDetailStyles.currentUserMessage
             : chatDetailStyles.otherUserMessage,
+          // Larger gap when the message above is from the opposite side (e.g. partner → me)
+          nextMsg &&
+          nextMsg.user_id !== item.user_id &&
+          inlineTimestampStyles.messageGapAfterOtherSender,
         ]}
         onLongPress={() => onLongPress(item)}
         onPress={() => {
@@ -241,21 +245,23 @@ function ChatMessageRowInner({
                         : "#5DBEBC"
                       : theme.messageBubble,
                   paddingHorizontal: 16,
-                  paddingTop: 6,
-                  // Reserve room at the bottom for the inline timestamp.
-                  paddingBottom: 6,
+                  paddingTop: 3,
+                  paddingBottom: 3,
+                  // Ensure bubble is tall enough so the timestamp (absolute bottom) is never clipped
+                  minHeight: 39,
+                  // Ensure bubble is wide enough for short messages (e.g. "1", "hi") + timestamp
+                  minWidth: 80,
                   borderBottomLeftRadius: 20,
                   borderBottomRightRadius: 20,
                   borderTopLeftRadius:
                     (item.image_url && !showTombstone) || hasReply ? 0 : 20,
                   borderTopRightRadius:
                     (item.image_url && !showTombstone) || hasReply ? 0 : 20,
-                  // Required so the absolute timestamp is positioned inside this view.
                   position: "relative" as const,
                 },
                 item.image_url &&
-                  !showTombstone &&
-                  chatDetailStyles.messageTextWrapWithImage,
+                !showTombstone &&
+                chatDetailStyles.messageTextWrapWithImage,
               ]}
             >
               <Text
@@ -273,7 +279,7 @@ function ChatMessageRowInner({
               >
                 {showTombstone ? deletedLabel(item) : item.content}
               </Text>
-              {/* Inline timestamp — sits in the bottom-right pocket created by paddingBottom */}
+              {/* Inline timestamp — absolute bottom-right, half above / half below last line */}
               <Text
                 style={[
                   inlineTimestampStyles.textBubbleTime,
@@ -317,18 +323,36 @@ function ChatMessageRowInner({
   );
 }
 
-export const ChatMessageRow = memo(ChatMessageRowInner);
+function areMessageRowPropsEqual(
+  prev: ChatMessageRowProps,
+  next: ChatMessageRowProps,
+): boolean {
+  return (
+    prev.item === next.item &&
+    prev.nextMsg === next.nextMsg &&
+    prev.currentUserId === next.currentUserId &&
+    prev.isDark === next.isDark &&
+    prev.theme === next.theme
+  );
+}
+
+export const ChatMessageRow = memo(ChatMessageRowInner, areMessageRowPropsEqual);
 
 /** Inline timestamp styles used for WhatsApp-style time inside the bubble. */
 const inlineTimestampStyles = StyleSheet.create({
-  // Absolute-positioned time inside the text wrap's paddingBottom pocket.
+  // Extra gap above this message when the one above is from the other sender (partner → me or me → partner).
+  messageGapAfterOtherSender: {
+    marginTop: 12,
+  },
+  // Absolute bottom-right; half above / half below last line via paddingBottom 8 on text-wrap.
   textBubbleTime: {
     position: "absolute",
-    bottom: 3,
+    bottom: 0,
     right: 12,
-    fontSize: 12,
+    // marginLeft: 4,
+    fontSize: 10,
     fontFamily: "Poppins_400Regular",
-    lineHeight: 16,
+    lineHeight: 17,
   },
   // Semi-transparent pill that overlays the image for image-only messages.
   imagePill: {
