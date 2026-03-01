@@ -36,12 +36,6 @@ export default function AppLayout() {
         const parsed = Linking.parse(url);
         if (!parsed.path) return;
 
-        // IMPORTANT: Never handle reset-password links here.
-        // Expo Router routes the URL to (auth)/reset-password which consumes
-        // the one-time PKCE code itself. Handling it here would spend the code
-        // before the screen mounts, causing "Link Expired" to appear.
-        if (parsed.path === "reset-password") return;
-
         const pathParts = parsed.path.split("/").filter(Boolean);
         if (pathParts[0] === "post" && pathParts[1]) {
           const postId = pathParts[1];

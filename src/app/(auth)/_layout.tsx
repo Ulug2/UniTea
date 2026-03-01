@@ -1,4 +1,4 @@
-import { Stack, usePathname } from "expo-router";
+import { Stack } from "expo-router";
 import { ActivityIndicator, View, StyleSheet } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -8,15 +8,12 @@ import { useEffect } from "react";
 export default function AuthLayout() {
   const { theme } = useTheme();
   const { session, loading } = useAuth();
-  const pathname = usePathname();
 
   useEffect(() => {
-    // Never redirect away from the reset-password screen — the user has a
-    // temporary recovery session that must stay alive to call updateUser().
-    if (!loading && session && !pathname.includes("reset-password")) {
+    if (!loading && session) {
       router.replace("/(protected)/(tabs)");
     }
-  }, [session, loading, pathname]);
+  }, [session, loading]);
 
   if (loading) {
     return (
@@ -36,7 +33,6 @@ export default function AuthLayout() {
       }}
     >
       <Stack.Screen name="index" />
-      <Stack.Screen name="reset-password" />
     </Stack>
   );
 }

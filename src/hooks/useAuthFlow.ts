@@ -193,8 +193,14 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       }
 
       const { error } = await race(
-        supabase.auth.resetPasswordForEmail(sanitizedEmail, {
-          redirectTo: "myunitea://reset-password",
+        supabase.auth.signInWithOtp({
+          email: sanitizedEmail,
+          options: {
+            // Reuse the same callback route as email verification — it exchanges
+            // the PKCE code and logs the user straight into the app.
+            emailRedirectTo: "myunitea://callback",
+            shouldCreateUser: false, // never create a new account from the forgot flow
+          },
         }),
         timeoutMs
       );
@@ -208,7 +214,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       logAuthEvent("password_reset_success");
       Alert.alert(
         "Check Your Email",
-        "We sent you a password reset link. Please check your inbox."
+        "We sent you a sign-in link. Tap it to log back into the app. You can then change your password in Settings."
       );
       setMode("login");
     } catch (err: unknown) {

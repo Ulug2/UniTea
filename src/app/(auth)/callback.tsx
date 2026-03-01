@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { View, Text, ActivityIndicator, StyleSheet, Pressable } from "react-native";
+import {
+  View,
+  Text,
+  ActivityIndicator,
+  StyleSheet,
+  Pressable,
+} from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { logger } from "../../utils/logger";
@@ -33,29 +39,40 @@ export default function EmailCallbackScreen() {
       const code = params.code as string | undefined;
       if (code) {
         try {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          const { data, error } =
+            await supabase.auth.exchangeCodeForSession(code);
 
           if (data?.session) {
-            logger.info("[Email Callback] Email verified successfully via code");
+            logger.info(
+              "[Email Callback] Email verified successfully via code",
+            );
             router.replace("/(protected)/(tabs)");
           } else if (error) {
-            logger.error("[Email Callback] Error exchanging code", error as Error);
+            logger.error(
+              "[Email Callback] Error exchanging code",
+              error as Error,
+            );
             setStatus("error");
             setMessage(
-              "We couldn't complete email verification. Please try again or request a new link."
+              "We couldn't complete email verification. Please try again or request a new link.",
             );
           } else {
-            logger.error("[Email Callback] No session returned from exchangeCodeForSession");
+            logger.error(
+              "[Email Callback] No session returned from exchangeCodeForSession",
+            );
             setStatus("error");
             setMessage(
-              "We couldn't complete email verification. Please try again or request a new link."
+              "We couldn't complete email verification. Please try again or request a new link.",
             );
           }
         } catch (err: any) {
-          logger.error("[Email Callback] Unexpected error (code)", err as Error);
+          logger.error(
+            "[Email Callback] Unexpected error (code)",
+            err as Error,
+          );
           setStatus("error");
           setMessage(
-            "Unexpected error during verification. Please try again later."
+            "Unexpected error during verification. Please try again later.",
           );
         }
         return;
@@ -80,23 +97,26 @@ export default function EmailCallbackScreen() {
           logger.info("[Email Callback] Email verified successfully");
           router.replace("/(protected)/(tabs)");
         } else if (error) {
-          logger.error("[Email Callback] Error setting session", error as Error);
+          logger.error(
+            "[Email Callback] Error setting session",
+            error as Error,
+          );
           setStatus("error");
           setMessage(
-            "We couldn't complete email verification. Please try again or request a new link."
+            "We couldn't complete email verification. Please try again or request a new link.",
           );
         } else {
           logger.error("[Email Callback] No session returned from setSession");
           setStatus("error");
           setMessage(
-            "We couldn't complete email verification. Please try again or request a new link."
+            "We couldn't complete email verification. Please try again or request a new link.",
           );
         }
       } catch (err: any) {
         logger.error("[Email Callback] Unexpected error", err as Error);
         setStatus("error");
         setMessage(
-          "Unexpected error during verification. Please try again later."
+          "Unexpected error during verification. Please try again later.",
         );
       }
     };
@@ -108,10 +128,8 @@ export default function EmailCallbackScreen() {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" />
-        <Text style={styles.title}>Verifying your email…</Text>
-        <Text style={styles.subtitle}>
-          Please wait while we complete your sign up.
-        </Text>
+        <Text style={styles.title}>Signing you in…</Text>
+        <Text style={styles.subtitle}>Please wait a moment.</Text>
       </View>
     );
   }
