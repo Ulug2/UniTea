@@ -29,39 +29,64 @@ export default function ResetPasswordScreen() {
   // useLocalSearchParams can return string | string[] — normalise to string | undefined
   const code = Array.isArray(codeParam) ? codeParam[0] : codeParam;
 
-  // Exchange the PKCE code for a recovery session on mount
+  // Exchange the PKCE code for a recovery session on mount.
+  // IMPORTANT: For PASSWORD_RECOVERY type, exchangeCodeForSession always returns
+  // data.session = null even on success — the session is only delivered via the
+  // PASSWORD_RECOVERY onAuthStateChange event. So we listen for that event as
+  // the authoritative success signal rather than checking data?.session.
   useEffect(() => {
-    async function verifyToken() {
-      if (!code) {
-        // No code — user navigated here directly with no valid link
+    if (!code) {
+      setVerifying(false);
+      return;
+    }
+
+    let settled = false;
+
+    // Set up the listener BEFORE calling exchangeCodeForSession so we never
+    // miss the PASSWORD_RECOVERY event that fires synchronously on success.
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (settled) return;
+      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
+        settled = true;
+        setVerified(true);
         setVerifying(false);
-        return;
       }
-      try {
-        // Mirror the same data?.session check used in callback.tsx — do NOT rely
-        // on !error alone, because Supabase can return both a session AND an error
-        // object in some PKCE edge cases, which would falsely show "link expired".
-        const { data, error } =
-          await supabase.auth.exchangeCodeForSession(code);
-        if (data?.session) {
-          setVerified(true);
-        } else {
+    });
+
+    // Exchange the code. If it succeeds, the listener above fires immediately.
+    // If it errors, we fall back to the promise result.
+    supabase.auth
+      .exchangeCodeForSession(code)
+      .then(({ error }) => {
+        if (settled) return; // already handled by auth event
+        settled = true;
+        if (error) {
           logger.warn("[ResetPassword] exchangeCodeForSession failed", {
-            error: error?.message,
+            error: error.message,
           });
           setVerified(false);
+        } else {
+          // Supabase didn't fire an auth event but also returned no error — treat as success.
+          setVerified(true);
         }
-      } catch (err) {
+        setVerifying(false);
+      })
+      .catch((err) => {
+        if (settled) return;
+        settled = true;
         logger.error(
           "[ResetPassword] Unexpected error during code exchange",
           err as Error,
         );
         setVerified(false);
-      } finally {
         setVerifying(false);
-      }
-    }
-    verifyToken();
+      });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [code]);
 
   async function handleResetPassword() {

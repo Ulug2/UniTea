@@ -12,11 +12,14 @@ import { FilterProvider } from "../../context/FilterContext";
 export default function AppLayout() {
   const { theme } = useTheme();
   const { session, loading } = useAuth();
-  const { data: profile, isLoading: profileLoading } = useMyProfile(session?.user?.id);
+  const { data: profile, isLoading: profileLoading } = useMyProfile(
+    session?.user?.id,
+  );
   const isBanned =
     profile &&
     (profile.is_permanently_banned === true ||
-      (profile.banned_until != null && new Date(profile.banned_until) > new Date()));
+      (profile.banned_until != null &&
+        new Date(profile.banned_until) > new Date()));
 
   useEffect(() => {
     if (!loading && !session) {
@@ -32,6 +35,12 @@ export default function AppLayout() {
       try {
         const parsed = Linking.parse(url);
         if (!parsed.path) return;
+
+        // IMPORTANT: Never handle reset-password links here.
+        // Expo Router routes the URL to (auth)/reset-password which consumes
+        // the one-time PKCE code itself. Handling it here would spend the code
+        // before the screen mounts, causing "Link Expired" to appear.
+        if (parsed.path === "reset-password") return;
 
         const pathParts = parsed.path.split("/").filter(Boolean);
         if (pathParts[0] === "post" && pathParts[1]) {
@@ -84,62 +93,62 @@ export default function AppLayout() {
           animation: "fade",
         }}
       >
-      <Stack.Screen
-        name="(tabs)"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="create-post"
-        options={{
-          headerShown: false,
-          animation: "slide_from_bottom",
-          presentation: "fullScreenModal",
-        }}
-      />
-      <Stack.Screen
-        name="post/[id]"
-        options={{
-          headerTitle: "",
-          headerStyle: { backgroundColor: theme.primary },
-          headerLeft: () => (
-            <AntDesign
-              name="close"
-              size={24}
-              color="white"
-              onPress={() => router.back()}
-            />
-          ),
-          headerRight: () => (
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <Entypo name="dots-three-horizontal" size={24} color="white" />
-            </View>
-          ),
-          animation: "slide_from_bottom",
-        }}
-      />
-      <Stack.Screen
-        name="chat/[id]"
-        options={{
-          headerShown: false,
-          animation: "slide_from_right",
-          gestureEnabled: true,
-          fullScreenGestureEnabled: false,
-          // Narrower edge zone so back swipe only triggers from the very edge; reduces conflict with list scrolling
-          gestureResponseDistance: { start: 15 },
-        }}
-      />
-      <Stack.Screen
-        name="lostfoundpost/[id]"
-        options={{
-          headerShown: false,
-          animation: "slide_from_right",
-          gestureEnabled: true,
-          fullScreenGestureEnabled: true,
-        }}
-      />
-    </Stack>
+        <Stack.Screen
+          name="(tabs)"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="create-post"
+          options={{
+            headerShown: false,
+            animation: "slide_from_bottom",
+            presentation: "fullScreenModal",
+          }}
+        />
+        <Stack.Screen
+          name="post/[id]"
+          options={{
+            headerTitle: "",
+            headerStyle: { backgroundColor: theme.primary },
+            headerLeft: () => (
+              <AntDesign
+                name="close"
+                size={24}
+                color="white"
+                onPress={() => router.back()}
+              />
+            ),
+            headerRight: () => (
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Entypo name="dots-three-horizontal" size={24} color="white" />
+              </View>
+            ),
+            animation: "slide_from_bottom",
+          }}
+        />
+        <Stack.Screen
+          name="chat/[id]"
+          options={{
+            headerShown: false,
+            animation: "slide_from_right",
+            gestureEnabled: true,
+            fullScreenGestureEnabled: false,
+            // Narrower edge zone so back swipe only triggers from the very edge; reduces conflict with list scrolling
+            gestureResponseDistance: { start: 15 },
+          }}
+        />
+        <Stack.Screen
+          name="lostfoundpost/[id]"
+          options={{
+            headerShown: false,
+            animation: "slide_from_right",
+            gestureEnabled: true,
+            fullScreenGestureEnabled: true,
+          }}
+        />
+      </Stack>
     </FilterProvider>
   );
 }
