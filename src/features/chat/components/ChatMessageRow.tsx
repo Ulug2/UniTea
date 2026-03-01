@@ -88,10 +88,10 @@ function ChatMessageRowInner({
         isCurrentUser
           ? replyQuoteStyles.containerCurrentUser
           : {
-            backgroundColor: isDark
-              ? "rgba(255,255,255,0.10)"
-              : "rgba(0,0,0,0.06)",
-          },
+              backgroundColor: isDark
+                ? "rgba(255,255,255,0.10)"
+                : "rgba(0,0,0,0.06)",
+            },
       ]}
       onPress={() => {
         if (item.reply_to_id && onReplyQuotePress) {
@@ -158,8 +158,8 @@ function ChatMessageRowInner({
             : chatDetailStyles.otherUserMessage,
           // Larger gap when the message above is from the opposite side (e.g. partner → me)
           nextMsg &&
-          nextMsg.user_id !== item.user_id &&
-          inlineTimestampStyles.messageGapAfterOtherSender,
+            nextMsg.user_id !== item.user_id &&
+            inlineTimestampStyles.messageGapAfterOtherSender,
         ]}
         onLongPress={() => onLongPress(item)}
         onPress={() => {
@@ -245,8 +245,8 @@ function ChatMessageRowInner({
                         : "#5DBEBC"
                       : theme.messageBubble,
                   paddingHorizontal: 16,
-                  paddingTop: 3,
-                  paddingBottom: 3,
+                  paddingTop: 6,
+                  paddingBottom: 6,
                   // Ensure bubble is tall enough so the timestamp (absolute bottom) is never clipped
                   minHeight: 39,
                   // Ensure bubble is wide enough for short messages (e.g. "1", "hi") + timestamp
@@ -260,8 +260,8 @@ function ChatMessageRowInner({
                   position: "relative" as const,
                 },
                 item.image_url &&
-                !showTombstone &&
-                chatDetailStyles.messageTextWrapWithImage,
+                  !showTombstone &&
+                  chatDetailStyles.messageTextWrapWithImage,
               ]}
             >
               <Text
@@ -336,7 +336,10 @@ function areMessageRowPropsEqual(
   );
 }
 
-export const ChatMessageRow = memo(ChatMessageRowInner, areMessageRowPropsEqual);
+export const ChatMessageRow = memo(
+  ChatMessageRowInner,
+  areMessageRowPropsEqual,
+);
 
 /** Inline timestamp styles used for WhatsApp-style time inside the bubble. */
 const inlineTimestampStyles = StyleSheet.create({
