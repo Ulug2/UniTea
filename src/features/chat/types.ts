@@ -1,4 +1,5 @@
 import type { Database } from "../../types/database.types";
+import type { BlockRecord } from "../../hooks/useBlocks";
 
 type ChatMessageRow = Database["public"]["Tables"]["chat_messages"]["Row"];
 
@@ -73,14 +74,19 @@ export function deletedLabel(_message: ChatMessageVM): string {
 }
 
 /**
- * Flatten infinite query pages and filter out messages from blocked users.
+ * Flatten infinite query pages and filter out messages from profile_only blocked users.
+ * anonymous_only blocks do not affect chat visibility.
  */
 export function selectMessages(
   messagesData: MessagesQueryData | undefined,
-  blockedUserIds: string[]
+  blocks: BlockRecord[]
 ): ChatMessageVM[] {
   if (!messagesData) return [];
   const all = messagesData.pages.flat();
-  if (blockedUserIds.length === 0) return all;
-  return all.filter((msg) => !blockedUserIds.includes(msg.user_id));
+  if (blocks.length === 0) return all;
+  const profileBlockedIds = new Set(
+    blocks.filter((b) => b.scope === "profile_only").map((b) => b.userId)
+  );
+  if (profileBlockedIds.size === 0) return all;
+  return all.filter((msg) => !profileBlockedIds.has(msg.user_id));
 }

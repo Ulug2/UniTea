@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { Image, Pressable, Text, View, StyleSheet, Alert } from "react-native";
+import React, { useState, useEffect } from "react";
+import { Image, Pressable, Text, View, StyleSheet } from "react-native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNowStrict } from "date-fns";
@@ -13,8 +13,100 @@ import SupabaseImage from "./SupabaseImage";
 import Poll from "./Poll";
 import UserProfileModal from "./UserProfileModal";
 import { useAuth } from "../context/AuthContext";
-import { useMyProfile } from "../features/profile/hooks/useMyProfile";
 import { sharePost } from "../utils/sharePost";
+import type { Theme } from "../context/ThemeContext";
+
+// Shared style cache — all PostListItem instances with the same theme object reuse one StyleSheet.
+// This eliminates calling StyleSheet.create N times when the feed has N visible items.
+const _styleCache = new WeakMap<Theme, ReturnType<typeof _buildStyles>>();
+function _buildStyles(theme: Theme) {
+  return StyleSheet.create({
+    link: { textDecorationLine: "none" },
+    card: {
+      paddingHorizontal: 15,
+      paddingVertical: 12,
+      backgroundColor: theme.card,
+      borderBottomWidth: 0.5,
+      borderBottomColor: theme.border,
+      gap: 1,
+    },
+    repostHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
+    repostText: { fontSize: 13, color: theme.secondaryText, fontFamily: "Poppins_400Regular" },
+    repostComment: {
+      fontSize: 15,
+      color: theme.text,
+      fontFamily: "Poppins_400Regular",
+      marginTop: 8,
+      marginBottom: 10,
+    },
+    originalPostCard: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      padding: 12,
+      backgroundColor: theme.background,
+      marginTop: 8,
+    },
+    originalAuthor: {
+      fontSize: 14,
+      color: theme.text,
+      fontFamily: "Poppins_500Medium",
+      marginBottom: 6,
+    },
+    originalContent: {
+      fontSize: 15,
+      color: theme.text,
+      fontFamily: "Poppins_400Regular",
+      marginBottom: 6,
+    },
+    originalDate: { fontSize: 12, color: theme.secondaryText, marginTop: 8 },
+    header: { flexDirection: "row", alignItems: "center" },
+    userInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
+    avatar: { width: 35, height: 35, borderRadius: 20, backgroundColor: theme.border },
+    username: { fontSize: 15, color: theme.text, fontFamily: "Poppins_500Medium" },
+    time: { fontSize: 12, color: theme.secondaryText, marginLeft: 10 },
+    postImage: { width: "100%", aspectRatio: 4 / 3, borderRadius: 15, marginTop: 8 },
+    contentText: {
+      fontSize: 16,
+      marginTop: 6,
+      fontFamily: "Poppins_400Regular",
+      color: theme.text,
+    },
+    footer: { flexDirection: "row", marginTop: 10, alignItems: "center" },
+    footerLeft: { flexDirection: "row", gap: 16 },
+    footerRight: { marginLeft: "auto", flexDirection: "row", gap: 10, alignItems: "center" },
+    iconBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 0.5,
+      borderColor: theme.border,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: theme.background,
+      marginLeft: -5,
+      minHeight: 40,
+      minWidth: 40,
+    },
+    iconText: {
+      fontWeight: "500",
+      marginLeft: 5,
+      fontFamily: "Poppins_400Regular",
+      color: theme.text,
+    },
+    divider: {
+      width: 1,
+      backgroundColor: theme.border,
+      height: 14,
+      marginHorizontal: 7,
+      alignSelf: "center",
+    },
+  });
+}
+function getStyles(theme: Theme) {
+  if (!_styleCache.has(theme)) _styleCache.set(theme, _buildStyles(theme));
+  return _styleCache.get(theme)!;
+}
 
 type PostListItemProps = {
   // Post data from view
@@ -60,6 +152,11 @@ type PostListItemProps = {
   onBookmarkPress?: () => void;
   /** Called when all images/avatars in this post have finished loading (for feed skeleton) */
   onImageLoad?: () => void;
+  /**
+   * Pass from the parent list so this component doesn't need its own useMyProfile subscription.
+   * Defaults to false when not provided (e.g. single-item detail views).
+   */
+  isAdmin?: boolean;
 };
 
 // Custom comparison function for better memoization (prevents unnecessary re-renders)
@@ -99,7 +196,8 @@ const arePropsEqual = (
     prevProps.isDetailedPost === nextProps.isDetailedPost &&
     prevProps.disableCommentInteraction ===
       nextProps.disableCommentInteraction &&
-    prevProps.isBookmarked === nextProps.isBookmarked
+    prevProps.isBookmarked === nextProps.isBookmarked &&
+    prevProps.isAdmin === nextProps.isAdmin
   );
 };
 
@@ -131,12 +229,11 @@ const PostListItem = React.memo(function PostListItem({
   isBookmarked = false,
   onBookmarkPress,
   onImageLoad,
+  isAdmin = false,
 }: PostListItemProps) {
   const { theme } = useTheme();
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
-  const { data: currentUser } = useMyProfile(currentUserId);
-  const isAdmin = currentUser?.is_admin === true;
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [contentExpanded, setContentExpanded] = useState(false);
@@ -204,144 +301,7 @@ const PostListItem = React.memo(function PostListItem({
     sharePost(postId);
   };
 
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        link: {
-          textDecorationLine: "none",
-        },
-        card: {
-          paddingHorizontal: 15,
-          paddingVertical: 12,
-          backgroundColor: theme.card,
-          borderBottomWidth: 0.5,
-          borderBottomColor: theme.border,
-          gap: 1,
-        },
-        repostHeader: {
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-          marginBottom: 8,
-        },
-        repostText: {
-          fontSize: 13,
-          color: theme.secondaryText,
-          fontFamily: "Poppins_400Regular",
-        },
-        repostComment: {
-          fontSize: 15,
-          color: theme.text,
-          fontFamily: "Poppins_400Regular",
-          marginTop: 8,
-          marginBottom: 10,
-        },
-        originalPostCard: {
-          borderWidth: 1,
-          borderColor: theme.border,
-          borderRadius: 12,
-          padding: 12,
-          backgroundColor: theme.background,
-          marginTop: 8,
-        },
-        originalAuthor: {
-          fontSize: 14,
-          color: theme.text,
-          fontFamily: "Poppins_500Medium",
-          marginBottom: 6,
-        },
-        originalContent: {
-          fontSize: 15,
-          color: theme.text,
-          fontFamily: "Poppins_400Regular",
-          marginBottom: 6,
-        },
-        originalDate: {
-          fontSize: 12,
-          color: theme.secondaryText,
-          marginTop: 8,
-        },
-        header: {
-          flexDirection: "row",
-          alignItems: "center",
-        },
-        userInfo: {
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 8,
-        },
-        avatar: {
-          width: 35,
-          height: 35,
-          borderRadius: 20,
-          backgroundColor: theme.border,
-        },
-        username: {
-          fontSize: 15,
-          color: theme.text,
-          fontFamily: "Poppins_500Medium",
-        },
-        time: {
-          fontSize: 12,
-          color: theme.secondaryText,
-          marginLeft: 10,
-        },
-        postImage: {
-          width: "100%",
-          aspectRatio: 4 / 3,
-          borderRadius: 15,
-          marginTop: 8,
-        },
-        contentText: {
-          fontSize: 16,
-          marginTop: 6,
-          fontFamily: "Poppins_400Regular",
-          color: theme.text,
-        },
-        footer: {
-          flexDirection: "row",
-          marginTop: 10,
-          alignItems: "center",
-        },
-        footerLeft: {
-          flexDirection: "row",
-          gap: 16,
-        },
-        footerRight: {
-          marginLeft: "auto",
-          flexDirection: "row",
-          gap: 10,
-          alignItems: "center",
-        },
-        iconBox: {
-          flexDirection: "row",
-          alignItems: "center",
-          borderWidth: 0.5,
-          borderColor: theme.border,
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          borderRadius: 20,
-          backgroundColor: theme.background,
-          marginLeft: -5,
-          minHeight: 40, // Better touch target (accessibility standard is 44x44)
-          minWidth: 40,
-        },
-        iconText: {
-          fontWeight: "500",
-          marginLeft: 5,
-          fontFamily: "Poppins_400Regular",
-          color: theme.text,
-        },
-        divider: {
-          width: 1,
-          backgroundColor: theme.border,
-          height: 14,
-          marginHorizontal: 7,
-          alignSelf: "center",
-        },
-      }),
-    [theme],
-  );
+  const styles = getStyles(theme);
 
   const postCreatedAt = createdAt ? new Date(createdAt) : new Date();
 

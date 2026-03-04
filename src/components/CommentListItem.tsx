@@ -21,11 +21,12 @@ import nuLogo from "../../assets/images/nu-logo.png";
 import { DEFAULT_AVATAR } from "../constants/images";
 import SupabaseImage from "./SupabaseImage";
 import { useAuth } from "../context/AuthContext";
+import { useMutation } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDeleteComment } from "../features/comments/hooks/useDeleteComment";
+import { useBlockUser } from "../features/posts/hooks/useBlockUser";
+import { useBlocks, hasBlockForScope } from "../hooks/useBlocks";
 import ReportModal from "./ReportModal";
-import BlockUserModal from "./BlockUserModal";
 import UserProfileModal from "./UserProfileModal";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -66,10 +67,13 @@ const CommentListItem = ({
 }: CommentListItemProps) => {
   const { theme } = useTheme();
   const { session } = useAuth();
-  const queryClient = useQueryClient();
   const currentUserId = session?.user?.id;
   const isCommentOwner = currentUserId === comment.user_id;
   const canDelete = isCommentOwner || isAdmin;
+
+  const { data: blocks = [] } = useBlocks();
+  const commentScope = (comment.is_anonymous ?? false) ? "anonymous_only" : "profile_only";
+  const alreadyBlockedInScope = hasBlockForScope(blocks, comment.user_id, commentScope);
 
   const hasReplies = comment.replies && comment.replies.length > 0;
   const replyCount = comment.replies?.length || 0;
@@ -80,7 +84,6 @@ const CommentListItem = ({
   );
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [showBlockModal, setShowBlockModal] = useState(false);
   const [showAllReplies, setShowAllReplies] = useState(false);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -164,39 +167,13 @@ const CommentListItem = ({
     onSuccess: () => {
       setShowReportModal(false);
       setShowMenu(false);
-      // Show block user modal after successful report
-      setShowBlockModal(true);
     },
     onError: (error: any) => {
       Alert.alert("Error", error.message || "Failed to submit report");
     },
   });
 
-  // Block user mutation
-  const blockUserMutation = useMutation({
-    mutationFn: async (userIdToBlock: string) => {
-      if (!currentUserId) throw new Error("User ID missing");
-
-      const { error } = await supabase.from("blocks").insert({
-        blocker_id: currentUserId,
-        blocked_id: userIdToBlock,
-      });
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      setShowBlockModal(false);
-      // Invalidate blocks query to refresh blocked users list
-      queryClient.invalidateQueries({ queryKey: ["blocks"] });
-      // Invalidate queries to filter out blocked user's content
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      queryClient.invalidateQueries({ queryKey: ["comments"] });
-      queryClient.invalidateQueries({ queryKey: ["chat-summaries"] });
-    },
-    onError: (error: any) => {
-      Alert.alert("Error", error.message || "Failed to block user");
-    },
-  });
+  const blockUserMutation = useBlockUser(currentUserId ?? null);
 
   const handleReportComment = (reason: string) => {
     reportCommentMutation.mutate(reason);
@@ -205,26 +182,21 @@ const CommentListItem = ({
   const handleBlockUser = () => {
     if (!comment.user_id) return;
 
-    Alert.alert(
-      "Block User",
-      "Are you sure you want to block this user? You will no longer see their posts or comments, and they will no longer see yours.",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-          onPress: () => setShowBlockModal(false),
-        },
-        {
-          text: "Block",
-          style: "destructive",
-          onPress: () => {
-            if (comment.user_id) {
-              blockUserMutation.mutate(comment.user_id);
-            }
-          },
-        },
-      ]
-    );
+    const isAnon = comment.is_anonymous ?? false;
+    const scope = isAnon ? "anonymous_only" : "profile_only";
+    const message = isAnon
+      ? "You will no longer see anonymous posts from this user."
+      : "You will no longer see public posts or receive messages from this user.";
+
+    Alert.alert("Block User", message, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Block",
+        style: "destructive",
+        onPress: () =>
+          blockUserMutation.mutate({ targetUserId: comment.user_id!, scope }),
+      },
+    ]);
   };
 
   const truncateName = (name: string | null | undefined, max: number) => {
@@ -403,6 +375,24 @@ const CommentListItem = ({
                 </Text>
               </Pressable>
             ) : null}
+            {!isCommentOwner && !alreadyBlockedInScope ? (
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  handleBlockUser();
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="block-helper"
+                  size={20}
+                  color={theme.text}
+                />
+                <Text style={[styles.menuText, { color: theme.text }]}>
+                  {comment.is_anonymous ? "Block Anonymous User" : "Block User"}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </Pressable>
       </Modal>
@@ -414,15 +404,6 @@ const CommentListItem = ({
         onSubmit={handleReportComment}
         isLoading={reportCommentMutation.isPending}
         reportType="comment"
-      />
-
-      {/* Block User Modal */}
-      <BlockUserModal
-        visible={showBlockModal}
-        onClose={() => setShowBlockModal(false)}
-        onBlock={handleBlockUser}
-        isLoading={blockUserMutation.isPending}
-        username={comment.user?.username || "Unknown"}
       />
 
       {/* Comment Content */}

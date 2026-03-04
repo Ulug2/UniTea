@@ -535,30 +535,23 @@ export default function ChatDetailScreen() {
       const { error } = await supabase.from("blocks").insert({
         blocker_id: currentUserId,
         blocked_id: blockedUserId,
+        block_scope: "profile_only",
       });
 
       if (error) {
-        // If already blocked, ignore the error
         if (error.code === "23505") {
-          return; // Unique constraint violation means already blocked
+          return; // already blocked
         }
         throw error;
       }
     },
     onSuccess: () => {
-      // Invalidate all queries to filter out blocked user's content
       queryClient.invalidateQueries({ queryKey: ["blocks", currentUserId] });
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      queryClient.invalidateQueries({ queryKey: ["comments"] });
-      queryClient.invalidateQueries({
-        queryKey: ["chat-summaries", currentUserId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["chat-messages", id] }); // Refresh messages to filter blocked user
-      queryClient.invalidateQueries({
-        queryKey: ["global-unread-count", currentUserId],
-      }); // Update unread count
-
-      console.log("Success", "User has been blocked");
+      queryClient.invalidateQueries({ queryKey: ["posts"], refetchType: "none" });
+      queryClient.invalidateQueries({ queryKey: ["comments"], refetchType: "none" });
+      queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+      queryClient.invalidateQueries({ queryKey: ["chat-messages", id] });
+      queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });
       router.back();
     },
     onError: (error) => {

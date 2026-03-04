@@ -15,7 +15,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { useMemo, useEffect, useRef, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { logger } from "../../../utils/logger";
-import { useBlocks } from "../../../hooks/useBlocks";
+import { useBlocks, isBlockedChat } from "../../../hooks/useBlocks";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
@@ -126,13 +126,13 @@ export default function ChatScreen() {
         return false;
       }
 
-      // Filter out chats with blocked users (both ways)
+      // Only hide chats where a profile_only block exists (not anonymous_only)
       const otherUserId =
         chat.participant_1_id === currentUserId
           ? chat.participant_2_id
           : chat.participant_1_id;
 
-      if (blocks.includes(otherUserId)) {
+      if (isBlockedChat(blocks, otherUserId)) {
         return false;
       }
 

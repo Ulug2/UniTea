@@ -11,6 +11,7 @@ type PostHeaderCardProps = {
   commentCount: number;
   isBookmarked: boolean;
   onToggleBookmark: () => void;
+  isAdmin?: boolean;
 };
 
 export function PostHeaderCard({
@@ -19,6 +20,7 @@ export function PostHeaderCard({
   commentCount,
   isBookmarked,
   onToggleBookmark,
+  isAdmin = false,
 }: PostHeaderCardProps) {
   return (
     <PostListItem
@@ -54,6 +56,7 @@ export function PostHeaderCard({
       isBookmarked={isBookmarked}
       onBookmarkPress={onToggleBookmark}
       disableCommentInteraction
+      isAdmin={isAdmin}
     />
   );
 }

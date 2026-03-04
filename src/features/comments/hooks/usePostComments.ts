@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import type { Database } from "../../../types/database.types";
 import { buildCommentTree, CommentVM, CommentNode } from "../utils/tree";
+import type { BlockRecord } from "../../../hooks/useBlocks";
 
 type Comment = Database["public"]["Tables"]["comments"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -60,7 +61,7 @@ async function fetchCommentsWithMeta(
 export function usePostComments(
   postId: string | null | undefined,
   viewerId: string | null,
-  blockedUserIds: string[]
+  blockedUserIds: BlockRecord[]
 ): {
   flatComments: CommentVM[];
   treeComments: CommentNode[];

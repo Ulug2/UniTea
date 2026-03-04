@@ -15,7 +15,6 @@ import {
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import ReportModal from "../../../components/ReportModal";
-import BlockUserModal from "../../../components/BlockUserModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons, AntDesign, Entypo } from "@expo/vector-icons";
 import { useTheme } from "../../../context/ThemeContext";
@@ -24,7 +23,7 @@ import { Database } from "../../../types/database.types";
 import { supabase } from "../../../lib/supabase";
 import { ErrorBoundary } from "react-error-boundary";
 import { logger } from "../../../utils/logger";
-import { useBlocks } from "../../../hooks/useBlocks";
+import { useBlocks, isBlockedPost, hasBlockForScope } from "../../../hooks/useBlocks";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import { usePostComments } from "../../../features/comments/hooks/usePostComments";
 import type { CommentNode } from "../../../features/comments/utils/tree";
@@ -59,7 +58,6 @@ export default function PostDetailed() {
   );
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [showBlockModal, setShowBlockModal] = useState(false);
   const [isAnonymousMode, setIsAnonymousMode] = useState(true);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
     null,
@@ -200,22 +198,24 @@ export default function PostDetailed() {
   const handleBlockUser = () => {
     if (!detailedPost?.user_id) return;
 
-    Alert.alert(
-      "Block User",
-      "Are you sure you want to block this user? You will no longer see their posts or comments, and they will no longer see yours.",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-          onPress: () => setShowBlockModal(false),
-        },
-        {
-          text: "Block",
-          style: "destructive",
-          onPress: () => blockUserMutation.mutate(detailedPost.user_id),
-        },
-      ],
-    );
+    const isAnon = detailedPost.is_anonymous ?? false;
+    const scope = isAnon ? "anonymous_only" : "profile_only";
+    const message = isAnon
+      ? "You will no longer see anonymous posts from this user."
+      : "You will no longer see public posts or receive messages from this user.";
+
+    Alert.alert("Block User", message, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Block",
+        style: "destructive",
+        onPress: () =>
+          blockUserMutation.mutate(
+            { targetUserId: detailedPost.user_id, scope },
+            { onSuccess: () => router.back() },
+          ),
+      },
+    ]);
   };
 
   const handleReplyPress = (commentId: string) => {
@@ -340,11 +340,11 @@ export default function PostDetailed() {
     );
   }
 
-  // Check if post author is blocked
-  const isPostAuthorBlocked = blocks.includes(detailedPost.user_id);
-  // Check if reposted post's original author is blocked
+  // Check if post author is blocked (scope-aware)
+  const isPostAuthorBlocked = isBlockedPost(blocks, detailedPost.user_id, detailedPost.is_anonymous ?? false);
+  // Check if reposted post's original author is blocked (scope-aware)
   const isRepostAuthorBlocked = detailedPost.original_user_id
-    ? blocks.includes(detailedPost.original_user_id)
+    ? isBlockedPost(blocks, detailedPost.original_user_id, detailedPost.original_is_anonymous ?? false)
     : false;
 
   // Hide post if author or repost author is blocked
@@ -367,6 +367,10 @@ export default function PostDetailed() {
   // Check if current user owns this post or is admin
   const isPostOwner = session?.user?.id === detailedPost?.user_id;
   const canDeletePost = isPostOwner || isAdmin;
+
+  // Determine whether the block option for this post's scope is already applied
+  const postScope = (detailedPost?.is_anonymous ?? false) ? "anonymous_only" : "profile_only";
+  const alreadyBlockedInScope = hasBlockForScope(blocks, detailedPost?.user_id, postScope);
 
   const content = (
     <>
@@ -470,6 +474,24 @@ export default function PostDetailed() {
                 </Text>
               </Pressable>
             ) : null}
+            {!isPostOwner && !alreadyBlockedInScope ? (
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  handleBlockUser();
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="block-helper"
+                  size={20}
+                  color={theme.text}
+                />
+                <Text style={[styles.menuText, { color: theme.text }]}>
+                  {detailedPost?.is_anonymous ? "Block Anonymous User" : "Block User"}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </Pressable>
       </Modal>
@@ -483,20 +505,6 @@ export default function PostDetailed() {
         reportType="post"
       />
 
-      {/* Block User Modal */}
-      <BlockUserModal
-        visible={showBlockModal}
-        onClose={() => setShowBlockModal(false)}
-        onBlock={handleBlockUser}
-        isLoading={blockUserMutation.isPending}
-        username={
-          detailedPost?.is_anonymous
-            ? detailedPost?.user_id === currentUserId
-              ? "You"
-              : "Anonymous"
-            : detailedPost?.username || "User"
-        }
-      />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -539,6 +547,7 @@ export default function PostDetailed() {
                 commentCount={flatComments.length || 0}
                 isBookmarked={isBookmarked}
                 onToggleBookmark={toggleBookmark}
+                isAdmin={isAdmin}
               />
             }
           />

@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { Alert } from 'react-native';
 import { useBlockUser } from '../../../features/posts/hooks/useBlockUser';
 import { supabase } from '../../../lib/supabase';
+import type { BlockScope } from '../../../hooks/useBlocks';
 
 const mockFrom = supabase.from as jest.Mock;
 const mockRouter = router as unknown as { back: jest.Mock };
@@ -58,6 +59,7 @@ afterEach(() => {
 describe('useBlockUser', () => {
   const viewerId = 'user-abc';
   const targetUserId = 'user-xyz';
+  const defaultParams = { targetUserId, scope: 'profile_only' as BlockScope };
 
   // ── guards ───────────────────────────────────────────────────────────────────
   describe('guards', () => {
@@ -66,7 +68,7 @@ describe('useBlockUser', () => {
         wrapper: createWrapper(),
       });
 
-      act(() => { result.current.mutate(targetUserId); });
+      act(() => { result.current.mutate(defaultParams); });
 
       await waitFor(() => expect(result.current.isError).toBe(true));
       expect((result.current.error as Error).message).toBe('User ID missing');
@@ -75,7 +77,7 @@ describe('useBlockUser', () => {
 
   // ── happy path ───────────────────────────────────────────────────────────────
   describe('happy path', () => {
-    it('calls supabase.from("blocks").insert with blocker_id and blocked_id', async () => {
+    it('calls supabase.from("blocks").insert with blocker_id, blocked_id, and block_scope', async () => {
       const chain = buildChain({ data: null, error: null });
       mockFrom.mockReturnValueOnce(chain);
 
@@ -83,7 +85,7 @@ describe('useBlockUser', () => {
         wrapper: createWrapper(),
       });
 
-      act(() => { result.current.mutate(targetUserId); });
+      act(() => { result.current.mutate(defaultParams); });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -91,6 +93,7 @@ describe('useBlockUser', () => {
       expect(chain.insert).toHaveBeenCalledWith({
         blocker_id: viewerId,
         blocked_id: targetUserId,
+        block_scope: 'profile_only',
       });
     });
 
@@ -102,7 +105,7 @@ describe('useBlockUser', () => {
         wrapper: createWrapper(),
       });
 
-      act(() => { result.current.mutate(targetUserId); });
+      act(() => { result.current.mutate(defaultParams); });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -119,7 +122,7 @@ describe('useBlockUser', () => {
         wrapper: createWrapper(),
       });
 
-      act(() => { result.current.mutate(targetUserId); });
+      act(() => { result.current.mutate(defaultParams); });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -143,7 +146,7 @@ describe('useBlockUser', () => {
         wrapper: createWrapper(),
       });
 
-      act(() => { result.current.mutate(targetUserId); });
+      act(() => { result.current.mutate(defaultParams); });
 
       await waitFor(() => expect(result.current.isError).toBe(true));
 
@@ -158,7 +161,7 @@ describe('useBlockUser', () => {
         wrapper: createWrapper(),
       });
 
-      act(() => { result.current.mutate(targetUserId); });
+      act(() => { result.current.mutate(defaultParams); });
 
       await waitFor(() => expect(result.current.isError).toBe(true));
 
@@ -166,8 +169,6 @@ describe('useBlockUser', () => {
     });
 
     it('shows fallback message for non-Error thrown values', async () => {
-      // Simulate a case where after an error, the hook throws a raw string
-      // by making the chain's then reject with a non-Error
       const chain: Record<string, any> = {};
       ['select', 'insert', 'update', 'delete', 'upsert', 'eq', 'neq', 'not', 'in', 'or', 'order', 'range', 'limit', 'single', 'maybeSingle'].forEach((m) => {
         chain[m] = jest.fn().mockReturnValue(chain);
@@ -185,7 +186,7 @@ describe('useBlockUser', () => {
         wrapper: createWrapper(),
       });
 
-      act(() => { result.current.mutate(targetUserId); });
+      act(() => { result.current.mutate(defaultParams); });
 
       await waitFor(() => expect(result.current.isError).toBe(true));
 

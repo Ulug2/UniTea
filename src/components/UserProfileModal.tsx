@@ -18,6 +18,7 @@ import { Database } from "../types/database.types";
 import SupabaseImage from "./SupabaseImage";
 import { DEFAULT_AVATAR } from "../constants/images";
 import { useBanUser, type BanDuration } from "../features/profile/hooks/useBanUser";
+import { useBlockUser } from "../features/posts/hooks/useBlockUser";
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -48,10 +49,32 @@ export default function UserProfileModal({
   const { theme } = useTheme();
   const [showBanDuration, setShowBanDuration] = useState(false);
   const banUserMutation = useBanUser();
+  const blockUserMutation = useBlockUser(currentUserId ?? null);
   const canBan =
     isAdmin &&
     Boolean(currentUserId) &&
     currentUserId !== userId;
+  const canBlock = Boolean(currentUserId) && currentUserId !== userId;
+
+  const handleBlockUser = () => {
+    Alert.alert(
+      "Block User",
+      "You will no longer see public posts or receive messages from this user.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: () => {
+            blockUserMutation.mutate(
+              { targetUserId: userId, scope: "profile_only" },
+              { onSuccess: onClose }
+            );
+          },
+        },
+      ]
+    );
+  };
 
   // Fetch user profile
   const { data: profile, isLoading: isLoadingProfile } = useQuery<Profile | null>({
@@ -169,6 +192,24 @@ export default function UserProfileModal({
                   />
                   <Text style={[styles.banButtonText, { color: theme.error ?? "#EF4444" }]}>
                     Ban User
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              {/* Block User */}
+              {canBlock ? (
+                <Pressable
+                  style={[styles.blockButton, { borderColor: theme.secondaryText ?? "#9CA3AF" }]}
+                  onPress={handleBlockUser}
+                  disabled={blockUserMutation.isPending}
+                >
+                  <MaterialCommunityIcons
+                    name="block-helper"
+                    size={20}
+                    color={theme.secondaryText ?? "#9CA3AF"}
+                  />
+                  <Text style={[styles.blockButtonText, { color: theme.secondaryText ?? "#9CA3AF" }]}>
+                    Block User
                   </Text>
                 </Pressable>
               ) : null}
@@ -329,6 +370,22 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   banButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  blockButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    width: "100%",
+    marginBottom: 16,
+  },
+  blockButtonText: {
     fontSize: 16,
     fontWeight: "600",
   },

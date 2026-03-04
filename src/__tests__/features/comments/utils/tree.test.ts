@@ -5,6 +5,7 @@
  */
 
 import { buildCommentTree, type CommentVM } from '../../../../features/comments/utils/tree';
+import type { BlockRecord } from '../../../../hooks/useBlocks';
 
 // ── Minimal stub factory ──────────────────────────────────────────────────────
 function makeComment(overrides: Partial<CommentVM> = {}): CommentVM {
@@ -82,7 +83,7 @@ describe('buildCommentTree', () => {
     const blocked = makeComment({ id: 'b1', user_id: 'bad-user' });
     const normal = makeComment({ id: 'g1', user_id: 'good-user' });
 
-    const tree = buildCommentTree([blocked, normal], ['bad-user']);
+    const tree = buildCommentTree([blocked, normal], [{ userId: 'bad-user', scope: 'profile_only' }] as BlockRecord[]);
 
     expect(tree).toHaveLength(1);
     expect(tree[0].id).toBe('g1');
@@ -101,7 +102,7 @@ describe('buildCommentTree', () => {
       parent_comment_id: 'parent',
     });
 
-    const tree = buildCommentTree([parent, blockedReply, okReply], ['bad-user']);
+    const tree = buildCommentTree([parent, blockedReply, okReply], [{ userId: 'bad-user', scope: 'profile_only' }] as BlockRecord[]);
 
     expect(tree).toHaveLength(1);
     expect(tree[0].replies).toHaveLength(1);
@@ -112,7 +113,7 @@ describe('buildCommentTree', () => {
     const c1 = makeComment({ id: 'c1', user_id: 'troll' });
     const c2 = makeComment({ id: 'c2', user_id: 'troll' });
 
-    expect(buildCommentTree([c1, c2], ['troll'])).toHaveLength(0);
+    expect(buildCommentTree([c1, c2], [{ userId: 'troll', scope: 'profile_only' }] as BlockRecord[])).toHaveLength(0);
   });
 
   it('filters out comments with a null user_id', () => {

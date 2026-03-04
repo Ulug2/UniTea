@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { supabase } from "../../../lib/supabase";
 import type { Database } from "../../../types/database.types";
 import type { PostsSummaryViewRow } from "../../../types/posts";
-import { useBlocks } from "../../../hooks/useBlocks";
+import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
 
 type Post = Database["public"]["Tables"]["posts"]["Row"];
 type Vote = Database["public"]["Tables"]["votes"]["Row"];
@@ -194,7 +194,9 @@ export function useMyPosts(userId: string | undefined, activeTab: ProfileTab) {
     } else if (activeTab === "anonymous") {
       list = userPosts.filter((p) => p.is_anonymous);
     } else {
-      list = bookmarkedPosts.filter((p) => !blocks.includes(p.user_id));
+      list = bookmarkedPosts.filter(
+        (p) => !isBlockedPost(blocks, p.user_id, p.is_anonymous ?? false)
+      );
     }
     const seen = new Set<string>();
     return list.filter((p) => {

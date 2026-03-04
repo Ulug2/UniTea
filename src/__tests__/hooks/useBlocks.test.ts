@@ -8,7 +8,7 @@ jest.mock('../../context/AuthContext', () => ({ useAuth: jest.fn() }));
 import React from 'react';
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useBlocks } from '../../hooks/useBlocks';
+import { useBlocks, type BlockRecord } from '../../hooks/useBlocks';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -25,7 +25,6 @@ function buildSelectChain(rows: Array<Record<string, string>>) {
   const chain = {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
-    // Make the chain awaitable (Promise-like)
     then: (resolve: any, reject?: any) =>
       Promise.resolve({ data: rows, error: null }).then(resolve, reject),
     catch: (reject: any) =>
@@ -60,35 +59,46 @@ describe('useBlocks', () => {
     expect(result.current.data).toEqual([]);
   });
 
-  it('returns IDs of users blocked by the current user', async () => {
+  it('returns BlockRecords for users blocked by the current user', async () => {
     mockFrom
-      .mockReturnValueOnce(buildSelectChain([{ blocked_id: 'user-A' }, { blocked_id: 'user-B' }]))
+      .mockReturnValueOnce(buildSelectChain([
+        { blocked_id: 'user-A', block_scope: 'profile_only' },
+        { blocked_id: 'user-B', block_scope: 'anonymous_only' },
+      ]))
       .mockReturnValueOnce(buildSelectChain([]));
     const { result } = renderHook(() => useBlocks(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toContain('user-A');
-    expect(result.current.data).toContain('user-B');
+    const data = result.current.data ?? [];
+    expect(data.some((r) => r.userId === 'user-A' && r.scope === 'profile_only')).toBe(true);
+    expect(data.some((r) => r.userId === 'user-B' && r.scope === 'anonymous_only')).toBe(true);
   });
 
-  it('returns IDs of users who have blocked the current user', async () => {
+  it('returns profile_only BlockRecord for users who blocked the current user', async () => {
     mockFrom
       .mockReturnValueOnce(buildSelectChain([]))
-      .mockReturnValueOnce(buildSelectChain([{ blocker_id: 'user-C' }]));
+      .mockReturnValueOnce(buildSelectChain([{ blocker_id: 'user-C', block_scope: 'profile_only' }]));
     const { result } = renderHook(() => useBlocks(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toContain('user-C');
+    const data = result.current.data ?? [];
+    expect(data.some((r) => r.userId === 'user-C' && r.scope === 'profile_only')).toBe(true);
   });
 
   it('merges both directions without duplicates', async () => {
     mockFrom
-      .mockReturnValueOnce(buildSelectChain([{ blocked_id: 'user-X' }, { blocked_id: 'user-Y' }]))
-      .mockReturnValueOnce(buildSelectChain([{ blocker_id: 'user-X' }, { blocker_id: 'user-Z' }]));
+      .mockReturnValueOnce(buildSelectChain([
+        { blocked_id: 'user-X', block_scope: 'profile_only' },
+        { blocked_id: 'user-Y', block_scope: 'profile_only' },
+      ]))
+      .mockReturnValueOnce(buildSelectChain([
+        { blocker_id: 'user-X', block_scope: 'profile_only' },
+        { blocker_id: 'user-Z', block_scope: 'profile_only' },
+      ]));
     const { result } = renderHook(() => useBlocks(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     const data = result.current.data ?? [];
-    expect(data.filter((id) => id === 'user-X')).toHaveLength(1);
-    expect(data).toContain('user-Y');
-    expect(data).toContain('user-Z');
+    expect(data.filter((r) => r.userId === 'user-X')).toHaveLength(1);
+    expect(data.some((r) => r.userId === 'user-Y')).toBe(true);
+    expect(data.some((r) => r.userId === 'user-Z')).toBe(true);
     expect(data).toHaveLength(3);
   });
 
@@ -109,10 +119,11 @@ describe('useBlocks', () => {
       catch: () => {},
     };
     mockFrom
-      .mockReturnValueOnce(buildSelectChain([{ blocked_id: 'user-A' }]))
+      .mockReturnValueOnce(buildSelectChain([{ blocked_id: 'user-A', block_scope: 'profile_only' }]))
       .mockReturnValueOnce(errorChain);
     const { result } = renderHook(() => useBlocks(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toContain('user-A');
+    const data = result.current.data ?? [];
+    expect(data.some((r) => r.userId === 'user-A')).toBe(true);
   });
 });

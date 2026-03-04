@@ -18,7 +18,6 @@ import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
 import {
   useInfiniteQuery,
-  useQuery,
   useQueryClient,
   useIsMutating,
 } from "@tanstack/react-query";
@@ -27,6 +26,8 @@ import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useFilterContext } from "../../../context/FilterContext";
 import { useAuth } from "../../../context/AuthContext";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
+import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
+import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 
 type PostSummary = PostsSummaryViewRow;
 
@@ -44,33 +45,9 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
   const currentUserId = session?.user?.id;
   const { hiddenPostIds } = useFilterContext();
 
-  const { data: blocks = [] } = useQuery({
-    queryKey: ["blocks", currentUserId],
-    enabled: Boolean(currentUserId),
-    queryFn: async () => {
-      if (!currentUserId) return [];
-
-      // Get users blocked by me and users who blocked me
-      const [blockedByMe, blockedMe] = await Promise.all([
-        supabase
-          .from("blocks")
-          .select("blocked_id")
-          .eq("blocker_id", currentUserId),
-        supabase
-          .from("blocks")
-          .select("blocker_id")
-          .eq("blocked_id", currentUserId),
-      ]);
-
-      const blockedUserIds = new Set<string>();
-      blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
-      blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
-
-      return Array.from(blockedUserIds);
-    },
-    staleTime: 1000 * 60 * 5, // Blocks stay fresh for 5 minutes
-    gcTime: 1000 * 60 * 30,
-  });
+  const { data: blocks = [] } = useBlocks();
+  const { data: currentUser } = useMyProfile(currentUserId);
+  const isAdmin = currentUser?.is_admin === true;
 
   // Fetch posts for this filter only
   const {
@@ -156,31 +133,16 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
       new Map(allPosts.map((post) => [post.post_id, post])).values(),
     );
 
-    // Filter blocked users (but keep anonymous posts visible)
+    // Scope-aware block filtering: anonymous_only hides anon posts, profile_only hides public posts
     let filteredPosts = uniquePosts;
     if (blocks.length > 0) {
       filteredPosts = uniquePosts.filter((post) => {
-        // If post is anonymous, always show it (even if author is blocked)
-        if (post.is_anonymous) {
-          // For reposts, check if original post is anonymous
-          if (post.original_is_anonymous) {
-            return true; // Show anonymous reposts
-          }
-          // Original post is anonymous, show it
-          return true;
-        }
-
-        // For non-anonymous posts, check if author is blocked
-        const isPostAuthorBlocked = blocks.includes(post.user_id);
-
-        // For reposts, check if original author is blocked (but keep if original is anonymous)
-        const isRepostAuthorBlocked =
-          post.original_user_id && !post.original_is_anonymous
-            ? blocks.includes(post.original_user_id)
-            : false;
-
-        // Show post if neither author is blocked (or if original is anonymous)
-        return !isPostAuthorBlocked && !isRepostAuthorBlocked;
+        if (isBlockedPost(blocks, post.user_id, post.is_anonymous ?? false)) return false;
+        if (
+          post.original_user_id &&
+          isBlockedPost(blocks, post.original_user_id, post.original_is_anonymous ?? false)
+        ) return false;
+        return true;
       });
     }
 
@@ -250,9 +212,10 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
         originalIsAnonymous={item.original_is_anonymous}
         originalCreatedAt={item.original_created_at}
         onImageLoad={index < 5 ? onItemReady : undefined}
+        isAdmin={isAdmin}
       />
     ),
-    [onItemReady],
+    [onItemReady, isAdmin],
   );
 
   if (isPending) {
@@ -284,10 +247,10 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           removeClippedSubviews={true}
-          maxToRenderPerBatch={6}
-          updateCellsBatchingPeriod={150}
-          initialNumToRender={6}
-          windowSize={10}
+          maxToRenderPerBatch={4}
+          updateCellsBatchingPeriod={100}
+          initialNumToRender={5}
+          windowSize={5}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}

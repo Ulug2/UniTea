@@ -15,12 +15,12 @@ import LostFoundListItem, {
 } from "../../../components/LostFoundListItem";
 import LostFoundListSkeleton from "../../../components/LostFoundListSkeleton";
 import ReportModal from "../../../components/ReportModal";
-import BlockUserModal from "../../../components/BlockUserModal";
 import CustomInput from "../../../components/CustomInput";
 import { router } from "expo-router";
 import { FontAwesome, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useInfiniteQuery, useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useIsMutating, useMutation } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
+import { useBlockUser } from "../../../features/posts/hooks/useBlockUser";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { Database } from "../../../types/database.types";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
@@ -28,6 +28,7 @@ import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useAuth } from "../../../context/AuthContext";
 import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
+import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -39,12 +40,9 @@ export default function LostFoundScreen() {
   const { theme } = useTheme();
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
-  const queryClient = useQueryClient();
-
   const [selectedPost, setSelectedPost] = useState<LostFoundPostForMenu | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [showBlockModal, setShowBlockModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,34 +66,7 @@ export default function LostFoundScreen() {
     };
   }, [searchQuery]);
 
-  // Fetch blocked users
-  const { data: blocks = [] } = useQuery({
-    queryKey: ["blocks", currentUserId],
-    enabled: Boolean(currentUserId),
-    queryFn: async () => {
-      if (!currentUserId) return [];
-
-      // Get users blocked by me and users who blocked me
-      const [blockedByMe, blockedMe] = await Promise.all([
-        supabase
-          .from("blocks")
-          .select("blocked_id")
-          .eq("blocker_id", currentUserId),
-        supabase
-          .from("blocks")
-          .select("blocker_id")
-          .eq("blocked_id", currentUserId),
-      ]);
-
-      const blockedUserIds = new Set<string>();
-      blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
-      blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
-
-      return Array.from(blockedUserIds);
-    },
-    staleTime: 1000 * 60 * 5, // Blocks stay fresh for 5 minutes
-    gcTime: 1000 * 60 * 30,
-  });
+  const { data: blocks = [] } = useBlocks();
 
   // Fetch lost & found posts using optimized view with pagination
   const {
@@ -145,28 +116,14 @@ export default function LostFoundScreen() {
       new Map(allPosts.map((post) => [post.post_id, post])).values()
     );
 
-    // Filter out posts from blocked users (but keep anonymous posts visible)
+    // Scope-aware block filtering: anonymous_only hides anon posts, profile_only hides public posts
     return uniquePosts.filter((post) => {
-      // If post is anonymous, always show it (even if author is blocked)
-      if (post.is_anonymous) {
-        // For reposts, check if original post is anonymous
-        if (post.original_is_anonymous) {
-          return true; // Show anonymous reposts
-        }
-        // Original post is anonymous, show it
-        return true;
-      }
-
-      // For non-anonymous posts, check if author is blocked
-      const isPostAuthorBlocked = blocks.includes(post.user_id);
-
-      // For reposts, check if original author is blocked (but keep if original is anonymous)
-      const isRepostAuthorBlocked = post.original_user_id && !post.original_is_anonymous
-        ? blocks.includes(post.original_user_id)
-        : false;
-
-      // Show post if neither author is blocked (or if original is anonymous)
-      return !isPostAuthorBlocked && !isRepostAuthorBlocked;
+      if (isBlockedPost(blocks, post.user_id, post.is_anonymous ?? false)) return false;
+      if (
+        post.original_user_id &&
+        isBlockedPost(blocks, post.original_user_id, post.original_is_anonymous ?? false)
+      ) return false;
+      return true;
     });
   }, [postsData, blocks]);
 
@@ -218,10 +175,9 @@ export default function LostFoundScreen() {
       });
       if (error) throw error;
     },
-    onSuccess: (_, { postId }) => {
+    onSuccess: () => {
       setShowReportModal(false);
       setShowMenu(false);
-      setShowBlockModal(true);
     },
     onError: (error: unknown) => {
       Alert.alert("Error", (error as Error)?.message ?? "Failed to submit report");
@@ -236,38 +192,24 @@ export default function LostFoundScreen() {
     [selectedPost, reportPostMutation]
   );
 
-  // Block user mutation (after report)
-  const blockUserMutation = useMutation({
-    mutationFn: async (userIdToBlock: string) => {
-      if (!currentUserId) throw new Error("User ID missing");
-      const { error } = await supabase.from("blocks").insert({
-        blocker_id: currentUserId,
-        blocked_id: userIdToBlock,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      setShowBlockModal(false);
-      setSelectedPost(null);
-      queryClient.invalidateQueries({ queryKey: ["blocks", currentUserId] });
-      queryClient.invalidateQueries({ queryKey: ["posts", "lost_found"] });
-    },
-    onError: (error: unknown) => {
-      Alert.alert("Error", (error as Error)?.message ?? "Failed to block user");
-    },
-  });
+  // L&F posts are always public, so block scope is always profile_only
+  const blockUserMutation = useBlockUser(currentUserId ?? null);
 
   const handleBlockUser = useCallback(() => {
     if (!selectedPost) return;
     Alert.alert(
       "Block User",
-      "Are you sure you want to block this user? You will no longer see their posts and they will no longer see yours.",
+      "You will no longer see public posts or receive messages from this user.",
       [
-        { text: "Cancel", style: "cancel", onPress: () => setShowBlockModal(false) },
+        { text: "Cancel", style: "cancel" },
         {
           text: "Block",
           style: "destructive",
-          onPress: () => blockUserMutation.mutate(selectedPost.userId),
+          onPress: () =>
+            blockUserMutation.mutate(
+              { targetUserId: selectedPost.userId, scope: "profile_only" },
+              { onSuccess: () => setSelectedPost(null) },
+            ),
         },
       ]
     );
@@ -430,6 +372,20 @@ export default function LostFoundScreen() {
                 </Text>
               </Pressable>
             ) : null}
+            {!isPostOwner ? (
+              <Pressable
+                style={menuStyles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  handleBlockUser();
+                }}
+              >
+                <MaterialCommunityIcons name="block-helper" size={20} color={theme.text} />
+                <Text style={[menuStyles.menuText, { color: theme.text }]}>
+                  Block User
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </Pressable>
       </Modal>
@@ -440,14 +396,6 @@ export default function LostFoundScreen() {
         onSubmit={handleReportPost}
         isLoading={reportPostMutation.isPending}
         reportType="post"
-      />
-
-      <BlockUserModal
-        visible={showBlockModal}
-        onClose={() => setShowBlockModal(false)}
-        onBlock={handleBlockUser}
-        isLoading={blockUserMutation.isPending}
-        username={selectedPost?.username ?? "User"}
       />
 
       {/* Floating Action Button */}
