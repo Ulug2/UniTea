@@ -20,9 +20,15 @@ type ChatListItemProps = {
   isAnonymous?: boolean;
   /** Called when avatar has finished loading (for skeleton reveal) */
   onImageLoad?: () => void;
+  /** Called synchronously before navigation, so the caller can pre-seed the RQ
+   *  cache for the detail screen (eliminates ChatDetailSkeleton). */
+  onBeforeNavigate?: () => void;
 };
 
-// Custom comparison function for better memoization
+// Custom comparison function for better memoization.
+// onBeforeNavigate is intentionally excluded — it's a stable function whose
+// closure captures the current item, so re-renders driven by data changes
+// (which DO appear in the other checked props) keep it up to date.
 const arePropsEqual = (prevProps: ChatListItemProps, nextProps: ChatListItemProps) => {
   return (
     prevProps.chatId === nextProps.chatId &&
@@ -47,6 +53,7 @@ const ChatListItem = React.memo(function ChatListItem({
   unreadCount,
   isAnonymous,
   onImageLoad,
+  onBeforeNavigate,
 }: ChatListItemProps) {
   const { theme } = useTheme();
   const onImageLoadCalledRef = useRef(false);
@@ -183,7 +190,10 @@ const ChatListItem = React.memo(function ChatListItem({
     <>
       <Pressable
         style={styles.container}
-        onPress={() => router.push(`/chat/${chatId}`)}
+        onPress={() => {
+          onBeforeNavigate?.();
+          router.push(`/chat/${chatId}`);
+        }}
         android_ripple={{ color: theme.border }}
       >
         <View style={styles.avatarContainer}>

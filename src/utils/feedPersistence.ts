@@ -7,9 +7,11 @@ type PostSummary = PostsSummaryViewRow;
 // Versioned keys so a schema change can bust old cached blobs by bumping the suffix.
 const FEED_KEY_PREFIX = "@unitee:feed_v1:";
 const LF_KEY = "@unitee:lostfound_v1";
+const CHAT_KEY_PREFIX = "@unitee:chat_v1:";
 
 // Only cache the first page — enough to eliminate the skeleton on cold start.
 const MAX_CACHED = 15;
+const MAX_CACHED_CHATS = 25;
 
 // ---------------------------------------------------------------------------
 // Write helpers — called from tab components after a successful network fetch.
@@ -39,7 +41,64 @@ export async function saveLostFoundToStorage(
 }
 
 // ---------------------------------------------------------------------------
-// Seed helper — called from _layout.tsx before the splash screen hides.
+// Chat persistence — chat summaries + participant user profiles.
+// Stored as a single blob per user: { summaries, users, participantIds }.
+// The participantIds array is stored so we can reconstruct the exact dynamic
+// query key ["chat-users", participantIds] used by the chat tab.
+// ---------------------------------------------------------------------------
+
+type StoredChatBlob = {
+  summaries: Record<string, unknown>[];
+  users: Record<string, unknown>[];
+  participantIds: string[];
+};
+
+export async function saveChatToStorage(
+  userId: string,
+  summaries: Record<string, unknown>[],
+  users: Record<string, unknown>[],
+  participantIds: string[],
+): Promise<void> {
+  try {
+    const slice = summaries.slice(0, MAX_CACHED_CHATS);
+    if (slice.length === 0) return;
+    const blob: StoredChatBlob = { summaries: slice, users, participantIds };
+    await AsyncStorage.setItem(CHAT_KEY_PREFIX + userId, JSON.stringify(blob));
+  } catch {}
+}
+
+export async function seedChatCacheFromStorage(
+  queryClient: QueryClient,
+  userId: string,
+): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(CHAT_KEY_PREFIX + userId);
+    if (!raw) return;
+    const blob: StoredChatBlob = JSON.parse(raw);
+    if (!blob.summaries?.length) return;
+
+    if (!queryClient.getQueryData(["chat-summaries", userId])) {
+      queryClient.setQueryData(
+        ["chat-summaries", userId],
+        blob.summaries,
+        { updatedAt: 0 },
+      );
+    }
+
+    if (blob.participantIds?.length && blob.users?.length) {
+      if (!queryClient.getQueryData(["chat-users", blob.participantIds])) {
+        queryClient.setQueryData(
+          ["chat-users", blob.participantIds],
+          blob.users,
+          { updatedAt: 0 },
+        );
+      }
+    }
+  } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// Feed + Lost&Found seed helper — called from _layout.tsx before <Slot /> renders.
 //
 // Reads every feed key from AsyncStorage in parallel and seeds the React Query
 // cache with the results. Each entry is stamped with updatedAt = 0 so it is

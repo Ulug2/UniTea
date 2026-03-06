@@ -21,7 +21,10 @@ import { hideSplashSafe } from "../utils/splash";
 import { initSentry } from "../utils/sentry";
 import { logger } from "../utils/logger";
 import ErrorBoundary from "../components/ErrorBoundary";
-import { seedQueryCacheFromStorage } from "../utils/feedPersistence";
+import {
+  seedQueryCacheFromStorage,
+  seedChatCacheFromStorage,
+} from "../utils/feedPersistence";
 
 // Initialize Sentry before anything else
 initSentry();
@@ -136,8 +139,11 @@ function RootLayoutContent() {
       (async () => {
         // 1. Seed the RQ cache from AsyncStorage first (fast, ~5-50ms).
         //    This must complete BEFORE setCacheReady(true) so that when <Slot />
-        //    renders, useInfiniteQuery already finds data in cache (isPending=false).
-        await seedQueryCacheFromStorage(queryClient);
+        //    renders, useInfiniteQuery/useQuery already finds data in cache (isPending=false).
+        await Promise.all([
+          seedQueryCacheFromStorage(queryClient),
+          seedChatCacheFromStorage(queryClient, session.user.id),
+        ]);
 
         // 2. Ungate <Slot />. The Animated.View still has opacity:0 so the user
         //    sees nothing, but hooks now run against the pre-seeded cache.

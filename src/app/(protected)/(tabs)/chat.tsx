@@ -17,6 +17,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { logger } from "../../../utils/logger";
 import { useBlocks, isBlockedChat } from "../../../hooks/useBlocks";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
+import { saveChatToStorage } from "../../../utils/feedPersistence";
 
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
 type User = Database["public"]["Tables"]["profiles"]["Row"];
@@ -547,15 +548,33 @@ export default function ChatScreen() {
       : chat.unread_count_p2;
   }, [currentUserId]);
 
+  // Persist chat list to AsyncStorage so cold-start shows data instantly.
+  // Wait until users are loaded too so avatars/names are cached alongside summaries.
+  useEffect(() => {
+    if (!currentUserId || !chatSummaries.length) return;
+    saveChatToStorage(
+      currentUserId,
+      chatSummaries as Record<string, unknown>[],
+      users as Record<string, unknown>[],
+      participantIds,
+    );
+  }, [chatSummaries, users, participantIds, currentUserId]);
+
   const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
     minItems: 3,
     timeoutMs: 2500,
+    initialRevealed: chatSummaries.length > 0,
   });
 
   // Render function for FlatList - must be defined at component level (Rules of Hooks)
   const renderChatItem = useCallback(
     ({ item, index }: { item: ChatSummary; index: number }) => {
       const { user, isAnonymous } = getOtherUser(item);
+      const otherUserId =
+        item.participant_1_id === currentUserId
+          ? item.participant_2_id
+          : item.participant_1_id;
+
       return (
         <ChatListItem
           chatId={item.chat_id}
@@ -566,10 +585,34 @@ export default function ChatScreen() {
           unreadCount={getUnreadCount(item)}
           isAnonymous={isAnonymous}
           onImageLoad={index < 5 ? onItemReady : undefined}
+          onBeforeNavigate={() => {
+            // Pre-seed the detail screen queries synchronously so that
+            // ChatDetailSkeleton never flashes when navigating from this list.
+            const syntheticChat = {
+              id: item.chat_id,
+              participant_1_id: item.participant_1_id,
+              participant_2_id: item.participant_2_id,
+              post_id: item.post_id,
+              created_at: item.created_at,
+              last_message_at: item.last_message_at,
+            };
+            queryClient.setQueryData(
+              ["chat", item.chat_id],
+              syntheticChat,
+              { updatedAt: 0 },
+            );
+            if (user && !isAnonymous) {
+              queryClient.setQueryData(
+                ["chat-other-user", otherUserId],
+                user,
+                { updatedAt: 0 },
+              );
+            }
+          }}
         />
       );
     },
-    [getOtherUser, getUnreadCount, onItemReady]
+    [getOtherUser, getUnreadCount, onItemReady, queryClient, currentUserId]
   );
 
   const styles = StyleSheet.create({
@@ -588,8 +631,9 @@ export default function ChatScreen() {
     },
   });
 
-  // Show skeleton while loading initial data (including users to prevent flicker)
-  if (isLoadingChats || (isLoadingUsers && filteredChatSummaries.length > 0)) {
+  // Show skeleton only when we have no chat summaries at all (true cold start with no cache).
+  // User profiles load in the background; ChatListItem handles null user gracefully.
+  if (isLoadingChats) {
     return (
       <View style={styles.container}>
         <ChatListSkeleton />
