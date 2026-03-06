@@ -28,6 +28,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
+import { saveFeedToStorage } from "../../../utils/feedPersistence";
 
 type PostSummary = PostsSummaryViewRow;
 
@@ -173,11 +174,23 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  // Persist the first page to AsyncStorage after every successful fetch so the
+  // next cold start can seed the RQ cache before the splash screen hides.
+  useEffect(() => {
+    if (postsData?.pages?.length) {
+      saveFeedToStorage(filter, postsData.pages as PostSummary[][]);
+    }
+  }, [postsData, filter]);
+
   const keyExtractor = useCallback((item: PostSummary) => item.post_id, []);
 
+  // Skip the reveal-overlay when data is already in cache (seeded from
+  // AsyncStorage). Images are served from expo-image's disk cache so there is
+  // nothing to wait for.
   const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
     minItems: 3,
     timeoutMs: 2500,
+    initialRevealed: !!postsData,
   });
 
   const renderItem = useCallback(

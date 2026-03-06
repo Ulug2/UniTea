@@ -14,13 +14,14 @@ import {
   QueryClientProvider,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import * as SplashScreen from "expo-splash-screen";
 import { hideSplashSafe } from "../utils/splash";
 import { initSentry } from "../utils/sentry";
 import { logger } from "../utils/logger";
 import ErrorBoundary from "../components/ErrorBoundary";
+import { seedQueryCacheFromStorage } from "../utils/feedPersistence";
 
 // Initialize Sentry before anything else
 initSentry();
@@ -48,10 +49,23 @@ async function prefetchInitialData(userId: string, queryClient: any) {
     const { data: feedData } = await feedQuery;
 
     if (feedData) {
+      // Seed "new" with fresh data (full staleTime applies).
       queryClient.setQueryData(["posts", "feed", "new"], {
         pages: [feedData],
         pageParams: [0],
       });
+
+      // Seed "hot" with the same data marked stale (updatedAt:0) so the default
+      // visible tab never shows a skeleton. The "hot" useInfiniteQuery sees data
+      // (isPending=false) and immediately fires a background refetch with the
+      // proper 7-day / 100-post query, replacing the placeholder seamlessly.
+      if (!queryClient.getQueryData(["posts", "feed", "hot"])) {
+        queryClient.setQueryData(
+          ["posts", "feed", "hot"],
+          { pages: [feedData], pageParams: [0] },
+          { updatedAt: 0 },
+        );
+      }
     }
 
     // Prefetch blocked users
@@ -96,6 +110,12 @@ function RootLayoutContent() {
   const queryClient = useQueryClient();
   const { theme } = useTheme();
 
+  // Gates <Slot /> from rendering until the AsyncStorage seed has been written
+  // into the RQ cache. Without this, useEffect fires AFTER the first render,
+  // meaning tab hooks call useInfiniteQuery with an empty cache (isPending=true →
+  // skeleton) before seedQueryCacheFromStorage has a chance to run.
+  const [cacheReady, setCacheReady] = useState(false);
+
   // Animated opacity for the fade-in transition after splash screen hides
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -114,6 +134,17 @@ function RootLayoutContent() {
   useEffect(() => {
     if (fontsLoaded && !authLoading && session?.user?.id) {
       (async () => {
+        // 1. Seed the RQ cache from AsyncStorage first (fast, ~5-50ms).
+        //    This must complete BEFORE setCacheReady(true) so that when <Slot />
+        //    renders, useInfiniteQuery already finds data in cache (isPending=false).
+        await seedQueryCacheFromStorage(queryClient);
+
+        // 2. Ungate <Slot />. The Animated.View still has opacity:0 so the user
+        //    sees nothing, but hooks now run against the pre-seeded cache.
+        setCacheReady(true);
+
+        // 3. Fetch fresh data in the background. prefetchInitialData overwrites
+        //    the "new" feed slot with the latest posts from the network.
         const profileData = await prefetchInitialData(session.user.id, queryClient);
 
         if (profileData) {
@@ -137,8 +168,9 @@ function RootLayoutContent() {
         fadeInAfterSplash();
       })();
     } else if (fontsLoaded && !authLoading && !session) {
-      // No user session - hide splash screen immediately
-      // Wrap in IIFE to ensure promise is handled even if called without await
+      // No user session — nothing to seed; ungate <Slot /> immediately so the
+      // login screen can render, then hide the splash.
+      setCacheReady(true);
       (async () => {
         await hideSplashSafe();
         fadeInAfterSplash();
@@ -148,8 +180,10 @@ function RootLayoutContent() {
     }
   }, [fontsLoaded, authLoading, session, queryClient, persistProfile]);
 
-  // Don't render anything until fonts are loaded and auth is initialized
-  if (!fontsLoaded || authLoading) {
+  // Don't render anything until fonts, auth, and the AsyncStorage cache seed
+  // are all ready. cacheReady ensures <Slot /> never mounts before the RQ cache
+  // is pre-populated, eliminating the skeleton flash on cold starts.
+  if (!fontsLoaded || authLoading || !cacheReady) {
     return null;
   }
 

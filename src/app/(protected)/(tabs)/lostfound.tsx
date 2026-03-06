@@ -29,6 +29,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
+import { saveLostFoundToStorage } from "../../../utils/feedPersistence";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -139,6 +140,14 @@ export default function LostFoundScreen() {
     });
   }, [lostFoundPosts, debouncedQuery]);
 
+  // Persist the first page to AsyncStorage after every successful fetch so the
+  // next cold start can seed the RQ cache before the splash screen hides.
+  useEffect(() => {
+    if (postsData?.pages?.length) {
+      saveLostFoundToStorage(postsData.pages as PostSummary[][]);
+    }
+  }, [postsData]);
+
   const deletePostMutation = useDeletePost(undefined, {
     onSuccess: () => {
       setShowMenu(false);
@@ -230,9 +239,13 @@ export default function LostFoundScreen() {
     setShowMenu(true);
   }, []);
 
+  // Skip the reveal-overlay when data is already in cache (seeded from
+  // AsyncStorage). Images are served from expo-image's disk cache so there is
+  // nothing to wait for.
   const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
     minItems: 3,
     timeoutMs: 2500,
+    initialRevealed: !!postsData,
   });
 
   const renderItem = useCallback(
