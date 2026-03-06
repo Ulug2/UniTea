@@ -1,6 +1,6 @@
 import { ComponentProps, useMemo, useState, useEffect, useRef } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { Image } from "expo-image"; // Better caching than react-native Image
+import { Image } from "expo-image";
 import { supabase } from "../lib/supabase";
 import React from "react";
 
@@ -17,19 +17,27 @@ type SupabaseImageProps = {
   onLoad?: () => void;
 } & Omit<ComponentProps<typeof Image>, "source" | "onLoad">;
 
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
+
+// Buckets confirmed as public — URL can be constructed synchronously, no HEAD check needed.
+const PUBLIC_BUCKETS = new Set(["avatars"]);
+
 // Cache for bucket public/private status (persists across component mounts)
 const bucketCache = new Map<string, boolean>();
 
 // Cache for signed URLs with expiry tracking
-const signedUrlCache = new Map<
-  string,
-  { url: string; expiresAt: number }
->();
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
+function getPublicStorageUrl(bucket: string, path: string): string {
+  return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+}
 
 /**
  * PRODUCTION-READY: Uses public/signed URLs with expo-image's disk caching
  * NO MEMORY LEAKS - Images are cached to disk, not loaded as Base64 strings
  * OPTIMIZED: Caches bucket status and signed URLs to prevent unnecessary reloads
+ * ZERO-LATENCY for known-public buckets (e.g. avatars) — URL is constructed
+ * synchronously so isLoading never starts as true and the spinner never flickers.
  */
 function SupabaseImage({
   path,
@@ -41,12 +49,20 @@ function SupabaseImage({
   onLoad,
   ...imageProps
 }: SupabaseImageProps) {
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const isKnownPublic = PUBLIC_BUCKETS.has(bucket);
+  const cacheKey = `${bucket}:${path}`;
+
+  // Lazy initialisers run synchronously before the first paint.
+  // For known-public buckets the URL is available immediately — isLoading stays
+  // false and the ActivityIndicator is never shown, even on cold start.
+  const [imageUrl, setImageUrl] = useState<string | null>(() =>
+    isKnownPublic && path ? getPublicStorageUrl(bucket, path) : null
+  );
+  const [isLoading, setIsLoading] = useState(() => !(isKnownPublic && path));
+
   const isMountedRef = useRef(true);
   const onLoadRef = useRef(onLoad);
   onLoadRef.current = onLoad;
-  const cacheKey = `${bucket}:${path}`;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -62,10 +78,21 @@ function SupabaseImage({
       return;
     }
 
+    if (isKnownPublic) {
+      // URL is deterministic — update state if path/bucket changed and seed the
+      // runtime cache so other components skip the HEAD check too.
+      const url = getPublicStorageUrl(bucket, path);
+      bucketCache.set(bucket, true);
+      if (isMountedRef.current) {
+        setImageUrl(url);
+        setIsLoading(false);
+      }
+      return;
+    }
+
     // Check if we have a cached signed URL that's still valid
     const cachedSigned = signedUrlCache.get(cacheKey);
-    if (cachedSigned && cachedSigned.expiresAt > Date.now() + 60000) {
-      // Still valid (at least 1 minute remaining)
+    if (cachedSigned && cachedSigned.expiresAt > Date.now() + 60_000) {
       if (isMountedRef.current) {
         setImageUrl(cachedSigned.url);
         setIsLoading(false);
@@ -75,11 +102,10 @@ function SupabaseImage({
 
     const getImageUrl = async () => {
       try {
-        // Check cache for bucket public/private status
         const isPublic = bucketCache.get(bucket);
 
         if (isPublic === undefined) {
-          // Not cached, check if bucket is public
+          // Not cached — check if bucket is public via HEAD
           const { data: publicData } = supabase.storage
             .from(bucket)
             .getPublicUrl(path);
@@ -87,7 +113,7 @@ function SupabaseImage({
           try {
             const response = await fetch(publicData.publicUrl, {
               method: "HEAD",
-              cache: "no-store" // Don't cache the HEAD request itself
+              cache: "no-store",
             });
 
             const isPublicBucket = response.ok;
@@ -99,11 +125,9 @@ function SupabaseImage({
               return;
             }
           } catch {
-            // Fetch failed, assume private
             bucketCache.set(bucket, false);
           }
         } else if (isPublic) {
-          // Bucket is public (cached), use public URL directly
           const { data: publicData } = supabase.storage
             .from(bucket)
             .getPublicUrl(path);
@@ -115,10 +139,9 @@ function SupabaseImage({
           return;
         }
 
-        // Bucket is private, check cached signed URL first
+        // Bucket is private — use signed URL
         const cached = signedUrlCache.get(cacheKey);
         if (cached && cached.expiresAt > Date.now()) {
-          // Use cached signed URL
           if (isMountedRef.current) {
             setImageUrl(cached.url);
             setIsLoading(false);
@@ -133,10 +156,9 @@ function SupabaseImage({
 
         if (error) throw error;
 
-        // Cache the signed URL with expiry
         signedUrlCache.set(cacheKey, {
           url: signedData.signedUrl,
-          expiresAt: Date.now() + 3300000, // 55 minutes (refresh before 1 hour expiry)
+          expiresAt: Date.now() + 3_300_000, // 55 minutes
         });
 
         if (isMountedRef.current) {
@@ -153,7 +175,7 @@ function SupabaseImage({
     };
 
     getImageUrl();
-  }, [path, bucket, cacheKey]);
+  }, [path, bucket, cacheKey, isKnownPublic]);
 
   // Memoize the image source to prevent unnecessary re-renders
   // MUST be called before any early returns (Rules of Hooks)
@@ -201,7 +223,6 @@ function SupabaseImage({
 
   const handleLoad = () => {
     onLoadRef.current?.();
-    onLoad?.();
   };
 
   return (
@@ -209,7 +230,7 @@ function SupabaseImage({
       source={imageSource}
       contentFit={contentFit}
       transition={transition}
-      cachePolicy="disk" // Critical: Caches to disk, not memory
+      cachePolicy="disk"
       onLoad={handleLoad}
       {...imageProps}
     />

@@ -1,8 +1,8 @@
 import { Alert } from "react-native";
-import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../../../lib/supabase";
 import { uploadImage } from "../../../utils/supabaseImages";
 import { useUpdateProfile } from "./useUpdateProfile";
+import { useImagePipeline } from "../../../hooks/useImagePipeline";
 
 export type AvatarUploadResult = {
   status: "success" | "cancelled" | "error";
@@ -11,24 +11,17 @@ export type AvatarUploadResult = {
 
 export function useAvatarUpload() {
   const updateProfileMutation = useUpdateProfile();
+  const { pickAndPrepareImage } = useImagePipeline({
+    allowEditing: true,
+    aspect: [1, 1],
+  });
 
   const startAvatarUpload = async (): Promise<AvatarUploadResult> => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: "images",
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
+      const uri = await pickAndPrepareImage();
+      if (!uri) return { status: "cancelled" };
 
-      if (result.canceled) return { status: "cancelled" };
-
-      const imagePath = await uploadImage(
-        result.assets[0].uri,
-        supabase,
-        "avatars"
-      );
-
+      const imagePath = await uploadImage(uri, supabase, "avatars");
       await updateProfileMutation.mutateAsync({ avatar_url: imagePath });
       return { status: "success" };
     } catch (error: unknown) {
@@ -47,4 +40,3 @@ export function useAvatarUpload() {
     updateProfileMutation,
   };
 }
-

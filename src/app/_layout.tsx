@@ -6,6 +6,7 @@ import {
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
 import { Animated, View, Text, Pressable, StyleSheet } from "react-native";
+import { Image } from "expo-image";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import {
@@ -30,6 +31,7 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 const POSTS_PER_PAGE = 10;
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 
 // Prefetch initial data for authenticated users
 async function prefetchInitialData(userId: string, queryClient: any) {
@@ -74,9 +76,13 @@ async function prefetchInitialData(userId: string, queryClient: any) {
     if (profileData) {
       queryClient.setQueryData(["profile", userId], profileData);
     }
+
+    // Return profile so the caller can persist it and warm the avatar disk cache.
+    return profileData ?? null;
   } catch (error) {
     logger.error("[Prefetch] Error prefetching initial data", error as Error);
     // Don't throw - prefetch failures shouldn't block app startup
+    return null;
   }
 }
 
@@ -86,7 +92,7 @@ function RootLayoutContent() {
     Poppins_500Medium,
     Poppins_700Bold,
   });
-  const { loading: authLoading, session } = useAuth();
+  const { loading: authLoading, session, persistProfile } = useAuth();
   const queryClient = useQueryClient();
   const { theme } = useTheme();
 
@@ -107,10 +113,26 @@ function RootLayoutContent() {
   // Prefetch data when user is authenticated and fonts are loaded
   useEffect(() => {
     if (fontsLoaded && !authLoading && session?.user?.id) {
-      // Prefetch data and then hide splash screen
       (async () => {
-        await prefetchInitialData(session.user.id, queryClient);
-        // Hide splash screen after prefetch completes
+        const profileData = await prefetchInitialData(session.user.id, queryClient);
+
+        if (profileData) {
+          // Persist the profile for the next cold start.
+          await persistProfile({
+            avatar_url: profileData.avatar_url ?? null,
+            username: profileData.username ?? null,
+          });
+
+          // Warm the expo-image disk cache so the avatar is ready before the
+          // profile screen mounts.
+          if (profileData.avatar_url) {
+            const avatarUrl = profileData.avatar_url.startsWith("http")
+              ? profileData.avatar_url
+              : `${SUPABASE_URL}/storage/v1/object/public/avatars/${profileData.avatar_url}`;
+            Image.prefetch(avatarUrl);
+          }
+        }
+
         await hideSplashSafe();
         fadeInAfterSplash();
       })();
@@ -124,7 +146,7 @@ function RootLayoutContent() {
         // Error already handled in hideSplashSafe, just prevent unhandled rejection
       });
     }
-  }, [fontsLoaded, authLoading, session, queryClient]);
+  }, [fontsLoaded, authLoading, session, queryClient, persistProfile]);
 
   // Don't render anything until fonts are loaded and auth is initialized
   if (!fontsLoaded || authLoading) {
