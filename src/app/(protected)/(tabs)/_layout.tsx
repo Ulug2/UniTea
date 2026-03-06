@@ -101,10 +101,27 @@ function useGlobalUnreadCount() {
             clearTimeout(debounceRef.current);
           }
           debounceRef.current = setTimeout(() => {
-            queryClient.refetchQueries({
-              queryKey: ["global-unread-count", currentUserId],
-              exact: false, // Match all variants (with or without blocks)
-            });
+            // Derive the new badge count from the chat-summaries cache (already updated
+            // by chat.tsx's realtime handler) instead of firing a DB round-trip to
+            // user_chats_summary. This eliminates one DB query per message per user.
+            const summaries = queryClient.getQueryData<any[]>([
+              "chat-summaries",
+              currentUserId,
+            ]);
+            if (!summaries) return;
+            const total = summaries.reduce((sum: number, chat: any) => {
+              const isP1 = chat.participant_1_id === currentUserId;
+              return (
+                sum +
+                (isP1
+                  ? chat.unread_count_p1 || 0
+                  : chat.unread_count_p2 || 0)
+              );
+            }, 0);
+            queryClient.setQueriesData<number>(
+              { queryKey: ["global-unread-count", currentUserId], exact: false },
+              total,
+            );
           }, 500);
         },
       )
@@ -116,11 +133,25 @@ function useGlobalUnreadCount() {
           table: "chat_messages",
         },
         () => {
-          // Message read status changed - update immediately (no debounce for read status)
-          queryClient.refetchQueries({
-            queryKey: ["global-unread-count", currentUserId],
-            exact: false,
-          });
+          // Message read status changed — re-derive badge from cache, no DB query.
+          const summaries = queryClient.getQueryData<any[]>([
+            "chat-summaries",
+            currentUserId,
+          ]);
+          if (!summaries) return;
+          const total = summaries.reduce((sum: number, chat: any) => {
+            const isP1 = chat.participant_1_id === currentUserId;
+            return (
+              sum +
+              (isP1
+                ? chat.unread_count_p1 || 0
+                : chat.unread_count_p2 || 0)
+            );
+          }, 0);
+          queryClient.setQueriesData<number>(
+            { queryKey: ["global-unread-count", currentUserId], exact: false },
+            total,
+          );
         },
       )
       .subscribe();
