@@ -8,6 +8,8 @@ type PostSummary = PostsSummaryViewRow;
 const FEED_KEY_PREFIX = "@unitee:feed_v1:";
 const LF_KEY = "@unitee:lostfound_v1";
 const CHAT_KEY_PREFIX = "@unitee:chat_v1:";
+const USER_POSTS_KEY_PREFIX = "@unitee:user_posts_v1:";
+const USER_TOTAL_VOTES_KEY_PREFIX = "@unitee:total_votes_v1:";
 
 // Only cache the first page — enough to eliminate the skeleton on cold start.
 const MAX_CACHED = 15;
@@ -28,6 +30,59 @@ export async function saveFeedToStorage(
   } catch {
     // Non-fatal — a failed write just means no cache on next cold start.
   }
+}
+
+export async function saveUserPostsToStorage(
+  userId: string,
+  pages: PostSummary[][],
+): Promise<void> {
+  try {
+    const slice = (pages[0] ?? []).slice(0, MAX_CACHED);
+    if (slice.length === 0) return;
+    await AsyncStorage.setItem(USER_POSTS_KEY_PREFIX + userId, JSON.stringify(slice));
+  } catch {}
+}
+
+export async function seedUserPostsCacheFromStorage(
+  queryClient: QueryClient,
+  userId: string,
+): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(USER_POSTS_KEY_PREFIX + userId);
+    if (!raw) return;
+    const posts: PostSummary[] = JSON.parse(raw);
+    if (!posts.length) return;
+    if (queryClient.getQueryData(["user-posts", userId])) return;
+    const data: InfiniteData<PostSummary[]> = {
+      pages: [posts],
+      pageParams: [0],
+    };
+    // updatedAt:0 → immediately stale → background refetch fires on mount
+    queryClient.setQueryData(["user-posts", userId], data, { updatedAt: 0 });
+  } catch {}
+}
+
+export async function saveUserTotalVotesToStorage(
+  userId: string,
+  total: number,
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(USER_TOTAL_VOTES_KEY_PREFIX + userId, String(total));
+  } catch {}
+}
+
+export async function seedUserTotalVotesCacheFromStorage(
+  queryClient: QueryClient,
+  userId: string,
+): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(USER_TOTAL_VOTES_KEY_PREFIX + userId);
+    if (raw === null) return;
+    const total = parseInt(raw, 10);
+    if (isNaN(total)) return;
+    if (queryClient.getQueryData(["user-total-votes", userId]) !== undefined) return;
+    queryClient.setQueryData(["user-total-votes", userId], total, { updatedAt: 0 });
+  } catch {}
 }
 
 export async function saveLostFoundToStorage(

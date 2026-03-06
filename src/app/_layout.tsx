@@ -24,6 +24,8 @@ import ErrorBoundary from "../components/ErrorBoundary";
 import {
   seedQueryCacheFromStorage,
   seedChatCacheFromStorage,
+  seedUserPostsCacheFromStorage,
+  seedUserTotalVotesCacheFromStorage,
 } from "../utils/feedPersistence";
 
 // Initialize Sentry before anything else
@@ -143,6 +145,8 @@ function RootLayoutContent() {
         await Promise.all([
           seedQueryCacheFromStorage(queryClient),
           seedChatCacheFromStorage(queryClient, session.user.id),
+          seedUserPostsCacheFromStorage(queryClient, session.user.id),
+          seedUserTotalVotesCacheFromStorage(queryClient, session.user.id),
         ]);
 
         // 2. Ungate <Slot />. The Animated.View still has opacity:0 so the user

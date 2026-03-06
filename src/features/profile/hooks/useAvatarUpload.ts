@@ -3,6 +3,7 @@ import { supabase } from "../../../lib/supabase";
 import { uploadImage } from "../../../utils/supabaseImages";
 import { useUpdateProfile } from "./useUpdateProfile";
 import { useImagePipeline } from "../../../hooks/useImagePipeline";
+import { useAuth } from "../../../context/AuthContext";
 
 export type AvatarUploadResult = {
   status: "success" | "cancelled" | "error";
@@ -10,6 +11,7 @@ export type AvatarUploadResult = {
 };
 
 export function useAvatarUpload() {
+  const { session } = useAuth();
   const updateProfileMutation = useUpdateProfile();
   const { pickAndPrepareImage } = useImagePipeline({
     allowEditing: true,
@@ -21,8 +23,36 @@ export function useAvatarUpload() {
       const uri = await pickAndPrepareImage();
       if (!uri) return { status: "cancelled" };
 
+      // Read the current avatar path BEFORE uploading the new one so we can
+      // delete it from storage after the DB update succeeds.
+      const currentUserId = session?.user?.id;
+      let oldAvatarPath: string | null = null;
+      if (currentUserId) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("avatar_url")
+          .eq("id", currentUserId)
+          .single();
+        // Only track storage paths — ignore full HTTP URLs (e.g. OAuth avatars)
+        if (profile?.avatar_url && !profile.avatar_url.startsWith("http")) {
+          oldAvatarPath = profile.avatar_url;
+        }
+      }
+
       const imagePath = await uploadImage(uri, supabase, "avatars");
       await updateProfileMutation.mutateAsync({ avatar_url: imagePath });
+
+      // Delete the old avatar from storage now that the DB points to the new one.
+      // Non-fatal — a failed delete just leaves an orphaned file.
+      if (oldAvatarPath) {
+        const { error: storageError } = await supabase.storage
+          .from("avatars")
+          .remove([oldAvatarPath]);
+        if (storageError) {
+          console.warn("[useAvatarUpload] Failed to delete old avatar:", storageError.message);
+        }
+      }
+
       return { status: "success" };
     } catch (error: unknown) {
       const message =
