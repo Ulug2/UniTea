@@ -373,10 +373,10 @@ const styles = StyleSheet.create({
 import { View, Text } from 'react-native';
 
 export default function LostFoundPostDetailed() {
-    return (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            <Text>Lost & Found Detail - Coming Soon</Text>
-        </View>
-    );
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <Text>Lost & Found Detail - Coming Soon</Text>
+    </View>
+  );
 }
 

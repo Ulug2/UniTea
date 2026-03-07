@@ -195,7 +195,7 @@ const arePropsEqual = (
     prevProps.originalCreatedAt === nextProps.originalCreatedAt &&
     prevProps.isDetailedPost === nextProps.isDetailedPost &&
     prevProps.disableCommentInteraction ===
-      nextProps.disableCommentInteraction &&
+    nextProps.disableCommentInteraction &&
     prevProps.isBookmarked === nextProps.isBookmarked &&
     prevProps.isAdmin === nextProps.isAdmin
   );
@@ -353,34 +353,34 @@ const PostListItem = React.memo(function PostListItem({
                   />
                 )
               ) : // Show regular post author
-              isAnonymous ? (
-                <Image
-                  source={nuLogo}
-                  style={styles.avatar}
-                  onLoad={() => setAvatarLoaded(true)}
-                />
-              ) : avatarUrl ? (
-                avatarUrl.startsWith("http") ? (
+                isAnonymous ? (
                   <Image
-                    source={{ uri: avatarUrl }}
+                    source={nuLogo}
                     style={styles.avatar}
                     onLoad={() => setAvatarLoaded(true)}
                   />
+                ) : avatarUrl ? (
+                  avatarUrl.startsWith("http") ? (
+                    <Image
+                      source={{ uri: avatarUrl }}
+                      style={styles.avatar}
+                      onLoad={() => setAvatarLoaded(true)}
+                    />
+                  ) : (
+                    <SupabaseImage
+                      path={avatarUrl}
+                      bucket="avatars"
+                      style={styles.avatar}
+                      onLoad={() => setAvatarLoaded(true)}
+                    />
+                  )
                 ) : (
-                  <SupabaseImage
-                    path={avatarUrl}
-                    bucket="avatars"
+                  <Image
+                    source={DEFAULT_AVATAR}
                     style={styles.avatar}
                     onLoad={() => setAvatarLoaded(true)}
                   />
-                )
-              ) : (
-                <Image
-                  source={DEFAULT_AVATAR}
-                  style={styles.avatar}
-                  onLoad={() => setAvatarLoaded(true)}
-                />
-              )}
+                )}
               <Text style={styles.username}>
                 {isAnonymous
                   ? userId === currentUserId
