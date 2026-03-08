@@ -59,6 +59,7 @@ serve(async (req: Request) => {
     // 2. Parse request body
     const {
       content,
+      title,
       image_url,
       post_type,
       is_anonymous,
@@ -72,9 +73,11 @@ serve(async (req: Request) => {
     } = await req.json();
 
     // 3. Text Moderation (if content exists): OpenAI Moderation + curse-word check (EN/RU/KZ)
-    if (content && content.trim()) {
+    // Combine title + content for a single moderation pass when both are present
+    const textToModerate = [title?.trim(), content?.trim()].filter(Boolean).join(" ");
+    if (textToModerate) {
       const moderation = await openai.moderations.create({
-        input: content.trim(),
+        input: textToModerate,
       });
 
       if (moderation.results[0].flagged) {
@@ -93,7 +96,7 @@ Do NOT flag (reply NO):
 
 Reply only YES or NO.
 
-Text: "${content.trim().slice(0, 2000)}"`;
+Text: "${textToModerate.slice(0, 2000)}"`;
       const curseCheck = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: curseCheckPrompt }],
@@ -168,6 +171,9 @@ Text: "${content.trim().slice(0, 2000)}"`;
     };
 
     // Add optional fields if they exist
+    if (title) {
+      postData.title = title.trim();
+    }
     if (location) {
       postData.location = location.trim();
     }

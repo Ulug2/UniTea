@@ -88,10 +88,10 @@ function ChatMessageRowInner({
         isCurrentUser
           ? replyQuoteStyles.containerCurrentUser
           : {
-              backgroundColor: isDark
-                ? "rgba(255,255,255,0.10)"
-                : "rgba(0,0,0,0.06)",
-            },
+            backgroundColor: isDark
+              ? "rgba(255,255,255,0.10)"
+              : "rgba(0,0,0,0.06)",
+          },
       ]}
       onPress={() => {
         if (item.reply_to_id && onReplyQuotePress) {
@@ -158,8 +158,8 @@ function ChatMessageRowInner({
             : chatDetailStyles.otherUserMessage,
           // Larger gap when the message above is from the opposite side (e.g. partner → me)
           nextMsg &&
-            nextMsg.user_id !== item.user_id &&
-            inlineTimestampStyles.messageGapAfterOtherSender,
+          nextMsg.user_id !== item.user_id &&
+          inlineTimestampStyles.messageGapAfterOtherSender,
         ]}
         onLongPress={() => onLongPress(item)}
         onPress={() => {
@@ -260,8 +260,8 @@ function ChatMessageRowInner({
                   position: "relative" as const,
                 },
                 item.image_url &&
-                  !showTombstone &&
-                  chatDetailStyles.messageTextWrapWithImage,
+                !showTombstone &&
+                chatDetailStyles.messageTextWrapWithImage,
               ]}
             >
               <Text
@@ -353,9 +353,9 @@ const inlineTimestampStyles = StyleSheet.create({
     bottom: 0,
     right: 12,
     // marginLeft: 4,
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: "Poppins_400Regular",
-    lineHeight: 17,
+    lineHeight: 16,
   },
   // Semi-transparent pill that overlays the image for image-only messages.
   imagePill: {

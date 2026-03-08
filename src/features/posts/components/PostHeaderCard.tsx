@@ -11,6 +11,7 @@ type PostHeaderCardProps = {
   commentCount: number;
   isBookmarked: boolean;
   onToggleBookmark: () => void;
+  onImagePress?: (uri: string) => void;
   isAdmin?: boolean;
 };
 
@@ -20,6 +21,7 @@ export function PostHeaderCard({
   commentCount,
   isBookmarked,
   onToggleBookmark,
+  onImagePress,
   isAdmin = false,
 }: PostHeaderCardProps) {
   return (
@@ -55,6 +57,7 @@ export function PostHeaderCard({
       isDetailedPost
       isBookmarked={isBookmarked}
       onBookmarkPress={onToggleBookmark}
+      onImagePress={onImagePress}
       disableCommentInteraction
       isAdmin={isAdmin}
     />

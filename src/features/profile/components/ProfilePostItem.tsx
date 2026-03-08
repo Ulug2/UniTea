@@ -22,6 +22,20 @@ type ProfilePostItemProps = {
 const ProfilePostItem = memo(
   ({ item, postScore, commentCount, theme }: ProfilePostItemProps) => {
     const postId = "post_id" in item ? item.post_id : item.id;
+    const isLostFound = item.post_type === "lost_found";
+
+    // For L&F posts show "Lost/Found: {title}" if a title exists, else fall back to content.
+    const displayContent = useMemo(() => {
+      if (!isLostFound) return item.content;
+      const title = (item as PostSummary).title;
+      const category = (item as PostSummary).category;
+      if (title) {
+        const prefix = category === "found" ? "Found" : "Lost";
+        return `${prefix}: ${title}`;
+      }
+      return item.content;
+    }, [isLostFound, item]);
+
     const timeAgo = useMemo(() => {
       return item.created_at
         ? formatDistanceToNowStrict(new Date(item.created_at), {
@@ -36,7 +50,9 @@ const ProfilePostItem = memo(
           styles.postCard,
           { backgroundColor: theme.card, borderBottomColor: theme.border },
         ]}
-        onPress={() => router.push(`/post/${postId}`)}
+        onPress={() =>
+          router.push(isLostFound ? `/lostfoundpost/${postId}` : `/post/${postId}`)
+        }
       >
         <View style={styles.postHeader}>
           <Text style={[styles.postLabel, { color: theme.secondaryText }]}>
@@ -50,21 +66,23 @@ const ProfilePostItem = memo(
           style={[styles.postContent, { color: theme.text }]}
           numberOfLines={2}
         >
-          {item.content}
+          {displayContent}
         </Text>
         <View style={styles.postFooter}>
-          <View style={styles.postStat}>
-            <MaterialCommunityIcons
-              name="arrow-up-bold"
-              size={16}
-              color="#51CF66"
-            />
-            <Text
-              style={[styles.postStatText, { color: theme.secondaryText }]}
-            >
-              {postScore}
-            </Text>
-          </View>
+          {!isLostFound && (
+            <View style={styles.postStat}>
+              <MaterialCommunityIcons
+                name="arrow-up-bold"
+                size={16}
+                color="#51CF66"
+              />
+              <Text
+                style={[styles.postStatText, { color: theme.secondaryText }]}
+              >
+                {postScore}
+              </Text>
+            </View>
+          )}
           <View style={styles.postStat}>
             <MaterialCommunityIcons
               name="comment-outline"
@@ -81,7 +99,7 @@ const ProfilePostItem = memo(
             style={styles.postStat}
             onPress={(e) => {
               e.stopPropagation();
-              sharePost(postId);
+              sharePost(postId, isLostFound ? "lost_found" : undefined);
             }}
           >
             <Ionicons

@@ -342,6 +342,14 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       setPasswordError(`Password must be at least ${minPasswordLength} characters long.`);
       return;
     }
+    if (!/[A-Z]/.test(password)) {
+      setPasswordError("Password must contain at least one uppercase letter.");
+      return;
+    }
+    if (!/[a-z]/.test(password)) {
+      setPasswordError("Password must contain at least one lowercase letter.");
+      return;
+    }
     if (!checkRateLimitOrAlert()) return;
 
     setLoadingState((prev) => ({ ...prev, signup: true }));

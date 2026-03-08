@@ -22,6 +22,7 @@ export function useCreatePostFormState(params: CreatePostMode) {
 
   const [category, setCategory] = useState<"lost" | "found">("lost");
   const [location, setLocation] = useState<string>("");
+  const [title, setTitle] = useState<string>("");
 
   const reset = useCallback(() => {
     setContent("");
@@ -31,6 +32,7 @@ export function useCreatePostFormState(params: CreatePostMode) {
     setPollOptions(["", ""]);
     setCategory("lost");
     setLocation("");
+    setTitle("");
   }, []);
 
   const hasPollContent = useMemo(
@@ -40,7 +42,7 @@ export function useCreatePostFormState(params: CreatePostMode) {
 
   const canSubmit = useMemo(() => {
     if (isLostFound) {
-      return Boolean(content.trim()) && Boolean(location.trim());
+      return Boolean(title.trim()) && Boolean(content.trim()) && Boolean(location.trim());
     }
 
     if (isRepost) {
@@ -54,7 +56,7 @@ export function useCreatePostFormState(params: CreatePostMode) {
     }
 
     return Boolean(content.trim());
-  }, [isLostFound, isRepost, isPoll, content, location, image, hasPollContent]);
+  }, [isLostFound, isRepost, isPoll, content, title, location, image, hasPollContent]);
 
   return {
     // mode
@@ -80,6 +82,8 @@ export function useCreatePostFormState(params: CreatePostMode) {
     setCategory,
     location,
     setLocation,
+    title,
+    setTitle,
 
     // helpers
     reset,

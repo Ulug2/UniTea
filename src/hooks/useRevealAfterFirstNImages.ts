@@ -8,6 +8,12 @@ type Options = {
   timeoutMs?: number;
   /** When false, timeout is not started (e.g. for chat detail until data is ready). Default true. */
   enabled?: boolean;
+  /**
+   * When true, shouldReveal starts as true so the overlay is skipped entirely.
+   * Use this when rendering from a persistent cache where images are already on
+   * disk — there is nothing to wait for.
+   */
+  initialRevealed?: boolean;
 };
 
 /**
@@ -20,8 +26,9 @@ export function useRevealAfterFirstNImages(options: Options = {}) {
   const minItems = options.minItems ?? DEFAULT_MIN_ITEMS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const enabled = options.enabled ?? true;
+  const initialRevealed = options.initialRevealed ?? false;
 
-  const [shouldReveal, setShouldReveal] = useState(false);
+  const [shouldReveal, setShouldReveal] = useState(initialRevealed);
   const countRef = useRef(0);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

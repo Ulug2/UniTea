@@ -38,6 +38,7 @@ import { useFilterContext } from "../../../context/FilterContext";
 import { CommentsTreeList } from "../../../features/comments/components/CommentsTreeList";
 import { CommentComposer } from "../../../features/comments/components/CommentComposer";
 import { PostHeaderCard } from "../../../features/posts/components/PostHeaderCard";
+import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
 
 export default function PostDetailed() {
   const { id, fromDeeplink } = useLocalSearchParams<{
@@ -59,6 +60,7 @@ export default function PostDetailed() {
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [isAnonymousMode, setIsAnonymousMode] = useState(true);
+  const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
     null,
   );
@@ -505,6 +507,12 @@ export default function PostDetailed() {
         reportType="post"
       />
 
+      <FullscreenImageModal
+        visible={Boolean(fullscreenUri)}
+        uri={fullscreenUri}
+        onClose={() => setFullscreenUri(null)}
+      />
+
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -547,6 +555,7 @@ export default function PostDetailed() {
                 commentCount={flatComments.length || 0}
                 isBookmarked={isBookmarked}
                 onToggleBookmark={toggleBookmark}
+                onImagePress={setFullscreenUri}
                 isAdmin={isAdmin}
               />
             }

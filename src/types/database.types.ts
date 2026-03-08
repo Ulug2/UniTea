@@ -549,6 +549,7 @@ export type Database = {
           post_type: string
           repost_comment: string | null
           reposted_from_post_id: string | null
+          title: string | null
           updated_at: string | null
           user_id: string
           view_count: number | null
@@ -567,6 +568,7 @@ export type Database = {
           post_type: string
           repost_comment?: string | null
           reposted_from_post_id?: string | null
+          title?: string | null
           updated_at?: string | null
           user_id: string
           view_count?: number | null
@@ -585,6 +587,7 @@ export type Database = {
           post_type?: string
           repost_comment?: string | null
           reposted_from_post_id?: string | null
+          title?: string | null
           updated_at?: string | null
           user_id?: string
           view_count?: number | null
@@ -877,6 +880,7 @@ export type Database = {
           repost_comment: string | null
           repost_count: number | null
           reposted_from_post_id: string | null
+          title: string | null
           updated_at: string | null
           user_id: string | null
           user_vote: string | null
