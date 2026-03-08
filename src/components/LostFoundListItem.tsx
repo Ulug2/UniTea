@@ -22,6 +22,7 @@ type LostFoundListItemProps = {
   postId: string;
   userId: string;
   content: string;
+  title: string | null;
   imageUrl: string | null;
   category: string | null;
   location: string | null;
@@ -41,6 +42,7 @@ const arePropsEqual = (prevProps: LostFoundListItemProps, nextProps: LostFoundLi
     prevProps.postId === nextProps.postId &&
     prevProps.userId === nextProps.userId &&
     prevProps.content === nextProps.content &&
+    prevProps.title === nextProps.title &&
     prevProps.imageUrl === nextProps.imageUrl &&
     prevProps.category === nextProps.category &&
     prevProps.location === nextProps.location &&
@@ -58,6 +60,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   postId,
   userId,
   content,
+  title,
   imageUrl,
   category,
   location,
@@ -244,8 +247,9 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
     }
   };
 
-  // Get the category prefix
   const categoryPrefix = category === "lost" ? "Lost" : "Found";
+  // Display title: "Lost: {title}" when title is present, otherwise just "Lost"
+  const displayTitle = title ? `${categoryPrefix}: ${title}` : categoryPrefix;
 
   const styles = StyleSheet.create({
     link: {
@@ -380,6 +384,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   return (
     <Pressable
       style={styles.card}
+      onPress={() => router.push(`/lostfoundpost/${postId}`)}
       onLongPress={() =>
         onLongPress?.({ postId, userId, username: username ?? "Unknown" })
       }
@@ -442,7 +447,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
           marginBottom: 4,
         }}
       >
-        <Text style={styles.title}>{categoryPrefix}</Text>
+        <Text style={styles.title}>{displayTitle}</Text>
         {location && (
           <View style={styles.locationContainer}>
             <Ionicons
@@ -488,6 +493,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
             style={[styles.chatButton, isCreatingChat && { opacity: 0.6 }]}
             onPress={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               handleChatPress();
             }}
             disabled={isCreatingChat}
@@ -506,7 +512,8 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
           style={styles.shareButton}
           onPress={(e) => {
             e.preventDefault();
-            sharePost(postId);
+            e.stopPropagation();
+            sharePost(postId, "lost_found");
           }}
         >
           <Ionicons name="share-outline" size={20} color={theme.text} />

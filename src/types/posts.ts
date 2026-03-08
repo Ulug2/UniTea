@@ -6,6 +6,7 @@ export type PostsSummaryViewRow = {
   post_id: string;
   user_id: string;
   content: string;
+  title: string | null;
   image_url: string | null;
   category: string | null;
   location: string | null;

@@ -134,9 +134,10 @@ export default function LostFoundScreen() {
     const q = debouncedQuery;
     return lostFoundPosts.filter((post) => {
       const content = (post.content ?? "").toLowerCase();
+      const title = (post.title ?? "").toLowerCase();
       const category = (post.category ?? "").toLowerCase();
       const location = (post.location ?? "").toLowerCase();
-      return content.includes(q) || category.includes(q) || location.includes(q);
+      return content.includes(q) || title.includes(q) || category.includes(q) || location.includes(q);
     });
   }, [lostFoundPosts, debouncedQuery]);
 
@@ -254,6 +255,7 @@ export default function LostFoundScreen() {
         postId={item.post_id}
         userId={item.user_id}
         content={item.content}
+        title={item.title ?? null}
         imageUrl={item.image_url}
         category={item.category}
         location={item.location}

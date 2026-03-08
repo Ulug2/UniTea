@@ -304,6 +304,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
           </ScrollView>
         </View>
       )}
+
     </View>
   );
 }

@@ -39,7 +39,6 @@ export function useMyPosts(userId: string | undefined, activeTab: ProfileTab) {
         .from("posts_summary_view")
         .select("*")
         .eq("user_id", userId)
-        .neq("post_type", "lost_found")
         .order("created_at", { ascending: false })
         .range(from, to);
 
