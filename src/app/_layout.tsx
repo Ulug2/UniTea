@@ -24,6 +24,7 @@ import ErrorBoundary from "../components/ErrorBoundary";
 import {
   seedQueryCacheFromStorage,
   seedChatCacheFromStorage,
+  seedChatMessagesCacheFromStorage,
   seedUserPostsCacheFromStorage,
   seedUserTotalVotesCacheFromStorage,
 } from "../utils/feedPersistence";
@@ -145,6 +146,7 @@ function RootLayoutContent() {
         await Promise.all([
           seedQueryCacheFromStorage(queryClient),
           seedChatCacheFromStorage(queryClient, session.user.id),
+          seedChatMessagesCacheFromStorage(queryClient, session.user.id),
           seedUserPostsCacheFromStorage(queryClient, session.user.id),
           seedUserTotalVotesCacheFromStorage(queryClient, session.user.id),
         ]);

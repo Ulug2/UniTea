@@ -493,14 +493,19 @@ export default function ChatScreen() {
     };
   }, [currentUserId, queryClient]);
 
-  // Get all unique participant IDs (excluding anonymous)
+  // Get all unique participant IDs (excluding anonymous), SORTED so the React
+  // Query key ["chat-users", participantIds] is order-stable. Without sorting,
+  // the freshly-computed array may differ in order from what was stored in
+  // AsyncStorage, causing a cache miss and the "Unknown User" flicker.
   const participantIds = useMemo(() => {
     const ids = new Set<string>();
     (chatSummaries as ChatSummary[]).forEach((chat: ChatSummary) => {
       ids.add(chat.participant_1_id);
       ids.add(chat.participant_2_id);
     });
-    return Array.from(ids).filter((id: string) => !id.startsWith("anonymous-"));
+    return Array.from(ids)
+      .filter((id: string) => !id.startsWith("anonymous-"))
+      .sort();
   }, [chatSummaries]);
 
   // Fetch all participant profiles

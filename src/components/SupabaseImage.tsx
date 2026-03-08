@@ -20,7 +20,7 @@ type SupabaseImageProps = {
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 
 // Buckets confirmed as public — URL can be constructed synchronously, no HEAD check needed.
-const PUBLIC_BUCKETS = new Set(["avatars", "post-images"]);
+const PUBLIC_BUCKETS = new Set(["avatars", "post-images", "chat-images"]);
 
 // Cache for bucket public/private status (persists across component mounts)
 const bucketCache = new Map<string, boolean>();
