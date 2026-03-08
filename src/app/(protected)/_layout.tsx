@@ -38,9 +38,9 @@ export default function AppLayout() {
 
         const pathParts = parsed.path.split("/").filter(Boolean);
         if (pathParts[0] === "post" && pathParts[1]) {
-          router.push(`/post/${pathParts[1]}?fromDeeplink=1`);
+          router.navigate(`/post/${pathParts[1]}?fromDeeplink=1`);
         } else if (pathParts[0] === "lostfoundpost" && pathParts[1]) {
-          router.push(`/lostfoundpost/${pathParts[1]}?fromDeeplink=1`);
+          router.navigate(`/lostfoundpost/${pathParts[1]}?fromDeeplink=1`);
         }
       } catch {
         // Silently ignore parse/navigation errors so user never sees alerts
