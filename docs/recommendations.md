@@ -1,34 +1,22 @@
-Now I have the full picture. Let me give you a precise, honest assessment.
-
----
-
 ## Scalability Assessment
 
 **Plan note**: Pro gives you 100K MAU, 8GB DB, 250GB egress. The plan is not the bottleneck — your code architecture is. Upgrading to Pro is the right call and removes the free-tier ceiling, but it doesn't fix the issues below.
 
 ---
 
-## 500 users — ✅ Fine
+## 500 users — ✅ Done
 
 Everything works. The fixes already made (indexes, `posts_summary_view` user_vote join, `useGlobalUnreadCount` cache derivation) are enough. No action needed beyond upgrading to Pro.
 
 ---
 
-## 1,000 users — ⚠️ Noticeable slowdowns, two things to fix
+## 1,000 users — ✅ Done
 
-### Issue 1 — "hot" feed fetches 100 rows, sorts client-side (HIGH)
+### ~~Issue 1 — "hot" feed fetches 100 rows, sorts client-side~~ ✅ FIXED
 
-```ts
-// index.tsx
-.gte("created_at", last7Days)
-.order("created_at", desc)
-.range(0, 99) // ← 100 rows, not 10
-// then sorted in JS by a composite score
-```
+**What was done**: Added a `post_stats` denormalised table with a stored generated `hot_score` column (`ABS(vote_score) + comment_count + repost_count`), indexed on `hot_score DESC`. The "hot" feed now fetches 10 rows per page and sorts server-side with `.order("hot_score", { ascending: false })`. The client-side `.sort()` in `useMemo` was removed entirely.
 
-Every "hot" tab page load pulls 100 full `posts_summary_view` rows. Each row runs 4 correlated subqueries (comment_count, vote_score, user_vote, repost_count). So one hot-feed load = **400 DB subqueries**. At 100 concurrent users refreshing, that's 40,000 subqueries/second just from this tab.
-
-**Fix**: Add a `hot_score` column to `posts` (updated via a DB trigger or Edge Function on insert/vote) and sort server-side with `.range(0, 9)`.
+Migration: `supabase/migrations/20260308100000_post_stats_table.sql`
 
 ### Issue 2 — `send-push-notification` has sequential per-user DB calls (MEDIUM)
 
@@ -38,44 +26,35 @@ The function fetches up to 100 notifications, then for each unique user in the c
 
 ---
 
-## 5,000 users — 🔴 Critical, needs fixes before launch at this scale
+## 5,000 users — ✅ Done (Issues 3 & 4)
 
-### Issue 3 — All Realtime subscriptions have no `filter:` param (CRITICAL)
+### ~~Issue 3 — All Realtime subscriptions have no `filter:` param~~ ✅ FIXED
 
-```
-chat.tsx        → table: "chats"         no filter
-chat.tsx        → table: "chat_messages" no filter  ← biggest issue
-_layout.tsx     → table: "chat_messages" no filter
-index.tsx       → table: "posts"         no filter
-```
+**What was done**:
 
-Supabase Realtime with `postgres_changes` and no filter delivers **every matching row event to every subscribed client**. At 5,000 concurrent users:
+**`chat.tsx`**: Replaced the single unfiltered `chats-realtime-${userId}` channel (5 handlers, including 2 `chat_messages` listeners) with **two filtered channels**:
+- `chats-p1-${userId}` — `filter: participant_1_id=eq.${userId}`
+- `chats-p2-${userId}` — `filter: participant_2_id=eq.${userId}`
 
-- Every new chat message is broadcast to all ~5,000 connected clients
-- Each client receives the event, runs the `if (newMessage.user_id === currentUserId) return` guard and discards it (999 out of 1,000 times)
-- This is pure wasted bandwidth and CPU — scales O(N²) with message volume × user count
+Both share a single `handleChatEvent` function. The `chat_messages` INSERT/UPDATE listeners were removed — the `chats` UPDATE event is sufficient to keep the list current.
 
-The only correctly scoped subscription in your codebase is `chat-${chatId}` in `realtime.ts` which uses `filter: "chat_id=eq.${chatId}"`. All others need the same treatment.
+**`_layout.tsx`** (`useGlobalUnreadCount`): Removed both `chat_messages` Realtime listeners entirely. Set `staleTime: Infinity` on the `useQuery`. The badge is now kept current exclusively by `chat.tsx`'s `handleChatEvent` calling `setQueriesData`.
 
-**Fix for chat list (`chat.tsx`)**: Supabase supports `filter: "participant_1_id=eq.${userId}"` but not `OR` conditions in postgres_changes filters. The proper solution is to **stop using postgres_changes for the chat list** and instead rely on the per-chat subscription + periodic background refetch (which you already have with `staleTime: 5min`). The realtime handler in `chat.tsx` is clever but redundant when the detail-screen subscription (`chat-${chatId}`) already handles the canonical update path.
+> One-time Supabase dashboard step: In **Database → Replication → Realtime**, enable row-level security for the `chat_messages` table so the detail-screen subscription only receives rows the authenticated user has RLS access to.
 
-**Fix for feed (`index.tsx`)**: The `"posts-feed"` subscription just marks the cache stale — this is acceptable low-cost behavior. But add `filter: "post_type=eq.feed"` to avoid receiving lost_found inserts.
+**Remaining**: The `"posts-feed"` subscription in `index.tsx` still has no filter. Add `filter: "post_type=eq.feed"` to avoid receiving lost_found inserts. Low priority.
 
-### Issue 4 — `posts_summary_view` has 4 correlated subqueries per row (CRITICAL)
+### ~~Issue 4 — `posts_summary_view` has 4 correlated subqueries per row~~ ✅ FIXED
 
-Every feed page (10 posts) hits the DB with the equivalent of:
+**What was done**: Created a `post_stats` table with `comment_count`, `vote_score`, `repost_count`, and a stored generated `hot_score` column. Four trigger functions keep it in sync:
+- `fn_init_post_stats` — inserts a zero row on post creation
+- `fn_update_vote_score` — fires on `votes` INSERT/UPDATE/DELETE
+- `fn_update_comment_count` — fires on `comments` INSERT/UPDATE/DELETE (handles soft-deletes)
+- `fn_update_repost_count` — fires on `posts` INSERT/DELETE where `reposted_from_post_id IS NOT NULL`
 
-```sql
--- runs once per post row in the result set:
-SELECT COUNT(*)  FROM comments WHERE post_id = p.id AND is_deleted = false
-SELECT SUM(...)  FROM votes   WHERE post_id = p.id
-SELECT vote_type FROM votes   WHERE post_id = p.id AND user_id = auth.uid()
-SELECT COUNT(*)  FROM posts   WHERE reposted_from_post_id = p.id
-```
+`posts_summary_view` was recreated to use `LEFT JOIN post_stats` instead of the 3 correlated subqueries. `user_vote` stays as the only remaining subquery (session-specific). A backfill `INSERT … ON CONFLICT DO UPDATE` populated all existing posts.
 
-That's 40 extra queries per feed page. With 500 concurrent users browsing, the DB is executing ~20,000 correlated subqueries per second. PostgreSQL can handle this at small scale, but it degrades badly under concurrent load.
-
-**Fix**: Create a `post_stats` table (`post_id, comment_count, vote_score, repost_count`) updated by database triggers. Rewrite the view to use a simple JOIN instead of subqueries. `user_vote` can stay as a subquery since it's per-session. This is the single highest-leverage change for your entire backend.
+Migration: `supabase/migrations/20260308100000_post_stats_table.sql`
 
 ### Issue 5 — `"global-unread-count"` AppState listener hits `user_chats_summary` on every foreground (HIGH)
 
@@ -88,9 +67,9 @@ AppState.addEventListener("change", (nextState) => {
 });
 ```
 
-With 5,000 users commuting/lunch-breaking, you get hundreds of simultaneous app-foreground events per minute, each querying `user_chats_summary`. This view is not tracked in your migrations (was created directly in the Supabase dashboard) — if it has correlated subqueries, it compounds with Issue 4.
+With 5,000 users commuting/lunch-breaking, you get hundreds of simultaneous app-foreground events per minute, each querying `user_chats_summary`.
 
-**Fix**: Use the `chat-summaries` cache (already in memory) to derive the badge count instead of querying the DB on foreground. You already did this for the realtime path in `_layout.tsx` — extend the same pattern to the AppState path.
+**Fix**: Use the `chat-summaries` cache (already in memory) to derive the badge count instead of querying the DB on foreground. The realtime path already does this — extend the same pattern to the AppState path.
 
 ---
 
@@ -102,7 +81,7 @@ With 5,000 users commuting/lunch-breaking, you get hundreds of simultaneous app-
 supabase.channel("global-unread-count") // same string for ALL users
 ```
 
-All 10,000 users subscribe to the same channel name. Supabase creates a separate channel instance per client connection so this doesn't cause a logical conflict, but it does mean the channel name gives you zero debug visibility into per-user state. More importantly, the channel has **no filter**, so every `chat_messages` INSERT is evaluated for 10,000 connections on the Supabase Realtime server.
+All 10,000 users subscribe to the same channel name. The channel has **no filter**, so every `chat_messages` INSERT is evaluated for 10,000 connections on the Supabase Realtime server.
 
 **Fix**: Rename to `"global-unread-count-${currentUserId}"` and at 10K scale, move badge updating to push notifications only (the badge is already set correctly by `send-push-notification`).
 
@@ -124,14 +103,14 @@ Pro includes 250 GB/month. At 10K users viewing an average of 20 images per sess
 
 ## Priority order for your roadmap
 
-| Priority | Fix | Blocks which scale |
-|---|---|---|
-| 🔴 #1 | Replace `posts_summary_view` subqueries with `post_stats` trigger table | 5K+ |
-| 🔴 #2 | Remove unfiltered Realtime subscriptions from `chat.tsx` and `_layout.tsx` | 5K+ |
-| 🔴 #3 | Fix "hot" feed to sort server-side, fetch 10 rows not 100 | 1K+ |
-| 🟡 #4 | Batch DB queries in `send-push-notification` | 1K+ |
-| 🟡 #5 | Derive badge from `chat-summaries` cache on AppState foreground | 5K+ |
-| 🟢 #6 | Switch to pooler URL (port 6543) | 10K+ |
-| 🟢 #7 | Per-user channel name for `global-unread-count` | 10K+ |
+| Priority | Fix | Status | Blocks which scale |
+|---|---|---|---|
+| 🔴 #1 | Replace `posts_summary_view` subqueries with `post_stats` trigger table | ✅ Done | 5K+ |
+| 🔴 #2 | Remove unfiltered Realtime subscriptions from `chat.tsx` and `_layout.tsx` | ✅ Done | 5K+ |
+| 🔴 #3 | Fix "hot" feed to sort server-side, fetch 10 rows not 100 | ✅ Done | 1K+ |
+| 🟡 #4 | Batch DB queries in `send-push-notification` | Pending | 1K+ |
+| 🟡 #5 | Derive badge from `chat-summaries` cache on AppState foreground | Pending | 5K+ |
+| 🟢 #6 | Switch to pooler URL (port 6543) | Pending | 10K+ |
+| 🟢 #7 | Per-user channel name for `global-unread-count` | Pending | 10K+ |
 
-**Bottom line**: With Pro and fixes #1–#3, you're solid through 5,000 users. Fixes #4–#7 get you comfortably to 10,000+.
+**Bottom line**: With Pro and fixes #1–#3 complete, you're solid through 5,000 users. Fixes #4–#7 get you comfortably to 10,000+.
