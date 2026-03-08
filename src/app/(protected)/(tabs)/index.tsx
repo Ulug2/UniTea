@@ -28,6 +28,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
+import { saveFeedToStorage } from "../../../utils/feedPersistence";
 
 type PostSummary = PostsSummaryViewRow;
 
@@ -90,16 +91,15 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
           break;
 
         case "hot":
-          // For "hot", fetch posts from last 7 days
-          // We'll fetch a larger batch and sort by engagement score in memory
+          // Sort server-side on the indexed hot_score column (post_stats trigger table).
+          // 10 rows per page — same as the other filters.
           const last7Days = new Date();
           last7Days.setDate(last7Days.getDate() - 7);
-          // Fetch 100 posts per page to get better engagement-based sorting
-          const hotFrom = pageParam * 100;
-          const hotTo = hotFrom + 99;
+          const hotFrom = pageParam * POSTS_PER_PAGE;
+          const hotTo = hotFrom + POSTS_PER_PAGE - 1;
           query = query
             .gte("created_at", last7Days.toISOString())
-            .order("created_at", { ascending: false })
+            .order("hot_score", { ascending: false })
             .range(hotFrom, hotTo);
           break;
       }
@@ -109,10 +109,6 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
       return (data || []) as PostSummary[];
     },
     getNextPageParam: (lastPage, allPages) => {
-      if (filter === "hot") {
-        if (lastPage.length === 100) return allPages.length;
-        return undefined;
-      }
       if (lastPage.length === POSTS_PER_PAGE) return allPages.length;
       return undefined;
     },
@@ -146,22 +142,6 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
       });
     }
 
-    if (filter === "hot") {
-      return filteredPosts
-        .filter((post) => !hiddenPostIds.includes(post.post_id))
-        .sort((a, b) => {
-          const engagementA =
-            Math.abs(a.vote_score || 0) +
-            (a.comment_count || 0) +
-            (a.repost_count || 0);
-          const engagementB =
-            Math.abs(b.vote_score || 0) +
-            (b.comment_count || 0) +
-            (b.repost_count || 0);
-          return engagementB - engagementA;
-        });
-    }
-
     return filteredPosts.filter(
       (post) => !hiddenPostIds.includes(post.post_id),
     );
@@ -173,11 +153,23 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  // Persist the first page to AsyncStorage after every successful fetch so the
+  // next cold start can seed the RQ cache before the splash screen hides.
+  useEffect(() => {
+    if (postsData?.pages?.length) {
+      saveFeedToStorage(filter, postsData.pages as PostSummary[][]);
+    }
+  }, [postsData, filter]);
+
   const keyExtractor = useCallback((item: PostSummary) => item.post_id, []);
 
+  // Skip the reveal-overlay when data is already in cache (seeded from
+  // AsyncStorage). Images are served from expo-image's disk cache so there is
+  // nothing to wait for.
   const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
     minItems: 3,
     timeoutMs: 2500,
+    initialRevealed: !!postsData,
   });
 
   const renderItem = useCallback(
@@ -291,6 +283,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
           </ScrollView>
         </View>
       )}
+
     </View>
   );
 }

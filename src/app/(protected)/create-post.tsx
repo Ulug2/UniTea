@@ -69,6 +69,8 @@ export default function CreatePostScreen() {
     setCategory,
     location,
     setLocation,
+    title,
+    setTitle,
     reset,
     canSubmit,
   } = useCreatePostFormState({ type, repostId });
@@ -150,6 +152,7 @@ export default function CreatePostScreen() {
       createPostMutation.mutate({
         imagePath,
         postContent: content,
+        postTitle: title,
         postLocation: location,
         postIsAnonymous: isAnonymous,
         postCategory: category,
@@ -298,6 +301,39 @@ export default function CreatePostScreen() {
                     Found
                   </Text>
                 </Pressable>
+              </View>
+            </View>
+          )}
+
+          {/* ITEM NAME INPUT (Lost & Found only) */}
+          {isLostFound && (
+            <View style={styles.locationSection}>
+              <Text style={[styles.sectionLabel, { color: theme.text }]}>
+                Item Name *
+              </Text>
+              <View
+                style={[
+                  styles.locationInputContainer,
+                  {
+                    backgroundColor: theme.background,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="pricetag-outline"
+                  size={20}
+                  color={theme.secondaryText}
+                />
+                <TextInput
+                  placeholder="e.g., Student ID Card, Water Bottle, Laptop"
+                  placeholderTextColor={theme.secondaryText}
+                  style={[styles.locationInput, { color: theme.text }]}
+                  keyboardAppearance={isDark ? "dark" : "light"}
+                  onChangeText={setTitle}
+                  value={title}
+                  autoFocus={isLostFound}
+                />
               </View>
             </View>
           )}

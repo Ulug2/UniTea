@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { Animated, Image, PanResponder, StyleSheet, View } from "react-native";
-import SupabaseImage from "../../../components/SupabaseImage";
+import { Image as ExpoImage } from "expo-image";
 import {
   DEFAULT_AVATAR,
   FOUNDING_FATHER_BADGE,
@@ -16,6 +16,17 @@ type FlippableAvatarProps = {
 
 const AVATAR_SIZE = 120;
 const SWIPE_THRESHOLD = 30;
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
+
+/**
+ * Returns a fully-qualified URL for the avatar, constructing the public
+ * storage URL synchronously for Supabase storage paths. This bypasses
+ * SupabaseImage's async state so there is never a loading spinner.
+ */
+function getAvatarUri(avatarUrl: string): string {
+  if (avatarUrl.startsWith("http")) return avatarUrl;
+  return `${SUPABASE_URL}/storage/v1/object/public/avatars/${avatarUrl}`;
+}
 
 export function FlippableAvatar({
   currentUser,
@@ -84,19 +95,15 @@ export function FlippableAvatar({
     outputRange: [0, 1],
   });
 
+  // Pre-construct the URL synchronously — ExpoImage + disk cache means no
+  // loading state, no spinner, and the image renders on the very first frame.
   const avatarContent = currentUser?.avatar_url ? (
-    currentUser.avatar_url.startsWith("http") ? (
-      <Image
-        source={{ uri: currentUser.avatar_url }}
-        style={styles.faceImage}
-      />
-    ) : (
-      <SupabaseImage
-        path={currentUser.avatar_url}
-        bucket="avatars"
-        style={styles.faceImage}
-      />
-    )
+    <ExpoImage
+      source={{ uri: getAvatarUri(currentUser.avatar_url) }}
+      contentFit="cover"
+      cachePolicy="disk"
+      style={styles.faceImage}
+    />
   ) : (
     <Image source={DEFAULT_AVATAR} style={styles.faceImage} />
   );

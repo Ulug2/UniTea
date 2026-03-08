@@ -2,13 +2,14 @@ import React, { useEffect } from "react";
 import {
   Modal,
   Pressable,
-  Image,
   Animated,
   Dimensions,
   StyleSheet,
 } from "react-native";
+import { Image } from "expo-image";
 import { usePinchZoom } from "../hooks/usePinchZoom";
-import { supabase } from "../../../lib/supabase";
+
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -48,10 +49,11 @@ export function FullscreenImageModal({
     if (imagePath) reset();
   }, [imagePath, reset]);
 
+  // chat-images is a public bucket — construct the URL synchronously so expo-image
+  // can serve it from the disk cache without a network round-trip.
   const imageUri =
     imagePath != null
-      ? supabase.storage.from("chat-images").getPublicUrl(imagePath).data
-          .publicUrl
+      ? `${SUPABASE_URL}/storage/v1/object/public/chat-images/${imagePath}`
       : null;
 
   return (
@@ -70,7 +72,8 @@ export function FullscreenImageModal({
             <Image
               source={{ uri: imageUri }}
               style={fullScreenImageStyles.fullScreenImage}
-              resizeMode="contain"
+              contentFit="contain"
+              cachePolicy="disk"
             />
           </Animated.View>
         )}
