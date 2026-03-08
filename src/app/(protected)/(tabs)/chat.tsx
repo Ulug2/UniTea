@@ -146,337 +146,205 @@ export default function ChatScreen() {
     });
   }, [chatSummaries, blocks, currentUserId]);
 
-  // Real-time subscription for chat updates - uses smart cache updates instead of invalidations
-  // This prevents scroll jumps and UI lag by updating specific items without refetching
+  // Real-time subscription for chat updates.
+  //
+  // Two filtered channels on the `chats` table replace the previous single
+  // unfiltered channel. Each channel receives only rows where the current user
+  // is one of the two participants, so Supabase Realtime never broadcasts
+  // irrelevant rows to this client.
+  //
+  // chat_messages listeners have been removed from this screen entirely:
+  //   • The `chats` UPDATE event (fired by the DB trigger that bumps
+  //     last_message_at) is sufficient to keep the chat list current.
+  //   • Per-message delivery is handled by the detail screen's own filtered
+  //     channel (`chat-${chatId}` with `filter: "chat_id=eq.${chatId}"`).
   const channelErrorLoggedRef = useRef(false);
   useEffect(() => {
     if (!currentUserId) return;
 
     channelErrorLoggedRef.current = false;
-    // Track if component is still mounted
     let isMounted = true;
 
-    // Unique channel per user to avoid CHANNEL_ERROR from duplicate/binding conflicts
-    const channel = supabase
-      .channel(`chats-realtime-${currentUserId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "chats",
-        },
-        (payload) => {
-          if (!isMounted) return;
-          try {
-            const updatedChat = payload.new as any;
+    // Shared handler for all chats-table events on both channels.
+    const handleChatEvent = (payload: any) => {
+      if (!isMounted) return;
 
-            // Smart update: only update the specific chat that changed
-            queryClient.setQueryData<ChatSummary[]>(
-              ["chat-summaries", currentUserId],
-              (oldSummaries) => {
-                if (!oldSummaries) return oldSummaries;
+      const { eventType } = payload;
 
-                // Find and update the specific chat
-                const chatIndex = oldSummaries.findIndex(
-                  (s) => s.chat_id === updatedChat.id
-                );
-
-                if (chatIndex === -1) {
-                  // Chat not in list, might be new - invalidate to fetch
-                  queryClient.invalidateQueries({
-                    queryKey: ["chat-summaries", currentUserId],
-                    refetchType: "none", // Don't refetch immediately
-                  });
-                  return oldSummaries;
-                }
-
-                // Update the specific chat's last_message_at if changed
-                const updated = [...oldSummaries];
-                updated[chatIndex] = {
-                  ...updated[chatIndex],
-                  last_message_at: updatedChat.last_message_at || updated[chatIndex].last_message_at,
-                };
-
-                // Re-sort by last_message_at (newest first)
-                updated.sort((a, b) => {
-                  const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-                  const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-                  return bTime - aTime;
-                });
-
-                return updated;
-              }
-            );
-          } catch (error) {
-            logger.error("Error updating chat cache (UPDATE event)", error, {
-              userId: currentUserId,
-              component: "ChatScreen",
-              event: "chats.UPDATE",
-              payload: payload.new,
-            });
-          }
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chats",
-        },
-        (payload) => {
-          if (!isMounted) return;
-          // New chat created - invalidate to fetch (rare event, acceptable)
-          queryClient.invalidateQueries({
-            queryKey: ["chat-summaries", currentUserId],
-            refetchType: "none", // Don't refetch immediately, wait for next access
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-        },
-        (payload) => {
-          if (!isMounted) return;
-
-          try {
-            const newMessage = payload.new as any;
-
-            // Skip our own messages - they're handled by optimistic updates
-            if (newMessage.user_id === currentUserId) {
-              return;
-            }
-
-            // Smart update: update the specific chat's last message info without refetching
-            queryClient.setQueryData<ChatSummary[]>(
-              ["chat-summaries", currentUserId],
-              (oldSummaries) => {
-                if (!oldSummaries) return oldSummaries;
-
-                const chatIndex = oldSummaries.findIndex(
-                  (s) => s.chat_id === newMessage.chat_id
-                );
-
-                if (chatIndex === -1) {
-                  // Chat not in list - might be a new chat, invalidate to fetch
-                  queryClient.invalidateQueries({
-                    queryKey: ["chat-summaries", currentUserId],
-                    refetchType: "none",
-                  });
-                  return oldSummaries;
-                }
-
-                // Update the specific chat's last message info
-                const updated = [...oldSummaries];
-                const chatSummary = updated[chatIndex];
-                const isP1 = chatSummary.participant_1_id === currentUserId;
-
-                // Update unread count (increment for the current user)
-                const newUnreadCountP1 = isP1
-                  ? (chatSummary.unread_count_p1 || 0) + 1
-                  : chatSummary.unread_count_p1;
-                const newUnreadCountP2 = !isP1
-                  ? (chatSummary.unread_count_p2 || 0) + 1
-                  : chatSummary.unread_count_p2;
-
-                updated[chatIndex] = {
-                  ...chatSummary,
-                  last_message_at: newMessage.created_at,
-                  last_message_content: newMessage.content || null,
-                  last_message_has_image: !!(newMessage.image_url && newMessage.image_url.trim() !== ""),
-                  unread_count_p1: newUnreadCountP1,
-                  unread_count_p2: newUnreadCountP2,
-                };
-
-                // CRITICAL: Move updated chat to top and ensure proper sorting by last_message_at
-                // This ensures the active chat jumps to the top instantly when new message arrives
-                const [movedChat] = updated.splice(chatIndex, 1);
-                updated.unshift(movedChat);
-
-                // Additional safety: Re-sort by last_message_at to ensure correct order
-                // This handles edge cases where multiple messages arrive simultaneously
-                updated.sort((a, b) => {
-                  const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-                  const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-                  return bTime - aTime; // Newest first
-                });
-
-                return updated;
-              }
-            );
-          } catch (error) {
-            logger.error("Error updating chat cache (INSERT message event)", error, {
-              userId: currentUserId,
-              component: "ChatScreen",
-              event: "chat_messages.INSERT",
-              messageId: payload.new?.id,
-              chatId: payload.new?.chat_id,
-            });
-          }
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "chat_messages",
-        },
-        (payload) => {
-          if (!isMounted) return;
-
-          const updatedMessage = payload.new as any;
-          const oldMessage = payload.old as any;
-
-          // Smart update: if read status changed from false to true, update unread counts
-          // Only process if message is from other user and transitioning to read
-          if (updatedMessage.is_read && !oldMessage?.is_read && updatedMessage.user_id !== currentUserId) {
-            queryClient.setQueryData<ChatSummary[]>(
-              ["chat-summaries", currentUserId],
-              (oldSummaries) => {
-                if (!oldSummaries) return oldSummaries;
-
-                const chatIndex = oldSummaries.findIndex(
-                  (s) => s.chat_id === updatedMessage.chat_id
-                );
-
-                if (chatIndex === -1) return oldSummaries;
-
-                const updated = [...oldSummaries];
-                const chatSummary = updated[chatIndex];
-                const isP1 = chatSummary.participant_1_id === currentUserId;
-
-                // Get current unread count
-                const currentUnreadP1 = chatSummary.unread_count_p1 || 0;
-                const currentUnreadP2 = chatSummary.unread_count_p2 || 0;
-
-                // Decrement unread count (respect optimistic updates - if already 0, keep at 0)
-                // The database view will recalculate, but this keeps UI responsive
-                updated[chatIndex] = {
-                  ...chatSummary,
-                  unread_count_p1: isP1
-                    ? Math.max(0, currentUnreadP1 - 1)
-                    : currentUnreadP1,
-                  unread_count_p2: !isP1
-                    ? Math.max(0, currentUnreadP2 - 1)
-                    : currentUnreadP2,
-                };
-
-                return updated;
-              }
-            );
-
-            // Update global unread count optimistically from updated chat-summaries cache
-            // CRITICAL: Calculate from cache instead of invalidating to ensure immediate sync
-            queryClient.setQueriesData<number>(
-              { queryKey: ["global-unread-count", currentUserId], exact: false },
-              () => {
-                // Get updated chat summaries from cache
-                const updatedSummaries = queryClient.getQueryData<ChatSummary[]>(["chat-summaries", currentUserId]);
-                if (!updatedSummaries || !Array.isArray(updatedSummaries)) {
-                  return undefined; // Let queryFn handle it
-                }
-
-                // Get blocks from cache (needed for calculation)
-                const cachedBlocks = queryClient.getQueryData<string[]>(["blocks", currentUserId]) || [];
-
-                // Calculate total unread count from cached summaries
-                const total = updatedSummaries.reduce((sum: number, chat: ChatSummary) => {
-                  const otherUserId =
-                    chat.participant_1_id === currentUserId
-                      ? chat.participant_2_id
-                      : chat.participant_1_id;
-
-                  // Skip chats with blocked users
-                  if (cachedBlocks.includes(otherUserId)) {
-                    return sum;
-                  }
-
-                  const isP1 = chat.participant_1_id === currentUserId;
-                  const unread = isP1
-                    ? chat.unread_count_p1 || 0
-                    : chat.unread_count_p2 || 0;
-                  return sum + unread;
-                }, 0);
-
-                return total;
-              }
-            );
-          }
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "chats",
-        },
-        (payload) => {
-          if (!isMounted) return;
-
-          // Chat deleted - optimistically remove from cache immediately
+      try {
+        if (eventType === "DELETE") {
           const deletedChatId = payload.old?.id;
           if (deletedChatId) {
-            queryClient.setQueryData<any[]>(
+            queryClient.setQueryData<ChatSummary[]>(
               ["chat-summaries", currentUserId],
-              (oldSummaries: any[] | undefined) => {
-                if (!oldSummaries) return oldSummaries;
-                return oldSummaries.filter(
-                  (summary: any) => summary.chat_id !== deletedChatId
-                );
-              }
+              (old) => old ? old.filter((s) => s.chat_id !== deletedChatId) : old,
             );
           }
-
-          // Invalidate to ensure consistency
           queryClient.invalidateQueries({
             queryKey: ["chat-summaries", currentUserId],
-            refetchType: "none", // Don't refetch - optimistic update already applied
+            refetchType: "none",
           });
           queryClient.invalidateQueries({
             queryKey: ["global-unread-count", currentUserId],
             refetchType: "none",
           });
+          return;
         }
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-            logger.breadcrumb("Chat list subscription active", "realtime", {
-            userId: currentUserId,
-            channel: `chats-realtime-${currentUserId}`,
+
+        if (eventType === "INSERT") {
+          // New chat — rare event; invalidate so the list re-fetches on next access.
+          queryClient.invalidateQueries({
+            queryKey: ["chat-summaries", currentUserId],
+            refetchType: "none",
           });
-        } else if (status === "CHANNEL_ERROR") {
-          // Log once per subscription. With Realtime enabled, CHANNEL_ERROR is often due to RLS:
-          // Realtime uses RLS when delivering postgres_changes. Ensure SELECT policies on `chats`
-          // and `chat_messages` allow the authenticated user to read rows they participate in.
-          if (!channelErrorLoggedRef.current) {
-            channelErrorLoggedRef.current = true;
-            logger.warn(
-              "Chat list realtime subscription failed (chat list still works). " +
-              "If Realtime is enabled for chats/chat_messages, check RLS: SELECT policies must allow the user to read their chats.",
-              { userId: currentUserId, component: "ChatScreen", channel: `chats-realtime-${currentUserId}`, status }
+          return;
+        }
+
+        if (eventType === "UPDATE") {
+          const updatedChat = payload.new as any;
+          queryClient.setQueryData<ChatSummary[]>(
+            ["chat-summaries", currentUserId],
+            (oldSummaries) => {
+              if (!oldSummaries) return oldSummaries;
+
+              const chatIndex = oldSummaries.findIndex(
+                (s) => s.chat_id === updatedChat.id,
+              );
+
+              if (chatIndex === -1) {
+                queryClient.invalidateQueries({
+                  queryKey: ["chat-summaries", currentUserId],
+                  refetchType: "none",
+                });
+                return oldSummaries;
+              }
+
+              const updated = [...oldSummaries];
+              updated[chatIndex] = {
+                ...updated[chatIndex],
+                last_message_at:
+                  updatedChat.last_message_at ||
+                  updated[chatIndex].last_message_at,
+                last_message_content:
+                  updatedChat.last_message_content ??
+                  updated[chatIndex].last_message_content,
+                unread_count_p1:
+                  updatedChat.unread_count_p1 ??
+                  updated[chatIndex].unread_count_p1,
+                unread_count_p2:
+                  updatedChat.unread_count_p2 ??
+                  updated[chatIndex].unread_count_p2,
+              };
+
+              updated.sort((a, b) => {
+                const aTime = a.last_message_at
+                  ? new Date(a.last_message_at).getTime()
+                  : 0;
+                const bTime = b.last_message_at
+                  ? new Date(b.last_message_at).getTime()
+                  : 0;
+                return bTime - aTime;
+              });
+
+              return updated;
+            },
+          );
+
+          // Keep the global badge in sync by re-deriving from the updated cache.
+          const updatedSummaries = queryClient.getQueryData<ChatSummary[]>([
+            "chat-summaries",
+            currentUserId,
+          ]);
+          if (updatedSummaries) {
+            const cachedBlocks =
+              queryClient.getQueryData<string[]>(["blocks", currentUserId]) ||
+              [];
+            const total = updatedSummaries.reduce(
+              (sum: number, chat: ChatSummary) => {
+                const otherId =
+                  chat.participant_1_id === currentUserId
+                    ? chat.participant_2_id
+                    : chat.participant_1_id;
+                if (cachedBlocks.includes(otherId)) return sum;
+                const isP1 = chat.participant_1_id === currentUserId;
+                return (
+                  sum +
+                  (isP1
+                    ? chat.unread_count_p1 || 0
+                    : chat.unread_count_p2 || 0)
+                );
+              },
+              0,
+            );
+            queryClient.setQueriesData<number>(
+              { queryKey: ["global-unread-count", currentUserId], exact: false },
+              total,
             );
           }
-        } else if (status === "TIMED_OUT") {
-          logger.warn("Chat list subscription timed out", {
-            userId: currentUserId,
-            component: "ChatScreen",
-            channel: `chats-realtime-${currentUserId}`,
-          });
         }
-      });
+      } catch (error) {
+        logger.error("Error handling chat realtime event", error, {
+          userId: currentUserId,
+          component: "ChatScreen",
+          eventType,
+        });
+      }
+    };
+
+    const onStatus = (channelName: string) => (status: string) => {
+      if (status === "SUBSCRIBED") {
+        logger.breadcrumb("Chat list subscription active", "realtime", {
+          userId: currentUserId,
+          channel: channelName,
+        });
+      } else if (status === "CHANNEL_ERROR" && !channelErrorLoggedRef.current) {
+        channelErrorLoggedRef.current = true;
+        logger.warn(
+          "Chat list realtime subscription failed. Check RLS SELECT policies on `chats`.",
+          { userId: currentUserId, component: "ChatScreen", channel: channelName, status },
+        );
+      } else if (status === "TIMED_OUT") {
+        logger.warn("Chat list subscription timed out", {
+          userId: currentUserId,
+          component: "ChatScreen",
+          channel: channelName,
+        });
+      }
+    };
+
+    // Channel A — chats where the current user is participant_1
+    const channelP1 = supabase
+      .channel(`chats-p1-${currentUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chats",
+          filter: `participant_1_id=eq.${currentUserId}`,
+        },
+        handleChatEvent,
+      )
+      .subscribe(onStatus(`chats-p1-${currentUserId}`));
+
+    // Channel B — chats where the current user is participant_2
+    const channelP2 = supabase
+      .channel(`chats-p2-${currentUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chats",
+          filter: `participant_2_id=eq.${currentUserId}`,
+        },
+        handleChatEvent,
+      )
+      .subscribe(onStatus(`chats-p2-${currentUserId}`));
 
     return () => {
-      // Mark as unmounted FIRST to prevent any queued operations
       isMounted = false;
 
-      // Cleanup timeouts on unmount
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
         debounceRef.current = undefined;
@@ -486,9 +354,10 @@ export default function ChatScreen() {
         updateDebounceRef.current = undefined;
       }
 
-      // Unsubscribe and remove channel properly
-      channel.unsubscribe();
-      supabase.removeChannel(channel);
+      channelP1.unsubscribe();
+      supabase.removeChannel(channelP1);
+      channelP2.unsubscribe();
+      supabase.removeChannel(channelP2);
       channelErrorLoggedRef.current = false;
     };
   }, [currentUserId, queryClient]);

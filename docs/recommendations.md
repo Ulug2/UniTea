@@ -1,235 +1,137 @@
-Now I have a thorough picture. Let me give you the real assessment.
+Now I have the full picture. Let me give you a precise, honest assessment.
 
 ---
 
-## Scalability Analysis
+## Scalability Assessment
 
-### TL;DR by scale
-
-| Users | Status | What happens |
-|-------|--------|--------------|
-| 500 | ✅ Mostly fine | Free tier strains on realtime connections at peak |
-| 1,000 | ⚠️ Upgrade needed | Pro plan required; N+1 push notifications slow down; view queries get expensive |
-| 5,000 | ❌ Will lag/fail | Multiple structural issues hit simultaneously |
-| 10,000 | ❌ Will crash | Architecture changes needed, not just upgrades |
+**Plan note**: Pro gives you 100K MAU, 8GB DB, 250GB egress. The plan is not the bottleneck — your code architecture is. Upgrading to Pro is the right call and removes the free-tier ceiling, but it doesn't fix the issues below.
 
 ---
 
-## Issues by priority
+## 500 users — ✅ Fine
 
-### 🔴 Critical (will break at 5K+)
-
-**1. `posts_summary_view` is almost certainly un-materialized**
-
-Every feed load (`FlatList`, "hot", "new", "top") queries `posts_summary_view`. This view joins `posts` + `votes` + `comments` + `profiles` at minimum to produce `vote_score`, `comment_count`, etc. Without materialization, at 5,000 users with thousands of posts, each feed page load runs a full multi-table aggregation scan at query time. This is the single biggest bottleneck. At 1,000 concurrent users all scrolling, you'd see 5-10 second feed loads.
-
-**Fix:** Materialize the view and refresh it on a schedule (e.g. every 2 minutes via `pg_cron`), or add the aggregated columns (`vote_score`, `comment_count`, `repost_count`) directly to the `posts` table and update them with triggers.
+Everything works. The fixes already made (indexes, `posts_summary_view` user_vote join, `useGlobalUnreadCount` cache derivation) are enough. No action needed beyond upgrading to Pro.
 
 ---
 
-**2. "Hot" filter fetches 100 rows and sorts client-side**
+## 1,000 users — ⚠️ Noticeable slowdowns, two things to fix
 
-```tsx
-// index.tsx line ~99-104
-const hotFrom = pageParam * 100;
-const hotTo = hotFrom + 99;
-query = query
-  .gte("created_at", last7Days.toISOString())
-  .order("created_at", { ascending: false })
-  .range(hotFrom, hotTo);
-```
-
-Then on the device, in `useMemo`, it re-sorts all accumulated rows by a manually computed engagement score. At 5K users with 2K posts in the past 7 days, page 2 fetches rows 100-199, you accumulate 200 posts on device and sort them all in JS every re-render. With rapid incoming new posts (via background refetches), this `useMemo` runs constantly on the main thread.
-
-**Fix:** Move the engagement ranking to a database-level column (`engagement_score`) updated by trigger, and let the DB sort.
-
----
-
-**3. Missing critical database indexes**
-
-Your schema has no explicit indexes beyond primary keys and FK constraints. These are all full sequential scans at scale:
-
-```sql
--- Feed: every page load does this scan without an index
-posts(post_type, created_at DESC)   -- "new" filter
-posts(post_type, vote_score DESC)   -- "top" filter
-posts(post_type, is_deleted, created_at) -- combined filtering
-
--- Chat: every chat detail load, every mark-as-read
-chat_messages(chat_id, created_at DESC)
-chat_messages(is_read, user_id)
-
--- Push notifications (see below)
-notifications(user_id, is_read, push_sent)
-notifications(push_sent, is_read)   -- the function scans ALL unread+unsent rows
-
--- Votes
-votes(post_id)
-votes(user_id, post_id)  -- missing UNIQUE, also missing compound index
-```
-
-At 1,000 users with 10K posts, a sequential scan of `posts` filtered by `post_type` touches all rows. Add this index and queries drop from 500ms to 5ms.
-
----
-
-### 🟠 Major (will lag at 1K–5K)
-
-**4. Push notification function is N+1 sequential DB queries**
-
-In `send-push-notification/index.ts`, for each of N users receiving a notification:
+### Issue 1 — "hot" feed fetches 100 rows, sorts client-side (HIGH)
 
 ```ts
-// For each user in a for loop — sequential, not parallel
-const senderUsername = await getSenderUsername(senderId);  // 1 DB query
-const unreadChatCount = await getUnreadChatCount(userId);  // 1 DB query to user_chats_summary
-await supabase.from("notifications").update(...)           // 1 DB query
-await supabase.from("notifications").select(...)           // 1 DB query (verify)
-await fetch(EXPO_PUSH_API_URL, ...)                        // 1 external HTTP call
+// index.tsx
+.gte("created_at", last7Days)
+.order("created_at", desc)
+.range(0, 99) // ← 100 rows, not 10
+// then sorted in JS by a composite score
 ```
 
-That's 5 operations per user, all sequential. If 20 users get notified at once, that's 100 sequential operations in a single Edge Function invocation. Each `getUnreadChatCount` runs the full `user_chats_summary` view join for that user. At 1K active users, this function can time out (Edge Functions have a 150-second limit).
+Every "hot" tab page load pulls 100 full `posts_summary_view` rows. Each row runs 4 correlated subqueries (comment_count, vote_score, user_vote, repost_count). So one hot-feed load = **400 DB subqueries**. At 100 concurrent users refreshing, that's 40,000 subqueries/second just from this tab.
 
-**Fix:** Batch the sender lookups and unread counts into 2 queries total using `.in()`, then parallelize the Expo push calls using `Promise.all`. Use Expo's batch push endpoint (`/v2/push/send` accepts an array).
+**Fix**: Add a `hot_score` column to `posts` (updated via a DB trigger or Edge Function on insert/vote) and sort server-side with `.range(0, 9)`.
+
+### Issue 2 — `send-push-notification` has sequential per-user DB calls (MEDIUM)
+
+The function fetches up to 100 notifications, then for each unique user in the chat bucket makes individual `profiles` queries and `user_chats_summary` queries in a loop. A post that gets 80 likes triggers 80+ sequential DB calls in one Edge Function invocation.
+
+**Fix**: Batch the profile fetches with a single `.in("id", allUserIds)` before the loop, and batch the badge count queries.
 
 ---
 
-**5. Realtime subscriptions with no row-level filter**
+## 5,000 users — 🔴 Critical, needs fixes before launch at this scale
 
-Every user who has the chat tab open maintains this channel:
+### Issue 3 — All Realtime subscriptions have no `filter:` param (CRITICAL)
 
-```tsx
-// chat.tsx
-supabase.channel(`chats-realtime-${currentUserId}`)
-  .on("postgres_changes", { event: "INSERT", table: "chat_messages" }, ...)
-  // No filter: — receives ALL chat_messages inserts from all users
+```
+chat.tsx        → table: "chats"         no filter
+chat.tsx        → table: "chat_messages" no filter  ← biggest issue
+_layout.tsx     → table: "chat_messages" no filter
+index.tsx       → table: "posts"         no filter
 ```
 
-And separately in the tab layout, every user also holds:
+Supabase Realtime with `postgres_changes` and no filter delivers **every matching row event to every subscribed client**. At 5,000 concurrent users:
 
-```tsx
-// _layout.tsx tabs
-supabase.channel("global-unread-count")
-  .on("postgres_changes", { event: "INSERT", table: "chat_messages" }, ...)
-```
+- Every new chat message is broadcast to all ~5,000 connected clients
+- Each client receives the event, runs the `if (newMessage.user_id === currentUserId) return` guard and discards it (999 out of 1,000 times)
+- This is pure wasted bandwidth and CPU — scales O(N²) with message volume × user count
 
-At 1,000 concurrent users, every single chat message is broadcast to 1,000 realtime connections. Supabase Realtime multiplexes this but it's still O(users × messages/sec). At 5,000 concurrent users with 10 messages/second between conversations, that's 50,000 events/second being routed.
+The only correctly scoped subscription in your codebase is `chat-${chatId}` in `realtime.ts` which uses `filter: "chat_id=eq.${chatId}"`. All others need the same treatment.
 
-**Fix:** Add a `filter:` to the subscriptions so each client only receives events relevant to their chats:
+**Fix for chat list (`chat.tsx`)**: Supabase supports `filter: "participant_1_id=eq.${userId}"` but not `OR` conditions in postgres_changes filters. The proper solution is to **stop using postgres_changes for the chat list** and instead rely on the per-chat subscription + periodic background refetch (which you already have with `staleTime: 5min`). The realtime handler in `chat.tsx` is clever but redundant when the detail-screen subscription (`chat-${chatId}`) already handles the canonical update path.
 
-```ts
-.on("postgres_changes", {
-  event: "INSERT",
-  schema: "public",
-  table: "chat_messages",
-  filter: `chat_id=in.(${userChatIds.join(",")})`,
-}, ...)
-```
+**Fix for feed (`index.tsx`)**: The `"posts-feed"` subscription just marks the cache stale — this is acceptable low-cost behavior. But add `filter: "post_type=eq.feed"` to avoid receiving lost_found inserts.
 
-This requires knowing the user's chat IDs upfront (you already have them from `chatSummaries`).
+### Issue 4 — `posts_summary_view` has 4 correlated subqueries per row (CRITICAL)
 
----
-
-**6. `useGlobalUnreadCount` triggers a full DB refetch for every message any user sends**
-
-In `_layout.tsx` tabs:
-
-```tsx
-debounceRef.current = setTimeout(() => {
-  queryClient.refetchQueries({
-    queryKey: ["global-unread-count", currentUserId],
-    exact: false,
-  });
-}, 500);
-```
-
-This query hits `user_chats_summary` (a potentially expensive view) for every user, every time any message arrives. At 500 chatting users, each sending 1 message/minute = ~8 messages/second → 8 × 500 = 4,000 view queries/minute from this one hook alone.
-
-You already have the smart cache update logic in `chat.tsx` that increments `unread_count_p1/p2` locally. The `global-unread-count` channel is redundant in most cases. You could remove the `refetchQueries` call and rely entirely on the local cache mutations.
-
----
-
-**7. Missing UNIQUE constraint on `votes(user_id, post_id)`**
+Every feed page (10 posts) hits the DB with the equivalent of:
 
 ```sql
--- From schema — no UNIQUE constraint visible
-CREATE TABLE public.votes (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  post_id uuid,
-  ...
+-- runs once per post row in the result set:
+SELECT COUNT(*)  FROM comments WHERE post_id = p.id AND is_deleted = false
+SELECT SUM(...)  FROM votes   WHERE post_id = p.id
+SELECT vote_type FROM votes   WHERE post_id = p.id AND user_id = auth.uid()
+SELECT COUNT(*)  FROM posts   WHERE reposted_from_post_id = p.id
 ```
 
-A race condition (user taps vote quickly, or network retry) can insert duplicate votes. At 5K users with active voting, you'd see posts with inflated vote counts. Add:
+That's 40 extra queries per feed page. With 500 concurrent users browsing, the DB is executing ~20,000 correlated subqueries per second. PostgreSQL can handle this at small scale, but it degrades badly under concurrent load.
 
-```sql
-ALTER TABLE votes ADD CONSTRAINT votes_user_post_unique 
-  UNIQUE (user_id, post_id) WHERE post_id IS NOT NULL;
-ALTER TABLE votes ADD CONSTRAINT votes_user_comment_unique 
-  UNIQUE (user_id, comment_id) WHERE comment_id IS NOT NULL;
-```
+**Fix**: Create a `post_stats` table (`post_id, comment_count, vote_score, repost_count`) updated by database triggers. Rewrite the view to use a simple JOIN instead of subqueries. `user_vote` can stay as a subquery since it's per-session. This is the single highest-leverage change for your entire backend.
 
----
-
-**8. Supabase plan limits**
-
-| Feature | Free | Pro ($25) | Team ($599) |
-|---------|------|-----------|-------------|
-| Concurrent DB connections | 60 pooled | 200 pooled | Configurable |
-| Realtime connections | 200 | 500 | Custom |
-| Edge function invocations | 500K/mo | 2M/mo | Custom |
-| Storage | 1GB | 100GB | Custom |
-
-At 500 users → Free tier is **borderline** (realtime connections).
-At 1,000 users → **Pro is required** (you'll hit 200 concurrent connections during peak and 200 realtime connections).
-At 5,000 users → **Team tier**, plus you need pgBouncer/Supavisor session pooling (Supabase Pro includes transaction pooling via Supavisor which helps, but you'll want to enable it explicitly).
-
----
-
-### 🟡 Moderate (noticeable at 1K, painful at 5K)
-
-**9. `profiles` is selected with `select("*")` in most places**
-
-The chat users query, the profile query in `_layout.tsx`, and the `posts_summary_view` all select all columns. `profiles` has `bio` (potentially hundreds of characters per row). At 50 chats × full profile × 100 queries/minute, this is unnecessary bandwidth. Change to:
+### Issue 5 — `"global-unread-count"` AppState listener hits `user_chats_summary` on every foreground (HIGH)
 
 ```ts
-.select("id, username, avatar_url, is_verified, is_banned")
+// _layout.tsx — fires every time user brings app to foreground
+AppState.addEventListener("change", (nextState) => {
+  if (nextState === "active") {
+    queryClient.refetchQueries({ queryKey: ["global-unread-count", ...] });
+  }
+});
 ```
 
----
+With 5,000 users commuting/lunch-breaking, you get hundreds of simultaneous app-foreground events per minute, each querying `user_chats_summary`. This view is not tracked in your migrations (was created directly in the Supabase dashboard) — if it has correlated subqueries, it compounds with Issue 4.
 
-**10. `create-post` edge function has 3-8 second latency per post**
-
-Two OpenAI calls (moderation API + GPT-4o-mini for curse check + optional image moderation) run sequentially. At 100 users trying to post simultaneously, Edge Function concurrency limits kick in and some calls will queue or time out. Users see a "spinner" for 5+ seconds.
-
-The free OpenAI moderation API is fast (~200ms) and sufficient. The `gpt-4o-mini` curse check adds 1-3 seconds for every single post. Consider running these in `Promise.all` instead of sequentially, or caching the moderation result for identical content.
+**Fix**: Use the `chat-summaries` cache (already in memory) to derive the badge count instead of querying the DB on foreground. You already did this for the realtime path in `_layout.tsx` — extend the same pattern to the AppState path.
 
 ---
 
-**11. `posts.view_count` is a write-heavy column**
+## 10,000 users — 🔴🔴 Needs architectural changes before hitting this scale
 
-Every post view likely increments `view_count` with an UPDATE. At 5K users scrolling through feeds with `removeClippedSubviews={true}`, that's potentially thousands of UPDATE queries per minute on the `posts` table. This creates write contention and slows down reads. Batch these with a debounce or use a separate `post_views` table.
+### Issue 6 — Static channel name `"global-unread-count"` (HIGH)
+
+```ts
+supabase.channel("global-unread-count") // same string for ALL users
+```
+
+All 10,000 users subscribe to the same channel name. Supabase creates a separate channel instance per client connection so this doesn't cause a logical conflict, but it does mean the channel name gives you zero debug visibility into per-user state. More importantly, the channel has **no filter**, so every `chat_messages` INSERT is evaluated for 10,000 connections on the Supabase Realtime server.
+
+**Fix**: Rename to `"global-unread-count-${currentUserId}"` and at 10K scale, move badge updating to push notifications only (the badge is already set correctly by `send-push-notification`).
+
+### Issue 7 — Connection pool exhaustion (HIGH)
+
+Your Supabase client uses the direct Postgres port (`5432`). Each concurrent API request holds an open DB connection. Pro plan's dedicated instance allows ~60–200 direct connections. At 10K MAU with 1,000 concurrent users, simultaneous requests can exhaust this.
+
+**Fix**: Switch the Supabase client to the **connection pooler URL** (port `6543`, transaction mode). In your Supabase dashboard → Settings → Database → Connection string, use the pooler URL in your `EXPO_PUBLIC_SUPABASE_URL` environment variable for API calls. Edge Functions already use the service-role client and should use the pooler too.
+
+### Issue 8 — Storage egress budget (MEDIUM)
+
+Pro includes 250 GB/month. At 10K users viewing an average of 20 images per session per day:
+- If average image = 300 KB (WEBP compressed): 10K × 20 × 300 KB × 30 days = **1.8 TB/month**
+- That's 7× the included egress → ~$135/month in overage at $0.09/GB
+
+**Fix**: Enable Supabase CDN (already included with public buckets — just ensure `Cache-Control: max-age` headers are set on storage uploads). Your `uploadImage` utility already sets `cacheControl: '3600'` which activates Supabase's edge CDN. The 250 GB limit applies to **cached** egress at $0.03/GB, so the effective cost is much lower. Still, at 10K users monitor this.
 
 ---
 
-## Recommended action sequence
+## Priority order for your roadmap
 
-**Before 500 users (do now):**
-1. Add the critical DB indexes above (free, 5 minute SQL migration)
-2. Add `UNIQUE` constraint on `votes`
-3. Check if `posts_summary_view` is materialized — if not, create a materialized version with a `pg_cron` refresh
+| Priority | Fix | Blocks which scale |
+|---|---|---|
+| 🔴 #1 | Replace `posts_summary_view` subqueries with `post_stats` trigger table | 5K+ |
+| 🔴 #2 | Remove unfiltered Realtime subscriptions from `chat.tsx` and `_layout.tsx` | 5K+ |
+| 🔴 #3 | Fix "hot" feed to sort server-side, fetch 10 rows not 100 | 1K+ |
+| 🟡 #4 | Batch DB queries in `send-push-notification` | 1K+ |
+| 🟡 #5 | Derive badge from `chat-summaries` cache on AppState foreground | 5K+ |
+| 🟢 #6 | Switch to pooler URL (port 6543) | 10K+ |
+| 🟢 #7 | Per-user channel name for `global-unread-count` | 10K+ |
 
-**Before 1,000 users:**
-1. Upgrade to Supabase **Pro** ($25/month) — this also enables connection pooling
-2. Fix push notification function: batch queries, use Expo batch push endpoint
-3. Remove `refetchQueries` in `useGlobalUnreadCount`, rely on cache mutations
-
-**Before 5,000 users:**
-1. Upgrade to Supabase **Team** tier
-2. Add `filter:` to realtime subscriptions
-3. Move "hot" engagement sort to DB level
-4. Optimize `select("*")` → `select("id, username, avatar_url, ...")` in profile queries
-
-**Before 10,000 users:**
-1. Move `vote_score` and `comment_count` to denormalized columns on `posts` (updated by triggers), removing the need for the summary view entirely
-2. Add rate limiting to the `create-post` function (e.g. 5 posts/user/minute)
-3. Consider a Redis/Upstash layer for hot feed caching
+**Bottom line**: With Pro and fixes #1–#3, you're solid through 5,000 users. Fixes #4–#7 get you comfortably to 10,000+.

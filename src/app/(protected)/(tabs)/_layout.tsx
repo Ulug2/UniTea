@@ -13,21 +13,19 @@ import {
   useFilterContext,
 } from "../../../context/FilterContext";
 
-// Hook to get global unread count for chat tab badge
+// Hook to get global unread count for chat tab badge.
+//
+// The badge count is derived entirely from the `chat-summaries` cache that
+// chat.tsx keeps up-to-date via its two filtered Realtime channels.
+// No separate chat_messages subscription is needed here, and staleTime is
+// set to Infinity so the query never re-fetches on its own — it is only
+// refreshed when the app comes to foreground (AppState listener below) or
+// when chat.tsx's handleChatEvent calls setQueriesData.
 function useGlobalUnreadCount() {
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const queryClient = useQueryClient();
 
-  // Debounce refs to prevent cascading invalidations
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-  const updateDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-
-  // Fetch blocked users using the reusable hook
   const { data: blocks = [] } = useBlocks();
 
   const { data: unreadCount = 0 } = useQuery<number>({
@@ -35,7 +33,6 @@ function useGlobalUnreadCount() {
     queryFn: async () => {
       if (!currentUserId) return 0;
 
-      // Fetch all chat summaries and sum unread counts
       const { data, error } = await (supabase as any)
         .from("user_chats_summary")
         .select(
@@ -48,127 +45,22 @@ function useGlobalUnreadCount() {
       if (error) throw error;
       if (!data) return 0;
 
-      // Sum up unread counts based on which participant is current user
-      // Exclude chats with blocked users
-      const total = data.reduce((sum: number, chat: any) => {
+      return data.reduce((sum: number, chat: any) => {
         const otherUserId =
           chat.participant_1_id === currentUserId
             ? chat.participant_2_id
             : chat.participant_1_id;
-
-        // Skip chats with blocked users
-        if (blocks.includes(otherUserId)) {
-          return sum;
-        }
-
+        if (blocks.includes(otherUserId)) return sum;
         const isP1 = chat.participant_1_id === currentUserId;
-        const unread = isP1
-          ? chat.unread_count_p1 || 0
-          : chat.unread_count_p2 || 0;
-        return sum + unread;
+        return sum + (isP1 ? chat.unread_count_p1 || 0 : chat.unread_count_p2 || 0);
       }, 0);
-
-      return total;
     },
     enabled: Boolean(currentUserId),
-    staleTime: 1000 * 30, // Stale after 30 seconds; rely primarily on realtime + cache
-    gcTime: 1000 * 60 * 5, // Cache for 5 minutes
+    // Never re-fetches on its own; chat.tsx's filtered Realtime channels call
+    // setQueriesData to keep this value current without any DB round-trips.
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 30,
   });
-
-  // Subscribe to real-time changes on chat_messages to update badge with debouncing
-  useEffect(() => {
-    if (!currentUserId) return;
-
-    const channel = supabase
-      .channel("global-unread-count")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-        },
-        (payload) => {
-          // Skip our own messages entirely - they don't affect our unread count
-          // Don't process, don't debounce, just skip immediately
-          const newMessage = payload.new as any;
-          if (newMessage.user_id === currentUserId) {
-            return; // Exit immediately - no processing needed
-          }
-
-          // Only debounce OTHER users' messages to batch rapid sends (500ms)
-          if (debounceRef.current) {
-            clearTimeout(debounceRef.current);
-          }
-          debounceRef.current = setTimeout(() => {
-            // Derive the new badge count from the chat-summaries cache (already updated
-            // by chat.tsx's realtime handler) instead of firing a DB round-trip to
-            // user_chats_summary. This eliminates one DB query per message per user.
-            const summaries = queryClient.getQueryData<any[]>([
-              "chat-summaries",
-              currentUserId,
-            ]);
-            if (!summaries) return;
-            const total = summaries.reduce((sum: number, chat: any) => {
-              const isP1 = chat.participant_1_id === currentUserId;
-              return (
-                sum +
-                (isP1
-                  ? chat.unread_count_p1 || 0
-                  : chat.unread_count_p2 || 0)
-              );
-            }, 0);
-            queryClient.setQueriesData<number>(
-              { queryKey: ["global-unread-count", currentUserId], exact: false },
-              total,
-            );
-          }, 500);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "chat_messages",
-        },
-        () => {
-          // Message read status changed — re-derive badge from cache, no DB query.
-          const summaries = queryClient.getQueryData<any[]>([
-            "chat-summaries",
-            currentUserId,
-          ]);
-          if (!summaries) return;
-          const total = summaries.reduce((sum: number, chat: any) => {
-            const isP1 = chat.participant_1_id === currentUserId;
-            return (
-              sum +
-              (isP1
-                ? chat.unread_count_p1 || 0
-                : chat.unread_count_p2 || 0)
-            );
-          }, 0);
-          queryClient.setQueriesData<number>(
-            { queryKey: ["global-unread-count", currentUserId], exact: false },
-            total,
-          );
-        },
-      )
-      .subscribe();
-
-    return () => {
-      // Cleanup timeouts on unmount
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-      if (updateDebounceRef.current) {
-        clearTimeout(updateDebounceRef.current);
-      }
-      // Unsubscribe and remove channel properly
-      channel.unsubscribe();
-      supabase.removeChannel(channel);
-    };
-  }, [currentUserId, queryClient]);
 
   return unreadCount;
 }
