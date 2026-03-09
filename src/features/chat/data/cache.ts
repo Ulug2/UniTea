@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ChatMessageVM, MessagesQueryData } from "../types";
+import { isDeletedForEveryone, isDeletedForViewer, deletedLabel } from "../types";
 
 const MESSAGES_QUERY_KEY = "chat-messages";
 
@@ -55,10 +56,10 @@ export function replaceOptimisticMessage(
           page.map((msg) =>
             msg.id === tempId
               ? {
-                  ...confirmedMessage,
-                  sendStatus: undefined,
-                  _clientPayload: undefined,
-                }
+                ...confirmedMessage,
+                sendStatus: undefined,
+                _clientPayload: undefined,
+              }
               : msg
           )
         ),
@@ -128,6 +129,112 @@ export function prependIncomingMessage(
   );
 }
 
+/**
+ * Find the latest *visible* message for a given viewer in the paginated data.
+ * Skips messages that are delete-for-me for the viewer.
+ */
+export function getLatestMessage(
+  data: MessagesQueryData | undefined,
+  viewerId: string
+): ChatMessageVM | null {
+  if (!data || !Array.isArray(data.pages)) return null;
+
+  let latest: ChatMessageVM | null = null;
+  let latestTime = -Infinity;
+
+  for (const page of data.pages) {
+    if (!Array.isArray(page)) continue;
+    for (const msg of page) {
+      if (!msg) continue;
+      if (isDeletedForViewer(msg, viewerId)) continue;
+      const createdAt = msg.created_at ? new Date(msg.created_at).getTime() : 0;
+      if (createdAt >= latestTime) {
+        latestTime = createdAt;
+        latest = msg;
+      }
+    }
+  }
+
+  return latest;
+}
+
+/**
+ * Sync the chat summaries cache for a single chat from its messages cache.
+ *
+ * This mirrors the optimistic update logic in useChatSendMessage, ensuring that
+ * deletions (for-me or for-everyone) are reflected in the chat list's
+ * last_message_* fields without requiring an immediate refetch.
+ */
+export function updateChatSummaryFromMessages(
+  queryClient: QueryClient,
+  chatId: string,
+  currentUserId: string
+): void {
+  const messages = queryClient.getQueryData<MessagesQueryData>([
+    MESSAGES_QUERY_KEY,
+    chatId,
+  ]);
+  const latest = getLatestMessage(messages, currentUserId);
+
+  queryClient.setQueryData<unknown[]>(
+    ["chat-summaries", currentUserId],
+    (oldSummaries: unknown[] | undefined) => {
+      if (!oldSummaries || !Array.isArray(oldSummaries)) {
+        return oldSummaries ?? [];
+      }
+
+      let updated = false;
+      const next = oldSummaries.map((summary: unknown) => {
+        const s = summary as {
+          chat_id?: string;
+          last_message_content?: string | null;
+          last_message_at?: string | null;
+          last_message_has_image?: boolean;
+        };
+
+        if (s.chat_id !== chatId) return summary;
+
+        updated = true;
+
+        if (!latest) {
+          // No remaining visible messages: treat chat as having no last message
+          // so it will be filtered out by the chat list.
+          return {
+            ...s,
+            last_message_content: null,
+            last_message_at: null,
+            last_message_has_image: false,
+          };
+        }
+
+        const isTombstone = isDeletedForEveryone(latest);
+        if (isTombstone) {
+          // Match the detail view: show a deleted-message label and never treat
+          // tombstones as image messages in the chat list.
+          return {
+            ...s,
+            last_message_content: deletedLabel(latest),
+            last_message_at: latest.created_at ?? null,
+            last_message_has_image: false,
+          };
+        }
+
+        const hasImage =
+          !!latest.image_url && String(latest.image_url).trim() !== "";
+
+        return {
+          ...s,
+          last_message_content: latest.content ?? null,
+          last_message_at: latest.created_at ?? null,
+          last_message_has_image: hasImage,
+        };
+      });
+
+      return updated ? next : oldSummaries;
+    }
+  );
+}
+
 export type ApplyMessageDeletionParams = {
   queryClient: QueryClient;
   chatId: string;
@@ -162,11 +269,11 @@ export function applyMessageDeletion({
           page.map((msg) =>
             msg.id === messageId
               ? {
-                  ...msg,
-                  content: "This message was deleted",
-                  deleted_by_sender: true,
-                  deleted_by_receiver: true,
-                }
+                ...msg,
+                content: "This message was deleted",
+                deleted_by_sender: true,
+                deleted_by_receiver: true,
+              }
               : msg
           )
         ),
