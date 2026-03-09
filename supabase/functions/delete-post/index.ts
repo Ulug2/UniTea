@@ -65,7 +65,7 @@ serve(async (req: Request) => {
 
     const { data: post } = await supabase
       .from("posts")
-      .select("user_id")
+      .select("user_id, image_url")
       .eq("id", post_id)
       .single();
 
@@ -111,6 +111,16 @@ serve(async (req: Request) => {
         JSON.stringify({ error: deleteError.message }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Delete the post image from storage (non-fatal — DB row is already gone)
+    if (post.image_url) {
+      const { error: storageError } = await supabaseAdmin.storage
+        .from("post-images")
+        .remove([post.image_url]);
+      if (storageError) {
+        console.warn("delete-post: failed to remove post image from storage:", storageError.message);
+      }
     }
 
     // Audit log (only log admin-initiated removals, not owner self-deletes)

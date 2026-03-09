@@ -47,7 +47,7 @@ const BORDER_RADIUS = {
 const AUTH_CONFIG = {
   TIMEOUT_MS: 30000, // 30 seconds
   RATE_LIMIT_COOLDOWN_MS: 300000, // 5 minutes
-  MIN_PASSWORD_LENGTH: 6,
+  MIN_PASSWORD_LENGTH: 8,
 } as const;
 
 export default function Auth() {

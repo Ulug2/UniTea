@@ -47,7 +47,6 @@ export function useDeleteComment(commentId: string, options?: Options) {
       queryClient.invalidateQueries({ queryKey: ["post", postId] });
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       queryClient.invalidateQueries({ queryKey: ["user-posts"] });
-      queryClient.invalidateQueries({ queryKey: ["user-post-comments"] });
       queryClient.invalidateQueries({ queryKey: ["bookmarked-posts"] });
       onSuccess?.();
     },

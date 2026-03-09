@@ -43,8 +43,6 @@ export function useDeletePost(postId: string | null | undefined, options?: Optio
         queryClient.invalidateQueries({ queryKey: ["posts"] });
         queryClient.invalidateQueries({ queryKey: ["post", id] });
         queryClient.invalidateQueries({ queryKey: ["user-posts"] });
-        queryClient.invalidateQueries({ queryKey: ["user-post-comments"] });
-        queryClient.invalidateQueries({ queryKey: ["user-post-votes"] });
         queryClient.invalidateQueries({ queryKey: ["bookmarked-posts"] });
       }
       if (postId && !overridePostId) router.back();

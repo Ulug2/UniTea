@@ -116,9 +116,16 @@ export function useVote({
                     queryKey: ['post', postId],
                     refetchType: 'none'
                 });
+                // Mark the profile's post list stale so vote_score refreshes next
+                // time the profile tab is visited.
                 queryClient.invalidateQueries({
-                    queryKey: ['user-post-votes'],
+                    queryKey: ['user-posts'],
                     refetchType: 'none'
+                });
+                // Immediately refetch the profile's total vote count so the
+                // header updates in real time (active = refetch if query is mounted).
+                queryClient.invalidateQueries({
+                    queryKey: ['user-total-votes'],
                 });
             }
             if (commentId) {

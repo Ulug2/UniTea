@@ -6,6 +6,7 @@ export type PostsSummaryViewRow = {
   post_id: string;
   user_id: string;
   content: string;
+  title: string | null;
   image_url: string | null;
   category: string | null;
   location: string | null;
@@ -27,6 +28,7 @@ export type PostsSummaryViewRow = {
   reposted_from_post_id: string | null;
   repost_comment: string | null;
   repost_count: number;
+  hot_score: number;
   original_post_id?: string | null;
   original_content?: string | null;
   original_user_id?: string | null;
