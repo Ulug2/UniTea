@@ -581,7 +581,7 @@ export default function CreatePostScreen() {
             {
               backgroundColor: theme.card,
               borderTopColor: theme.border,
-              paddingBottom: Math.max(insets.bottom, 15),
+              paddingBottom: Math.min(insets.bottom, 18),
             },
           ]}
         >
