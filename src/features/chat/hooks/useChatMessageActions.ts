@@ -5,7 +5,7 @@ import { supabase } from "../../../lib/supabase";
 import { logger } from "../../../utils/logger";
 import type { ChatMessageVM, DeleteAction } from "../types";
 import { isDeletedForEveryone } from "../types";
-import { applyMessageDeletion } from "../data/cache";
+import { applyMessageDeletion, updateChatSummaryFromMessages } from "../data/cache";
 import type { MessagesQueryData } from "../types";
 
 const MESSAGES_QUERY_KEY = "chat-messages";
@@ -73,6 +73,9 @@ export function useChatMessageActions(
         MESSAGES_QUERY_KEY,
         chatId,
       ]);
+      const previousSummaries = currentUserId
+        ? queryClient.getQueryData<unknown[]>(["chat-summaries", currentUserId])
+        : undefined;
 
       applyMessageDeletion({
         queryClient,
@@ -82,7 +85,11 @@ export function useChatMessageActions(
         isSender: variables.isSender,
       });
 
-      return { previousData };
+      if (currentUserId) {
+        updateChatSummaryFromMessages(queryClient, chatId, currentUserId);
+      }
+
+      return { previousData, previousSummaries };
     },
     onError: (error, _variables, context) => {
       logger.error("Error deleting message", error, {
@@ -92,6 +99,12 @@ export function useChatMessageActions(
       });
       if (context?.previousData) {
         queryClient.setQueryData([MESSAGES_QUERY_KEY, chatId], context.previousData);
+      }
+      if (currentUserId && context?.previousSummaries) {
+        queryClient.setQueryData(
+          ["chat-summaries", currentUserId],
+          context.previousSummaries
+        );
       }
       Alert.alert("Error", "Failed to delete message. Please try again.");
     },
@@ -145,9 +158,9 @@ export function useChatMessageActions(
       }
 
       if (isCurrentUser && !deletedForEveryone) {
-        options.push("Delete for me", "Delete for everyone", "Cancel");
+        // New rule: deleting your own message always deletes for everyone.
+        options.push("Delete for everyone", "Cancel");
         actions.push(
-          doDeleteForMe,
           () =>
             deleteMutation.mutate({
               messageId: message.id,
@@ -155,11 +168,16 @@ export function useChatMessageActions(
               isSender: true,
               imageUrl: message.image_url,
             }),
-          () => {}
+          () => { }
         );
-      } else {
+      } else if (!deletedForEveryone) {
+        // Partner message: allow delete-for-me only.
         options.push("Delete for me", "Cancel");
-        actions.push(doDeleteForMe, () => {});
+        actions.push(doDeleteForMe, () => { });
+      } else {
+        // Tombstone: only Cancel (and maybe Reply, already added above).
+        options.push("Cancel");
+        actions.push(() => { });
       }
 
       if (Platform.OS === "ios") {

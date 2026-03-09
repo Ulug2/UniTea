@@ -61,11 +61,35 @@ function ChatMessageRowInner({
     : false;
   const showTombstone = isDeletedForEveryone(item);
 
-  if (isHiddenForCurrentUser) {
+  const showDateDivider = shouldShowDateDivider(item, nextMsg);
+
+  // BUG FIX: Handle hidden messages correctly without breaking date separators or tombstones.
+  if (isHiddenForCurrentUser && !showTombstone) {
+    // If it's supposed to show a date divider, render ONLY the divider.
+    if (showDateDivider) {
+      return (
+        <View style={chatDetailStyles.dateDividerContainer}>
+          <View
+            style={[
+              chatDetailStyles.dateDivider,
+              { backgroundColor: theme.border },
+            ]}
+          >
+            <Text
+              style={[
+                chatDetailStyles.dateDividerText,
+                { color: theme.secondaryText },
+              ]}
+            >
+              {getDateDivider(item.created_at)}
+            </Text>
+          </View>
+        </View>
+      );
+    }
+    // Otherwise, it's safe to return null.
     return null;
   }
-
-  const showDateDivider = shouldShowDateDivider(item, nextMsg);
 
   // Show the reply block whenever reply_to_id is set (it survived the refetch).
   // We also require the join data (replyToMessage) to show rich content, but
@@ -79,6 +103,13 @@ function ChatMessageRowInner({
   const timeColor = isCurrentUser
     ? "rgba(255,255,255,0.65)"
     : theme.secondaryText;
+  // Tombstone bubbles should use the same bubble color as the viewer's regular messages.
+  const tombstoneBackgroundColor = isCurrentUser
+    ? "#5DBEBC"
+    : theme.messageBubble;
+  const tombstoneText = isCurrentUser
+    ? "You deleted this message."
+    : deletedLabel(item);
 
   const replyBlock = hasReply ? (
     <TouchableOpacity
@@ -200,6 +231,7 @@ function ChatMessageRowInner({
                 item.image_url &&
                 onImagePress(item.image_url)
               }
+              onLongPress={() => onLongPress(item)}
             >
               {item.id.startsWith("temp-") ? (
                 <View
@@ -238,7 +270,7 @@ function ChatMessageRowInner({
                 chatDetailStyles.messageTextWrap,
                 {
                   backgroundColor: showTombstone
-                    ? theme.card
+                    ? tombstoneBackgroundColor
                     : isCurrentUser
                       ? sendStatus === "failed"
                         ? "#B91C1C"
@@ -264,21 +296,60 @@ function ChatMessageRowInner({
                 chatDetailStyles.messageTextWrapWithImage,
               ]}
             >
-              <Text
-                style={[
-                  chatDetailStyles.messageText,
-                  {
-                    color: showTombstone
-                      ? theme.secondaryText
-                      : isCurrentUser
-                        ? "#FFFFFF"
-                        : theme.text,
-                    fontStyle: showTombstone ? "italic" : "normal",
-                  },
-                ]}
-              >
-                {showTombstone ? deletedLabel(item) : item.content}
-              </Text>
+              {showTombstone ? (
+                <View style={tombstoneStyles.container}>
+                  <View style={tombstoneStyles.iconWrapper}>
+                    <View
+                      style={[
+                        tombstoneStyles.iconCircle,
+                        {
+                          borderColor: isCurrentUser
+                            ? "rgba(255,255,255,0.9)"
+                            : theme.secondaryText,
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        tombstoneStyles.iconSlash,
+                        {
+                          backgroundColor: isCurrentUser
+                            ? "rgba(255,255,255,0.9)"
+                            : theme.secondaryText,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      chatDetailStyles.messageText,
+                      {
+                        // For your own deleted messages, use a lighter tone to
+                        // contrast better with the turquoise bubble while still
+                        // feeling softer than pure white. For partner messages,
+                        // keep using the standard secondary text gray.
+                        color: isCurrentUser
+                          ? "rgba(255,255,255,0.9)"
+                          : theme.secondaryText,
+                        fontStyle: "italic",
+                      },
+                    ]}
+                  >
+                    {tombstoneText}
+                  </Text>
+                </View>
+              ) : (
+                <Text
+                  style={[
+                    chatDetailStyles.messageText,
+                    {
+                      color: isCurrentUser ? "#FFFFFF" : theme.text,
+                    },
+                  ]}
+                >
+                  {item.content}
+                </Text>
+              )}
               {/* Inline timestamp — absolute bottom-right, half above / half below last line */}
               <Text
                 style={[
@@ -416,5 +487,32 @@ const replyQuoteStyles = StyleSheet.create({
   contentSnippet: {
     fontSize: 11,
     fontFamily: "Poppins_400Regular",
+  },
+});
+
+const tombstoneStyles = StyleSheet.create({
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  iconWrapper: {
+    width: 18,
+    height: 18,
+    marginRight: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  iconCircle: {
+    position: "absolute",
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
+  },
+  iconSlash: {
+    position: "absolute",
+    width: 12,
+    height: 1.5,
+    transform: [{ rotate: "45deg" }],
   },
 });
