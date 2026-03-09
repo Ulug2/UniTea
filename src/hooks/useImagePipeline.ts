@@ -6,16 +6,18 @@ import { logger } from "../utils/logger";
 
 export type ImagePipelineOptions = {
   allowEditing?: boolean;
+  aspect?: [number, number];
 };
 
 export function useImagePipeline(options: ImagePipelineOptions = {}) {
-  const { allowEditing = true } = options;
+  const { allowEditing = true, aspect } = options;
 
   const pickAndPrepareImage = async (): Promise<string | null> => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
         allowsEditing: allowEditing,
+        ...(aspect ? { aspect } : {}),
         quality: 0.8,
       });
 

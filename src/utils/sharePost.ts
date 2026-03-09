@@ -3,21 +3,33 @@ import { Share, Platform, Alert } from "react-native";
 const APP_URL = process.env.EXPO_PUBLIC_APP_URL || "https://unitea.app";
 
 /**
- * Returns the public URL for a post. Opening this link shows the post (web or app via universal link).
+ * Returns the public URL for a regular feed post.
  */
 export function getPostShareUrl(postId: string): string {
   const base = APP_URL.replace(/\/$/, "");
   return `${base}/post/${postId}`;
 }
 
+/**
+ * Returns the public URL for a Lost & Found post.
+ */
+export function getLostFoundShareUrl(postId: string): string {
+  const base = APP_URL.replace(/\/$/, "");
+  return `${base}/lostfoundpost/${postId}`;
+}
+
 const SHARE_TITLE = "Share Post";
 const SHARE_MESSAGE = "Check out this post on UniTee!";
 
 /**
- * Opens the native share sheet (or copies link on web) so the user can send the post link.
+ * Opens the native share sheet (or copies link on web).
+ * Pass postType="lost_found" for L&F posts so the shared link
+ * deep-links directly to the L&F detail screen.
  */
-export async function sharePost(postId: string): Promise<void> {
-  const url = getPostShareUrl(postId);
+export async function sharePost(postId: string, postType?: string): Promise<void> {
+  const url = postType === "lost_found"
+    ? getLostFoundShareUrl(postId)
+    : getPostShareUrl(postId);
 
   if (Platform.OS === "web") {
     if (typeof navigator !== "undefined" && navigator.share) {

@@ -7,6 +7,7 @@ import { Alert } from "react-native";
 type CreatePostVariables = {
   imagePath: string | undefined;
   postContent: string;
+  postTitle: string;
   postLocation: string;
   postIsAnonymous: boolean;
   postCategory: "lost" | "found";
@@ -33,7 +34,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         throw new Error("You must be logged in to create a post.");
       }
 
-      const { postContent, postLocation, postIsAnonymous, postCategory, pollOptions, imagePath } =
+      const { postContent, postTitle, postLocation, postIsAnonymous, postCategory, pollOptions, imagePath } =
         variables;
 
       if (!resolvedRepostId && !postContent.trim()) {
@@ -50,6 +51,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         image_url: imagePath || null,
         is_anonymous: isLostFound ? false : postIsAnonymous,
         ...(isLostFound && {
+          title: postTitle.trim(),
           category: postCategory,
           location: postLocation.trim(),
         }),

@@ -20,9 +20,15 @@ type ChatListItemProps = {
   isAnonymous?: boolean;
   /** Called when avatar has finished loading (for skeleton reveal) */
   onImageLoad?: () => void;
+  /** Called synchronously before navigation, so the caller can pre-seed the RQ
+   *  cache for the detail screen (eliminates ChatDetailSkeleton). */
+  onBeforeNavigate?: () => void;
 };
 
-// Custom comparison function for better memoization
+// Custom comparison function for better memoization.
+// onBeforeNavigate is intentionally excluded — it's a stable function whose
+// closure captures the current item, so re-renders driven by data changes
+// (which DO appear in the other checked props) keep it up to date.
 const arePropsEqual = (prevProps: ChatListItemProps, nextProps: ChatListItemProps) => {
   return (
     prevProps.chatId === nextProps.chatId &&
@@ -47,6 +53,7 @@ const ChatListItem = React.memo(function ChatListItem({
   unreadCount,
   isAnonymous,
   onImageLoad,
+  onBeforeNavigate,
 }: ChatListItemProps) {
   const { theme } = useTheme();
   const onImageLoadCalledRef = useRef(false);
@@ -71,11 +78,14 @@ const ChatListItem = React.memo(function ChatListItem({
     return otherUser.username.charAt(0).toUpperCase();
   };
 
-  const getDisplayName = () => {
-    if (isAnonymous) {
-      return `Anonymous User`;
-    }
-    return otherUser?.username || "Unknown User";
+  // Return null when the profile hasn't loaded yet (non-anonymous chat with no
+  // user data). The render below will show a greyed-out placeholder instead of
+  // "Unknown User", preventing the flicker that appears when the users query
+  // resolves after the summaries cache is already seeded.
+  const getDisplayName = (): string | null => {
+    if (isAnonymous) return "Anonymous User";
+    if (!otherUser) return null; // still loading
+    return otherUser.username || "Unknown User";
   };
 
   const formatTime = (dateString: string) => {
@@ -183,7 +193,10 @@ const ChatListItem = React.memo(function ChatListItem({
     <>
       <Pressable
         style={styles.container}
-        onPress={() => router.push(`/chat/${chatId}`)}
+        onPress={() => {
+          onBeforeNavigate?.();
+          router.push(`/chat/${chatId}`);
+        }}
         android_ripple={{ color: theme.border }}
       >
         <View style={styles.avatarContainer}>
@@ -218,7 +231,20 @@ const ChatListItem = React.memo(function ChatListItem({
 
         <View style={styles.contentContainer}>
           <View style={styles.header}>
-            <Text style={styles.username}>{getDisplayName()}</Text>
+            {getDisplayName() !== null ? (
+              <Text style={styles.username}>{getDisplayName()}</Text>
+            ) : (
+              // Profile still loading — show a neutral pill instead of "Unknown User"
+              <View
+                style={{
+                  height: 14,
+                  width: 100,
+                  borderRadius: 7,
+                  backgroundColor: theme.border,
+                  opacity: 0.6,
+                }}
+              />
+            )}
             <Text style={styles.time}>
               {lastMessageAt ? formatTime(lastMessageAt) : ""}
             </Text>

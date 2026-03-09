@@ -27,10 +27,12 @@ export function useChatMessageActions(
       messageId,
       action,
       isSender,
+      imageUrl,
     }: {
       messageId: string;
       action: DeleteAction;
       isSender: boolean;
+      imageUrl?: string | null;
     }) => {
       if (!currentUserId) throw new Error("User not authenticated");
 
@@ -53,6 +55,17 @@ export function useChatMessageActions(
         .eq("id", messageId);
 
       if (error) throw error;
+
+      // When a message is deleted for everyone neither party can see it, so the
+      // image file is no longer needed. Delete it from storage (non-fatal).
+      if (action === "delete_for_everyone" && imageUrl) {
+        const { error: storageError } = await supabase.storage
+          .from("chat-images")
+          .remove([imageUrl]);
+        if (storageError) {
+          logger.warn("useChatMessageActions: failed to delete chat image from storage", storageError);
+        }
+      }
     },
     onMutate: async (variables) => {
       await queryClient.cancelQueries({ queryKey: [MESSAGES_QUERY_KEY, chatId] });
@@ -100,11 +113,12 @@ export function useChatMessageActions(
   );
 
   const deleteForEveryone = useCallback(
-    (messageId: string) => {
+    (messageId: string, imageUrl?: string | null) => {
       deleteMutation.mutate({
         messageId,
         action: "delete_for_everyone",
         isSender: true,
+        imageUrl,
       });
     },
     [deleteMutation]
@@ -139,6 +153,7 @@ export function useChatMessageActions(
               messageId: message.id,
               action: "delete_for_everyone",
               isSender: true,
+              imageUrl: message.image_url,
             }),
           () => {}
         );

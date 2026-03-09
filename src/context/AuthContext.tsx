@@ -8,14 +8,26 @@ import {
   useRef,
 } from "react";
 import { Session } from "@supabase/supabase-js";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
 import { logger } from "../utils/logger";
+
+const PROFILE_CACHE_KEY = "@unitee:profile_cache";
+
+export type CachedProfile = {
+  avatar_url: string | null;
+  username: string | null;
+};
 
 type AuthContextValue = {
   session: Session | null;
   loading: boolean;
   error: Error | null;
   signOut: () => Promise<void>;
+  /** Profile data persisted across cold starts via AsyncStorage. */
+  cachedProfile: CachedProfile | null;
+  /** Call this after a profile fetch/update to keep AsyncStorage in sync. */
+  persistProfile: (profile: CachedProfile) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -24,7 +36,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [cachedProfile, setCachedProfile] = useState<CachedProfile | null>(null);
   const isInitialized = useRef(false);
+
+  const persistProfile = useCallback(async (profile: CachedProfile) => {
+    setCachedProfile(profile);
+    try {
+      await AsyncStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+    } catch (err) {
+      logger.error("[AuthContext] Failed to persist profile", err as Error);
+    }
+  }, []);
 
   // Force-sign-out: clears local session state regardless of server response.
   // Without this, Supabase's SIGNED_OUT event may never fire when the server-side
@@ -36,10 +58,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore — we clear local state regardless
     }
-    // Force clear regardless of whether supabase fired SIGNED_OUT
     setSession(null);
     setError(null);
+    setCachedProfile(null);
     logger.clearUser();
+    try {
+      await AsyncStorage.removeItem(PROFILE_CACHE_KEY);
+    } catch {
+      // non-fatal
+    }
   }, []);
 
   useEffect(() => {
@@ -49,6 +76,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const initializeAuth = async () => {
       if (isInitialized.current) return;
       isInitialized.current = true;
+
+      // Hydrate profile from AsyncStorage BEFORE the network session check so
+      // ProfileHeader can render the avatar immediately on cold start.
+      try {
+        const stored = await AsyncStorage.getItem(PROFILE_CACHE_KEY);
+        if (stored && isMounted) {
+          setCachedProfile(JSON.parse(stored) as CachedProfile);
+        }
+      } catch (err) {
+        logger.error("[AuthContext] Failed to read cached profile", err as Error);
+      }
 
       try {
         const {
@@ -115,7 +153,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         case "SIGNED_OUT":
           setSession(null);
           setError(null);
+          setCachedProfile(null);
           logger.clearUser();
+          AsyncStorage.removeItem(PROFILE_CACHE_KEY).catch(() => {});
           break;
 
         case "SIGNED_IN":
@@ -172,7 +212,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ session, loading, error, signOut }}>
+    <AuthContext.Provider
+      value={{ session, loading, error, signOut, cachedProfile, persistProfile }}
+    >
       {children}
     </AuthContext.Provider>
   );

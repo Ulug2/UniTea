@@ -49,6 +49,7 @@ import {
   makeChatDetailStyles,
   chatDetailStyles,
 } from "../../../features/chat/styles";
+import { saveChatMessagesToStorage } from "../../../utils/feedPersistence";
 import { ChatHeader } from "../../../features/chat/components/ChatHeader";
 import { ChatComposer } from "../../../features/chat/components/ChatComposer";
 import { ChatMessageList } from "../../../features/chat/components/ChatMessageList";
@@ -224,6 +225,17 @@ export default function ChatDetailScreen() {
     () => selectMessages(messagesData, blocks),
     [messagesData, blocks],
   );
+
+  // Persist the first page of messages so the detail screen never shows the
+  // skeleton on cold start and chat images can be served from expo-image's
+  // disk cache without a network round-trip.
+  useEffect(() => {
+    if (!id || !messagesData?.pages?.[0]?.length) return;
+    saveChatMessagesToStorage(
+      id,
+      messagesData.pages[0] as Record<string, unknown>[],
+    );
+  }, [id, messagesData]);
 
   const handleReply = useCallback(
     (msg: ChatMessageVM) => {

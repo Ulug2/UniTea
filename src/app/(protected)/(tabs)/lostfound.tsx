@@ -29,6 +29,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
+import { saveLostFoundToStorage } from "../../../utils/feedPersistence";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -133,11 +134,20 @@ export default function LostFoundScreen() {
     const q = debouncedQuery;
     return lostFoundPosts.filter((post) => {
       const content = (post.content ?? "").toLowerCase();
+      const title = (post.title ?? "").toLowerCase();
       const category = (post.category ?? "").toLowerCase();
       const location = (post.location ?? "").toLowerCase();
-      return content.includes(q) || category.includes(q) || location.includes(q);
+      return content.includes(q) || title.includes(q) || category.includes(q) || location.includes(q);
     });
   }, [lostFoundPosts, debouncedQuery]);
+
+  // Persist the first page to AsyncStorage after every successful fetch so the
+  // next cold start can seed the RQ cache before the splash screen hides.
+  useEffect(() => {
+    if (postsData?.pages?.length) {
+      saveLostFoundToStorage(postsData.pages as PostSummary[][]);
+    }
+  }, [postsData]);
 
   const deletePostMutation = useDeletePost(undefined, {
     onSuccess: () => {
@@ -230,9 +240,13 @@ export default function LostFoundScreen() {
     setShowMenu(true);
   }, []);
 
+  // Skip the reveal-overlay when data is already in cache (seeded from
+  // AsyncStorage). Images are served from expo-image's disk cache so there is
+  // nothing to wait for.
   const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
     minItems: 3,
     timeoutMs: 2500,
+    initialRevealed: !!postsData,
   });
 
   const renderItem = useCallback(
@@ -241,6 +255,7 @@ export default function LostFoundScreen() {
         postId={item.post_id}
         userId={item.user_id}
         content={item.content}
+        title={item.title ?? null}
         imageUrl={item.image_url}
         category={item.category}
         location={item.location}

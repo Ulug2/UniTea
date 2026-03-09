@@ -10,6 +10,7 @@ import { DEFAULT_AVATAR } from "../constants/images";
 import { useTheme } from "../context/ThemeContext";
 import { useVote } from "../hooks/useVote";
 import SupabaseImage from "./SupabaseImage";
+import { resolvePostImageUri } from "./FullscreenImageModal";
 import Poll from "./Poll";
 import UserProfileModal from "./UserProfileModal";
 import { useAuth } from "../context/AuthContext";
@@ -152,6 +153,8 @@ type PostListItemProps = {
   onBookmarkPress?: () => void;
   /** Called when all images/avatars in this post have finished loading (for feed skeleton) */
   onImageLoad?: () => void;
+  /** Called when any post image is tapped — parent screen manages the fullscreen modal. */
+  onImagePress?: (uri: string) => void;
   /**
    * Pass from the parent list so this component doesn't need its own useMyProfile subscription.
    * Defaults to false when not provided (e.g. single-item detail views).
@@ -195,8 +198,9 @@ const arePropsEqual = (
     prevProps.originalCreatedAt === nextProps.originalCreatedAt &&
     prevProps.isDetailedPost === nextProps.isDetailedPost &&
     prevProps.disableCommentInteraction ===
-      nextProps.disableCommentInteraction &&
+    nextProps.disableCommentInteraction &&
     prevProps.isBookmarked === nextProps.isBookmarked &&
+    prevProps.onImagePress === nextProps.onImagePress &&
     prevProps.isAdmin === nextProps.isAdmin
   );
 };
@@ -229,6 +233,7 @@ const PostListItem = React.memo(function PostListItem({
   isBookmarked = false,
   onBookmarkPress,
   onImageLoad,
+  onImagePress,
   isAdmin = false,
 }: PostListItemProps) {
   const { theme } = useTheme();
@@ -353,34 +358,34 @@ const PostListItem = React.memo(function PostListItem({
                   />
                 )
               ) : // Show regular post author
-              isAnonymous ? (
-                <Image
-                  source={nuLogo}
-                  style={styles.avatar}
-                  onLoad={() => setAvatarLoaded(true)}
-                />
-              ) : avatarUrl ? (
-                avatarUrl.startsWith("http") ? (
+                isAnonymous ? (
                   <Image
-                    source={{ uri: avatarUrl }}
+                    source={nuLogo}
                     style={styles.avatar}
                     onLoad={() => setAvatarLoaded(true)}
                   />
+                ) : avatarUrl ? (
+                  avatarUrl.startsWith("http") ? (
+                    <Image
+                      source={{ uri: avatarUrl }}
+                      style={styles.avatar}
+                      onLoad={() => setAvatarLoaded(true)}
+                    />
+                  ) : (
+                    <SupabaseImage
+                      path={avatarUrl}
+                      bucket="avatars"
+                      style={styles.avatar}
+                      onLoad={() => setAvatarLoaded(true)}
+                    />
+                  )
                 ) : (
-                  <SupabaseImage
-                    path={avatarUrl}
-                    bucket="avatars"
+                  <Image
+                    source={DEFAULT_AVATAR}
                     style={styles.avatar}
                     onLoad={() => setAvatarLoaded(true)}
                   />
-                )
-              ) : (
-                <Image
-                  source={DEFAULT_AVATAR}
-                  style={styles.avatar}
-                  onLoad={() => setAvatarLoaded(true)}
-                />
-              )}
+                )}
               <Text style={styles.username}>
                 {isAnonymous
                   ? userId === currentUserId
@@ -406,12 +411,30 @@ const PostListItem = React.memo(function PostListItem({
 
           {/* REPOST IMAGE (if user added image when reposting) */}
           {isRepost && imageUrl && (
-            <SupabaseImage
-              path={imageUrl}
-              bucket="post-images"
-              style={styles.postImage}
-              onLoad={() => setImageLoaded(true)}
-            />
+            isDetailedPost ? (
+              <Pressable
+                onPress={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const uri = resolvePostImageUri(imageUrl);
+                  if (uri) onImagePress?.(uri);
+                }}
+              >
+                <SupabaseImage
+                  path={imageUrl}
+                  bucket="post-images"
+                  style={styles.postImage}
+                  onLoad={() => setImageLoaded(true)}
+                />
+              </Pressable>
+            ) : (
+              <SupabaseImage
+                path={imageUrl}
+                bucket="post-images"
+                style={styles.postImage}
+                onLoad={() => setImageLoaded(true)}
+              />
+            )
           )}
 
           {/* CONTENT */}
@@ -463,11 +486,28 @@ const PostListItem = React.memo(function PostListItem({
                   )}
                 {/* Original post image (when present in the reposted post) */}
                 {originalImageUrl && (
-                  <SupabaseImage
-                    path={originalImageUrl}
-                    bucket="post-images"
-                    style={[styles.postImage, { marginTop: 8 }]}
-                  />
+                  isDetailedPost ? (
+                    <Pressable
+                      onPress={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const uri = resolvePostImageUri(originalImageUrl);
+                        if (uri) onImagePress?.(uri);
+                      }}
+                    >
+                      <SupabaseImage
+                        path={originalImageUrl}
+                        bucket="post-images"
+                        style={[styles.postImage, { marginTop: 8 }]}
+                      />
+                    </Pressable>
+                  ) : (
+                    <SupabaseImage
+                      path={originalImageUrl}
+                      bucket="post-images"
+                      style={[styles.postImage, { marginTop: 8 }]}
+                    />
+                  )
                 )}
                 {/* Original post poll (Poll renders null if the post has no poll) */}
                 {repostedFromPostId && <Poll postId={repostedFromPostId} />}
@@ -482,12 +522,30 @@ const PostListItem = React.memo(function PostListItem({
               // Regular post content
               <>
                 {imageUrl && (
-                  <SupabaseImage
-                    path={imageUrl}
-                    bucket="post-images"
-                    style={styles.postImage}
-                    onLoad={() => setImageLoaded(true)}
-                  />
+                  isDetailedPost ? (
+                    <Pressable
+                      onPress={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const uri = resolvePostImageUri(imageUrl);
+                        if (uri) onImagePress?.(uri);
+                      }}
+                    >
+                      <SupabaseImage
+                        path={imageUrl}
+                        bucket="post-images"
+                        style={styles.postImage}
+                        onLoad={() => setImageLoaded(true)}
+                      />
+                    </Pressable>
+                  ) : (
+                    <SupabaseImage
+                      path={imageUrl}
+                      bucket="post-images"
+                      style={styles.postImage}
+                      onLoad={() => setImageLoaded(true)}
+                    />
+                  )
                 )}
                 {content && (
                   <View>
@@ -646,6 +704,7 @@ const PostListItem = React.memo(function PostListItem({
           isAdmin={isAdmin}
         />
       )}
+
     </>
   );
 }, arePropsEqual);
