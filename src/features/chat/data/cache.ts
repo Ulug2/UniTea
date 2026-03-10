@@ -146,7 +146,10 @@ export function getLatestMessage(
     if (!Array.isArray(page)) continue;
     for (const msg of page) {
       if (!msg) continue;
-      if (isDeletedForViewer(msg, viewerId)) continue;
+      const hiddenForViewer = isDeletedForViewer(msg, viewerId);
+      const tombstone = isDeletedForEveryone(msg);
+      // Skip delete-for-me messages, but keep delete-for-everyone tombstones visible.
+      if (hiddenForViewer && !tombstone) continue;
       const createdAt = msg.created_at ? new Date(msg.created_at).getTime() : 0;
       if (createdAt >= latestTime) {
         latestTime = createdAt;
@@ -174,6 +177,11 @@ export function updateChatSummaryFromMessages(
     MESSAGES_QUERY_KEY,
     chatId,
   ]);
+  // If the messages query hasn't been populated yet (cold start / still loading),
+  // do not patch the chat list. Treating this as "no messages" would temporarily
+  // remove the row from the list (it filters by last_message_at) and cause a
+  // visible flicker on first navigation.
+  if (!messages) return;
   const latest = getLatestMessage(messages, currentUserId);
 
   queryClient.setQueryData<unknown[]>(
@@ -187,46 +195,74 @@ export function updateChatSummaryFromMessages(
       const next = oldSummaries.map((summary: unknown) => {
         const s = summary as {
           chat_id?: string;
-          last_message_content?: string | null;
+          participant_1_id?: string | null;
+          participant_2_id?: string | null;
+          last_message_content_p1?: string | null;
+          last_message_has_image_p1?: boolean | null;
+          last_message_content_p2?: string | null;
+          last_message_has_image_p2?: boolean | null;
           last_message_at?: string | null;
-          last_message_has_image?: boolean;
         };
 
         if (s.chat_id !== chatId) return summary;
 
         updated = true;
 
+        const isP1 = s.participant_1_id === currentUserId;
+
         if (!latest) {
           // No remaining visible messages: treat chat as having no last message
           // so it will be filtered out by the chat list.
           return {
             ...s,
-            last_message_content: null,
+            last_message_content_p1: isP1 ? null : s.last_message_content_p1 ?? null,
+            last_message_has_image_p1: isP1 ? false : s.last_message_has_image_p1 ?? false,
+            last_message_content_p2: !isP1 ? null : s.last_message_content_p2 ?? null,
+            last_message_has_image_p2: !isP1 ? false : s.last_message_has_image_p2 ?? false,
             last_message_at: null,
-            last_message_has_image: false,
           };
         }
 
         const isTombstone = isDeletedForEveryone(latest);
         if (isTombstone) {
+          const isSender = latest.user_id === currentUserId;
+          const tombstoneText = isSender
+            ? "You deleted this message."
+            : deletedLabel(latest);
           // Match the detail view: show a deleted-message label and never treat
           // tombstones as image messages in the chat list.
+          if (isP1) {
+            return {
+              ...s,
+              last_message_content_p1: tombstoneText,
+              last_message_has_image_p1: false,
+              last_message_at: latest.created_at ?? null,
+            };
+          }
           return {
             ...s,
-            last_message_content: deletedLabel(latest),
+            last_message_content_p2: tombstoneText,
+            last_message_has_image_p2: false,
             last_message_at: latest.created_at ?? null,
-            last_message_has_image: false,
           };
         }
 
         const hasImage =
           !!latest.image_url && String(latest.image_url).trim() !== "";
 
+        if (isP1) {
+          return {
+            ...s,
+            last_message_content_p1: latest.content ?? null,
+            last_message_has_image_p1: hasImage,
+            last_message_at: latest.created_at ?? null,
+          };
+        }
         return {
           ...s,
-          last_message_content: latest.content ?? null,
+          last_message_content_p2: latest.content ?? null,
+          last_message_has_image_p2: hasImage,
           last_message_at: latest.created_at ?? null,
-          last_message_has_image: hasImage,
         };
       });
 

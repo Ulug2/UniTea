@@ -7,7 +7,7 @@ type PostSummary = PostsSummaryViewRow;
 // Versioned keys so a schema change can bust old cached blobs by bumping the suffix.
 const FEED_KEY_PREFIX = "@unitee:feed_v1:";
 const LF_KEY = "@unitee:lostfound_v1";
-const CHAT_KEY_PREFIX = "@unitee:chat_v1:";
+const CHAT_KEY_PREFIX = "@unitee:chat_v2:";
 const CHAT_MESSAGES_KEY_PREFIX = "@unitee:chat_messages_v1:";
 const USER_POSTS_KEY_PREFIX = "@unitee:user_posts_v1:";
 const USER_TOTAL_VOTES_KEY_PREFIX = "@unitee:total_votes_v1:";

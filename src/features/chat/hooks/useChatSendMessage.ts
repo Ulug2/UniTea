@@ -191,24 +191,52 @@ export function useChatSendMessage(
 
       addOptimisticMessage(queryClient, chatId, optimisticMessage);
 
-      queryClient.setQueryData<unknown[]>(["chat-summaries", currentUserId], (oldSummaries: unknown[] | undefined) => {
-        if (!oldSummaries || !Array.isArray(oldSummaries)) return oldSummaries ?? [];
-        let updatedChat: unknown = null;
-        const others = oldSummaries.filter((summary: unknown) => {
-          const s = summary as { chat_id?: string };
-          if (s.chat_id === chatId) {
-            updatedChat = {
-              ...s,
-              last_message_content: messageText,
-              last_message_at: now,
-              last_message_has_image: !!(imageUrl && String(imageUrl).trim() !== ""),
-            };
-            return false;
+      queryClient.setQueryData<unknown[]>(
+        ["chat-summaries", currentUserId],
+        (oldSummaries: unknown[] | undefined) => {
+          if (!oldSummaries || !Array.isArray(oldSummaries)) {
+            return oldSummaries ?? [];
           }
-          return true;
-        });
-        return updatedChat ? [updatedChat, ...others] : oldSummaries;
-      });
+
+          let updatedChat: unknown = null;
+          const others = oldSummaries.filter((summary: unknown) => {
+            const s = summary as {
+              chat_id?: string;
+              participant_1_id?: string | null;
+              participant_2_id?: string | null;
+              last_message_content_p1?: string | null;
+              last_message_has_image_p1?: boolean | null;
+              last_message_content_p2?: string | null;
+              last_message_has_image_p2?: boolean | null;
+              last_message_at?: string | null;
+            };
+
+            if (s.chat_id === chatId) {
+              const isP1 = s.participant_1_id === currentUserId;
+              const hasImage =
+                !!imageUrl && String(imageUrl).trim() !== "";
+
+              updatedChat = isP1
+                ? {
+                    ...s,
+                    last_message_content_p1: messageText,
+                    last_message_has_image_p1: hasImage,
+                    last_message_at: now,
+                  }
+                : {
+                    ...s,
+                    last_message_content_p2: messageText,
+                    last_message_has_image_p2: hasImage,
+                    last_message_at: now,
+                  };
+              return false;
+            }
+            return true;
+          });
+
+          return updatedChat ? [updatedChat, ...others] : oldSummaries;
+        }
+      );
 
       queryClient.setQueryData<number>(["global-unread-count", currentUserId], (c) => c);
 
