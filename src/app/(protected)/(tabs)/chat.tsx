@@ -22,7 +22,6 @@ import { saveChatToStorage } from "../../../utils/feedPersistence";
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
 type User = Database["public"]["Tables"]["profiles"]["Row"];
 
-// Type for the optimized view (last_message_has_image from view when available)
 type ChatSummary = {
   chat_id: string;
   participant_1_id: string;
@@ -30,8 +29,10 @@ type ChatSummary = {
   post_id: string | null;
   created_at: string | null;
   last_message_at: string | null;
-  last_message_content: string | null;
-  last_message_has_image?: boolean;
+  last_message_content_p1: string | null;
+  last_message_has_image_p1: boolean | null;
+  last_message_content_p2: string | null;
+  last_message_has_image_p2: boolean | null;
   unread_count_p1: number;
   unread_count_p2: number;
 };
@@ -82,7 +83,10 @@ export default function ChatScreen() {
     staleTime: 1000 * 60 * 5, // Summaries stay fresh for 5 minutes - rely on cache and real-time updates
     gcTime: 1000 * 60 * 15, // Cache for 15 minutes
     refetchOnWindowFocus: false, // Don't refetch when window/tab gains focus
-    refetchOnMount: false, // Don't refetch on mount if data exists (rely on cache + realtime)
+    // IMPORTANT: We seed chat summaries from AsyncStorage with updatedAt=0 (always stale)
+    // so we need refetch-on-mount to populate newer schema fields (e.g. per-participant
+    // last-message preview) on first run. Once fetched, staleTime prevents re-fetches.
+    refetchOnMount: true,
     refetchOnReconnect: true, // Only refetch on reconnect (network came back)
     retry: (failureCount, error) => {
       // Log error on retry
@@ -225,9 +229,6 @@ export default function ChatScreen() {
                 last_message_at:
                   updatedChat.last_message_at ||
                   updated[chatIndex].last_message_at,
-                last_message_content:
-                  updatedChat.last_message_content ??
-                  updated[chatIndex].last_message_content,
                 unread_count_p1:
                   updatedChat.unread_count_p1 ??
                   updated[chatIndex].unread_count_p1,
@@ -449,13 +450,21 @@ export default function ChatScreen() {
           ? item.participant_2_id
           : item.participant_1_id;
 
+      const isP1 = item.participant_1_id === currentUserId;
+      const lastMessageContent = isP1
+        ? item.last_message_content_p1
+        : item.last_message_content_p2;
+      const lastMessageHasImage = isP1
+        ? item.last_message_has_image_p1
+        : item.last_message_has_image_p2;
+
       return (
         <ChatListItem
           chatId={item.chat_id}
           lastMessageAt={item.last_message_at}
           otherUser={user}
-          lastMessage={item.last_message_content ?? ""}
-          lastMessageHasImage={item.last_message_has_image === true}
+          lastMessage={lastMessageContent ?? ""}
+          lastMessageHasImage={lastMessageHasImage === true}
           unreadCount={getUnreadCount(item)}
           isAnonymous={isAnonymous}
           onImageLoad={index < 5 ? onItemReady : undefined}

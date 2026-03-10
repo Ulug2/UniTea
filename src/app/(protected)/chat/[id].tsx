@@ -38,7 +38,12 @@ import type {
   ChatMessageVM,
   ReplyingToState,
 } from "../../../features/chat/types";
-import { selectMessages } from "../../../features/chat/types";
+import {
+  selectMessages,
+  isDeletedForViewer,
+  isDeletedForEveryone,
+} from "../../../features/chat/types";
+import { updateChatSummaryFromMessages } from "../../../features/chat/data/cache";
 import { FullscreenImageModal } from "../../../features/chat/components/FullscreenImageModal";
 import { useChatMessagesInfinite } from "../../../features/chat/hooks/useChatMessagesInfinite";
 import { useChatMessagesRealtime } from "../../../features/chat/hooks/useChatMessagesRealtime";
@@ -225,6 +230,18 @@ export default function ChatDetailScreen() {
     () => selectMessages(messagesData, blocks),
     [messagesData, blocks],
   );
+
+  // Whenever the messages data changes (e.g. refetch on focus), recompute the
+  // per-viewer last message and patch the chat-summaries cache for this user.
+  useEffect(() => {
+    // IMPORTANT: On cold start, `messagesData` is initially undefined while the
+    // first page is still loading. If we patch summaries at that moment, we'd
+    // temporarily treat the chat as having no messages and the list will drop
+    // the row (causing a flicker on first open). Only patch once we actually
+    // have messages data.
+    if (!id || !currentUserId || !messagesData) return;
+    updateChatSummaryFromMessages(queryClient, id, currentUserId);
+  }, [messagesData, id, currentUserId, queryClient]);
 
   // Persist the first page of messages so the detail screen never shows the
   // skeleton on cold start and chat images can be served from expo-image's
@@ -899,7 +916,38 @@ export default function ChatDetailScreen() {
 
   const renderMessage = useCallback(
     ({ item, index }: { item: ChatMessageVM; index: number }) => {
+      const showTombstone = isDeletedForEveryone(item);
+      const isHiddenForCurrentUser =
+        currentUserId && !showTombstone
+          ? isDeletedForViewer(item, currentUserId)
+          : false;
+
+      let hasVisibleSiblingSameDay = false;
+      if (isHiddenForCurrentUser && item.created_at) {
+        const currentDate = new Date(item.created_at);
+        for (let i = 0; i < messages.length; i++) {
+          if (i === index) continue;
+          const candidate = messages[i];
+          if (!candidate?.created_at) continue;
+          const candidateTombstone = isDeletedForEveryone(candidate);
+          const candidateHiddenForViewer =
+            currentUserId && !candidateTombstone
+              ? isDeletedForViewer(candidate, currentUserId)
+              : false;
+          const isVisibleForViewer =
+            !candidateHiddenForViewer || candidateTombstone;
+          if (!isVisibleForViewer) continue;
+
+          const candidateDate = new Date(candidate.created_at);
+          if (isSameDay(currentDate, candidateDate)) {
+            hasVisibleSiblingSameDay = true;
+            break;
+          }
+        }
+      }
+
       const nextMsg = index < messages.length - 1 ? messages[index + 1] : null;
+
       return (
         <ChatMessageRow
           item={item}
@@ -915,11 +963,12 @@ export default function ChatDetailScreen() {
           onReplyQuotePress={handleReplyQuotePress}
           getReplyAuthorName={getReplyAuthorName}
           isDark={isDark}
+          hasVisibleSiblingSameDay={hasVisibleSiblingSameDay}
         />
       );
     },
     [
-      messages.length,
+      messages,
       currentUserId,
       theme,
       isDark,

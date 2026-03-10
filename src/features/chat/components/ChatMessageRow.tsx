@@ -37,6 +37,8 @@ type ChatMessageRowProps = {
   getReplyAuthorName?: (userId: string) => string;
   /** Whether dark mode is active — drives the embedded reply block's background. */
   isDark?: boolean;
+  /** True when there is at least one other visible message on the same day. */
+  hasVisibleSiblingSameDay?: boolean;
 };
 
 function ChatMessageRowInner({
@@ -53,6 +55,7 @@ function ChatMessageRowInner({
   onReplyQuotePress,
   getReplyAuthorName,
   isDark = false,
+  hasVisibleSiblingSameDay = false,
 }: ChatMessageRowProps) {
   const isCurrentUser = item.user_id === currentUserId;
   const sendStatus = item.sendStatus;
@@ -63,10 +66,13 @@ function ChatMessageRowInner({
 
   const showDateDivider = shouldShowDateDivider(item, nextMsg);
 
-  // BUG FIX: Handle hidden messages correctly without breaking date separators or tombstones.
+  // Handle hidden messages correctly without breaking date separators or tombstones.
   if (isHiddenForCurrentUser && !showTombstone) {
-    // If it's supposed to show a date divider, render ONLY the divider.
-    if (showDateDivider) {
+    // If it's supposed to show a date divider and there are *other* visible
+    // messages on this same day, render ONLY the divider so the day grouping
+    // remains visible. If this was the only message for that day, skip the
+    // divider entirely.
+    if (showDateDivider && hasVisibleSiblingSameDay) {
       return (
         <View style={chatDetailStyles.dateDividerContainer}>
           <View

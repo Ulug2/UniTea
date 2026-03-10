@@ -534,6 +534,52 @@ export type Database = {
           },
         ]
       }
+      post_stats: {
+        Row: {
+          comment_count: number
+          hot_score: number | null
+          post_id: string
+          repost_count: number
+          vote_score: number
+        }
+        Insert: {
+          comment_count?: number
+          hot_score?: number | null
+          post_id: string
+          repost_count?: number
+          vote_score?: number
+        }
+        Update: {
+          comment_count?: number
+          hot_score?: number | null
+          post_id?: string
+          repost_count?: number
+          vote_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_stats_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: true
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_stats_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: true
+            referencedRelation: "posts_summary_view"
+            referencedColumns: ["original_post_id"]
+          },
+          {
+            foreignKeyName: "post_stats_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: true
+            referencedRelation: "posts_summary_view"
+            referencedColumns: ["post_id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           category: string | null
@@ -860,6 +906,7 @@ export type Database = {
           content: string | null
           created_at: string | null
           edited_at: string | null
+          hot_score: number | null
           image_url: string | null
           is_anonymous: boolean | null
           is_banned: boolean | null
@@ -917,8 +964,10 @@ export type Database = {
           chat_id: string | null
           created_at: string | null
           last_message_at: string | null
-          last_message_content: string | null
-          last_message_has_image: boolean | null
+          last_message_content_p1: string | null
+          last_message_content_p2: string | null
+          last_message_has_image_p1: boolean | null
+          last_message_has_image_p2: boolean | null
           participant_1_id: string | null
           participant_2_id: string | null
           post_id: string | null
@@ -929,8 +978,10 @@ export type Database = {
           chat_id?: string | null
           created_at?: string | null
           last_message_at?: string | null
-          last_message_content?: never
-          last_message_has_image?: never
+          last_message_content_p1?: never
+          last_message_content_p2?: never
+          last_message_has_image_p1?: never
+          last_message_has_image_p2?: never
           participant_1_id?: string | null
           participant_2_id?: string | null
           post_id?: string | null
@@ -941,8 +992,10 @@ export type Database = {
           chat_id?: string | null
           created_at?: string | null
           last_message_at?: string | null
-          last_message_content?: never
-          last_message_has_image?: never
+          last_message_content_p1?: never
+          last_message_content_p2?: never
+          last_message_has_image_p1?: never
+          last_message_has_image_p2?: never
           participant_1_id?: string | null
           participant_2_id?: string | null
           post_id?: string | null
