@@ -9,7 +9,7 @@ type FoundingBadgeProps = {
 export function FoundingBadge({ theme }: FoundingBadgeProps) {
   return (
     <Text style={[styles.label, { color: theme.primary }]}>
-      {"Founding Father"}
+      {"Founding Member"}
     </Text>
   );
 }
