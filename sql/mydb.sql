@@ -29,8 +29,8 @@ CREATE TABLE public.bookmarks (
   post_id uuid NOT NULL,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT bookmarks_pkey PRIMARY KEY (id),
-  CONSTRAINT bookmarks_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id),
-  CONSTRAINT bookmarks_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT bookmarks_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT bookmarks_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id)
 );
 CREATE TABLE public.chat_messages (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -44,9 +44,9 @@ CREATE TABLE public.chat_messages (
   image_url text,
   reply_to_id uuid,
   CONSTRAINT chat_messages_pkey PRIMARY KEY (id),
-  CONSTRAINT chat_messages_chat_id_fkey FOREIGN KEY (chat_id) REFERENCES public.chats(id),
   CONSTRAINT chat_messages_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
-  CONSTRAINT chat_messages_reply_to_id_fkey FOREIGN KEY (reply_to_id) REFERENCES public.chat_messages(id)
+  CONSTRAINT chat_messages_reply_to_id_fkey FOREIGN KEY (reply_to_id) REFERENCES public.chat_messages(id),
+  CONSTRAINT chat_messages_chat_id_fkey FOREIGN KEY (chat_id) REFERENCES public.chats(id)
 );
 CREATE TABLE public.chats (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -72,9 +72,9 @@ CREATE TABLE public.comments (
   is_anonymous boolean DEFAULT false,
   post_specific_anon_id integer,
   CONSTRAINT comments_pkey PRIMARY KEY (id),
-  CONSTRAINT comments_parent_comment_id_fkey FOREIGN KEY (parent_comment_id) REFERENCES public.comments(id),
+  CONSTRAINT comments_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
   CONSTRAINT comments_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id),
-  CONSTRAINT comments_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT comments_parent_comment_id_fkey FOREIGN KEY (parent_comment_id) REFERENCES public.comments(id)
 );
 CREATE TABLE public.notification_settings (
   user_id uuid NOT NULL,
@@ -98,10 +98,10 @@ CREATE TABLE public.notifications (
   created_at timestamp with time zone DEFAULT now(),
   push_sent boolean DEFAULT false,
   CONSTRAINT notifications_pkey PRIMARY KEY (id),
-  CONSTRAINT notifications_related_comment_id_fkey FOREIGN KEY (related_comment_id) REFERENCES public.comments(id),
-  CONSTRAINT notifications_related_post_id_fkey FOREIGN KEY (related_post_id) REFERENCES public.posts(id),
   CONSTRAINT notifications_related_user_id_fkey FOREIGN KEY (related_user_id) REFERENCES auth.users(id),
-  CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT notifications_related_post_id_fkey FOREIGN KEY (related_post_id) REFERENCES public.posts(id),
+  CONSTRAINT notifications_related_comment_id_fkey FOREIGN KEY (related_comment_id) REFERENCES public.comments(id)
 );
 CREATE TABLE public.poll_options (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -118,9 +118,9 @@ CREATE TABLE public.poll_votes (
   user_id uuid NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT poll_votes_pkey PRIMARY KEY (id),
-  CONSTRAINT poll_votes_option_id_fkey FOREIGN KEY (option_id) REFERENCES public.poll_options(id),
+  CONSTRAINT poll_votes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
   CONSTRAINT poll_votes_poll_id_fkey FOREIGN KEY (poll_id) REFERENCES public.polls(id),
-  CONSTRAINT poll_votes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+  CONSTRAINT poll_votes_option_id_fkey FOREIGN KEY (option_id) REFERENCES public.poll_options(id)
 );
 CREATE TABLE public.polls (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -130,6 +130,15 @@ CREATE TABLE public.polls (
   allow_multiple boolean NOT NULL DEFAULT false,
   CONSTRAINT polls_pkey PRIMARY KEY (id),
   CONSTRAINT polls_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id)
+);
+CREATE TABLE public.post_stats (
+  post_id uuid NOT NULL,
+  comment_count integer NOT NULL DEFAULT 0,
+  vote_score integer NOT NULL DEFAULT 0,
+  repost_count integer NOT NULL DEFAULT 0,
+  hot_score integer DEFAULT ((abs(vote_score) + comment_count) + repost_count),
+  CONSTRAINT post_stats_pkey PRIMARY KEY (post_id),
+  CONSTRAINT post_stats_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id)
 );
 CREATE TABLE public.posts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -148,9 +157,10 @@ CREATE TABLE public.posts (
   updated_at timestamp with time zone DEFAULT now(),
   reposted_from_post_id uuid,
   repost_comment text,
+  title text,
   CONSTRAINT posts_pkey PRIMARY KEY (id),
-  CONSTRAINT posts_reposted_from_post_id_fkey FOREIGN KEY (reposted_from_post_id) REFERENCES public.posts(id),
-  CONSTRAINT posts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT posts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT posts_reposted_from_post_id_fkey FOREIGN KEY (reposted_from_post_id) REFERENCES public.posts(id)
 );
 CREATE TABLE public.profiles (
   id uuid NOT NULL,
@@ -179,10 +189,10 @@ CREATE TABLE public.reports (
   created_at timestamp with time zone DEFAULT now(),
   resolved_at timestamp with time zone,
   CONSTRAINT reports_pkey PRIMARY KEY (id),
-  CONSTRAINT reports_comment_id_fkey FOREIGN KEY (comment_id) REFERENCES public.comments(id),
-  CONSTRAINT reports_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id),
   CONSTRAINT reports_reporter_id_fkey FOREIGN KEY (reporter_id) REFERENCES auth.users(id),
-  CONSTRAINT reports_reviewed_by_fkey FOREIGN KEY (reviewed_by) REFERENCES auth.users(id)
+  CONSTRAINT reports_reviewed_by_fkey FOREIGN KEY (reviewed_by) REFERENCES auth.users(id),
+  CONSTRAINT reports_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id),
+  CONSTRAINT reports_comment_id_fkey FOREIGN KEY (comment_id) REFERENCES public.comments(id)
 );
 CREATE TABLE public.votes (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -192,7 +202,7 @@ CREATE TABLE public.votes (
   vote_type text NOT NULL CHECK (vote_type = ANY (ARRAY['upvote'::text, 'downvote'::text])),
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT votes_pkey PRIMARY KEY (id),
-  CONSTRAINT votes_comment_id_fkey FOREIGN KEY (comment_id) REFERENCES public.comments(id),
+  CONSTRAINT votes_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
   CONSTRAINT votes_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id),
-  CONSTRAINT votes_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT votes_comment_id_fkey FOREIGN KEY (comment_id) REFERENCES public.comments(id)
 );
