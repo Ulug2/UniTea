@@ -21,7 +21,7 @@ import {
   useQueryClient,
   useIsMutating,
 } from "@tanstack/react-query";
-import { useCallback, useMemo, useEffect, useRef } from "react";
+import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useFilterContext } from "../../../context/FilterContext";
 import { useAuth } from "../../../context/AuthContext";
@@ -29,6 +29,7 @@ import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNI
 import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { saveFeedToStorage } from "../../../utils/feedPersistence";
+import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
 
 type PostSummary = PostsSummaryViewRow;
 
@@ -45,6 +46,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const { hiddenPostIds } = useFilterContext();
+  const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
 
   const { data: blocks = [] } = useBlocks();
   const { data: currentUser } = useMyProfile(currentUserId);
@@ -133,11 +135,17 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
     let filteredPosts = uniquePosts;
     if (blocks.length > 0) {
       filteredPosts = uniquePosts.filter((post) => {
-        if (isBlockedPost(blocks, post.user_id, post.is_anonymous ?? false)) return false;
+        if (isBlockedPost(blocks, post.user_id, post.is_anonymous ?? false))
+          return false;
         if (
           post.original_user_id &&
-          isBlockedPost(blocks, post.original_user_id, post.original_is_anonymous ?? false)
-        ) return false;
+          isBlockedPost(
+            blocks,
+            post.original_user_id,
+            post.original_is_anonymous ?? false,
+          )
+        )
+          return false;
         return true;
       });
     }
@@ -203,6 +211,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
         originalAuthorAvatar={item.original_author_avatar}
         originalIsAnonymous={item.original_is_anonymous}
         originalCreatedAt={item.original_created_at}
+        onImagePress={setFullscreenUri}
         onImageLoad={index < 5 ? onItemReady : undefined}
         isAdmin={isAdmin}
       />
@@ -284,6 +293,11 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
         </View>
       )}
 
+      <FullscreenImageModal
+        visible={Boolean(fullscreenUri)}
+        uri={fullscreenUri}
+        onClose={() => setFullscreenUri(null)}
+      />
     </View>
   );
 }

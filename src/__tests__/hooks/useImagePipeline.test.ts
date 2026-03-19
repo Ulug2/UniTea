@@ -149,14 +149,14 @@ describe('useImagePipeline', () => {
 
   // ── allowEditing option ────────────────────────────────────────────────
   describe('allowEditing option', () => {
-    it('defaults allowsEditing to true', async () => {
+    it('defaults allowsEditing to false', async () => {
       mockLaunch.mockResolvedValue({ canceled: true, assets: [] });
       const { result } = renderHook(() => useImagePipeline());
 
       await act(async () => { await result.current.pickAndPrepareImage(); });
 
       expect(mockLaunch).toHaveBeenCalledWith(
-        expect.objectContaining({ allowsEditing: true }),
+        expect.objectContaining({ allowsEditing: false }),
       );
     });
 

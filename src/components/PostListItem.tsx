@@ -16,6 +16,7 @@ import UserProfileModal from "./UserProfileModal";
 import { useAuth } from "../context/AuthContext";
 import { sharePost } from "../utils/sharePost";
 import type { Theme } from "../context/ThemeContext";
+import { useImageAspectRatio } from "../hooks/useImageAspectRatio";
 
 // Shared style cache — all PostListItem instances with the same theme object reuse one StyleSheet.
 // This eliminates calling StyleSheet.create N times when the feed has N visible items.
@@ -31,8 +32,17 @@ function _buildStyles(theme: Theme) {
       borderBottomColor: theme.border,
       gap: 1,
     },
-    repostHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
-    repostText: { fontSize: 13, color: theme.secondaryText, fontFamily: "Poppins_400Regular" },
+    repostHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginBottom: 8,
+    },
+    repostText: {
+      fontSize: 13,
+      color: theme.secondaryText,
+      fontFamily: "Poppins_400Regular",
+    },
     repostComment: {
       fontSize: 15,
       color: theme.text,
@@ -63,10 +73,19 @@ function _buildStyles(theme: Theme) {
     originalDate: { fontSize: 12, color: theme.secondaryText, marginTop: 8 },
     header: { flexDirection: "row", alignItems: "center" },
     userInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
-    avatar: { width: 35, height: 35, borderRadius: 20, backgroundColor: theme.border },
-    username: { fontSize: 15, color: theme.text, fontFamily: "Poppins_500Medium" },
+    avatar: {
+      width: 35,
+      height: 35,
+      borderRadius: 20,
+      backgroundColor: theme.border,
+    },
+    username: {
+      fontSize: 15,
+      color: theme.text,
+      fontFamily: "Poppins_500Medium",
+    },
     time: { fontSize: 12, color: theme.secondaryText, marginLeft: 10 },
-    postImage: { width: "100%", aspectRatio: 4 / 3, borderRadius: 15, marginTop: 8 },
+    postImage: { width: "100%", borderRadius: 15, marginTop: 8 },
     contentText: {
       fontSize: 16,
       marginTop: 6,
@@ -75,7 +94,12 @@ function _buildStyles(theme: Theme) {
     },
     footer: { flexDirection: "row", marginTop: 10, alignItems: "center" },
     footerLeft: { flexDirection: "row", gap: 16 },
-    footerRight: { marginLeft: "auto", flexDirection: "row", gap: 10, alignItems: "center" },
+    footerRight: {
+      marginLeft: "auto",
+      flexDirection: "row",
+      gap: 10,
+      alignItems: "center",
+    },
     iconBox: {
       flexDirection: "row",
       alignItems: "center",
@@ -198,7 +222,7 @@ const arePropsEqual = (
     prevProps.originalCreatedAt === nextProps.originalCreatedAt &&
     prevProps.isDetailedPost === nextProps.isDetailedPost &&
     prevProps.disableCommentInteraction ===
-    nextProps.disableCommentInteraction &&
+      nextProps.disableCommentInteraction &&
     prevProps.isBookmarked === nextProps.isBookmarked &&
     prevProps.onImagePress === nextProps.onImagePress &&
     prevProps.isAdmin === nextProps.isAdmin
@@ -251,6 +275,12 @@ const PostListItem = React.memo(function PostListItem({
   const hasAvatar =
     !!(isRepost ? originalAuthorAvatar : avatarUrl) || isAnonymous;
   const hasImage = !!imageUrl;
+  const resolvedImageUri = resolvePostImageUri(imageUrl);
+  const resolvedOriginalImageUri = resolvePostImageUri(originalImageUrl);
+  const postImageAspectRatio = useImageAspectRatio(resolvedImageUri);
+  const originalImageAspectRatio = useImageAspectRatio(
+    resolvedOriginalImageUri,
+  );
 
   // Notify parent when all media has loaded (for feed skeleton)
   useEffect(() => {
@@ -358,34 +388,34 @@ const PostListItem = React.memo(function PostListItem({
                   />
                 )
               ) : // Show regular post author
-                isAnonymous ? (
+              isAnonymous ? (
+                <Image
+                  source={nuLogo}
+                  style={styles.avatar}
+                  onLoad={() => setAvatarLoaded(true)}
+                />
+              ) : avatarUrl ? (
+                avatarUrl.startsWith("http") ? (
                   <Image
-                    source={nuLogo}
+                    source={{ uri: avatarUrl }}
                     style={styles.avatar}
                     onLoad={() => setAvatarLoaded(true)}
                   />
-                ) : avatarUrl ? (
-                  avatarUrl.startsWith("http") ? (
-                    <Image
-                      source={{ uri: avatarUrl }}
-                      style={styles.avatar}
-                      onLoad={() => setAvatarLoaded(true)}
-                    />
-                  ) : (
-                    <SupabaseImage
-                      path={avatarUrl}
-                      bucket="avatars"
-                      style={styles.avatar}
-                      onLoad={() => setAvatarLoaded(true)}
-                    />
-                  )
                 ) : (
-                  <Image
-                    source={DEFAULT_AVATAR}
+                  <SupabaseImage
+                    path={avatarUrl}
+                    bucket="avatars"
                     style={styles.avatar}
                     onLoad={() => setAvatarLoaded(true)}
                   />
-                )}
+                )
+              ) : (
+                <Image
+                  source={DEFAULT_AVATAR}
+                  style={styles.avatar}
+                  onLoad={() => setAvatarLoaded(true)}
+                />
+              )}
               <Text style={styles.username}>
                 {isAnonymous
                   ? userId === currentUserId
@@ -410,20 +440,23 @@ const PostListItem = React.memo(function PostListItem({
           )}
 
           {/* REPOST IMAGE (if user added image when reposting) */}
-          {isRepost && imageUrl && (
-            isDetailedPost ? (
+          {isRepost &&
+            imageUrl &&
+            (onImagePress ? (
               <Pressable
                 onPress={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  const uri = resolvePostImageUri(imageUrl);
-                  if (uri) onImagePress?.(uri);
+                  if (resolvedImageUri) onImagePress(resolvedImageUri);
                 }}
               >
                 <SupabaseImage
                   path={imageUrl}
                   bucket="post-images"
-                  style={styles.postImage}
+                  style={[
+                    styles.postImage,
+                    { aspectRatio: postImageAspectRatio },
+                  ]}
                   onLoad={() => setImageLoaded(true)}
                 />
               </Pressable>
@@ -431,11 +464,13 @@ const PostListItem = React.memo(function PostListItem({
               <SupabaseImage
                 path={imageUrl}
                 bucket="post-images"
-                style={styles.postImage}
+                style={[
+                  styles.postImage,
+                  { aspectRatio: postImageAspectRatio },
+                ]}
                 onLoad={() => setImageLoaded(true)}
               />
-            )
-          )}
+            ))}
 
           {/* CONTENT */}
           <View style={{ marginTop: 1 }}>
@@ -485,30 +520,38 @@ const PostListItem = React.memo(function PostListItem({
                     </Pressable>
                   )}
                 {/* Original post image (when present in the reposted post) */}
-                {originalImageUrl && (
-                  isDetailedPost ? (
+                {originalImageUrl &&
+                  (onImagePress ? (
                     <Pressable
                       onPress={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        const uri = resolvePostImageUri(originalImageUrl);
-                        if (uri) onImagePress?.(uri);
+                        if (resolvedOriginalImageUri)
+                          onImagePress(resolvedOriginalImageUri);
                       }}
                     >
                       <SupabaseImage
                         path={originalImageUrl}
                         bucket="post-images"
-                        style={[styles.postImage, { marginTop: 8 }]}
+                        style={[
+                          styles.postImage,
+                          {
+                            marginTop: 8,
+                            aspectRatio: originalImageAspectRatio,
+                          },
+                        ]}
                       />
                     </Pressable>
                   ) : (
                     <SupabaseImage
                       path={originalImageUrl}
                       bucket="post-images"
-                      style={[styles.postImage, { marginTop: 8 }]}
+                      style={[
+                        styles.postImage,
+                        { marginTop: 8, aspectRatio: originalImageAspectRatio },
+                      ]}
                     />
-                  )
-                )}
+                  ))}
                 {/* Original post poll (Poll renders null if the post has no poll) */}
                 {repostedFromPostId && <Poll postId={repostedFromPostId} />}
                 {originalCreatedAt && (
@@ -521,20 +564,22 @@ const PostListItem = React.memo(function PostListItem({
             ) : (
               // Regular post content
               <>
-                {imageUrl && (
-                  isDetailedPost ? (
+                {imageUrl &&
+                  (onImagePress ? (
                     <Pressable
                       onPress={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        const uri = resolvePostImageUri(imageUrl);
-                        if (uri) onImagePress?.(uri);
+                        if (resolvedImageUri) onImagePress(resolvedImageUri);
                       }}
                     >
                       <SupabaseImage
                         path={imageUrl}
                         bucket="post-images"
-                        style={styles.postImage}
+                        style={[
+                          styles.postImage,
+                          { aspectRatio: postImageAspectRatio },
+                        ]}
                         onLoad={() => setImageLoaded(true)}
                       />
                     </Pressable>
@@ -542,11 +587,13 @@ const PostListItem = React.memo(function PostListItem({
                     <SupabaseImage
                       path={imageUrl}
                       bucket="post-images"
-                      style={styles.postImage}
+                      style={[
+                        styles.postImage,
+                        { aspectRatio: postImageAspectRatio },
+                      ]}
                       onLoad={() => setImageLoaded(true)}
                     />
-                  )
-                )}
+                  ))}
                 {content && (
                   <View>
                     <Text
@@ -704,7 +751,6 @@ const PostListItem = React.memo(function PostListItem({
           isAdmin={isAdmin}
         />
       )}
-
     </>
   );
 }, arePropsEqual);

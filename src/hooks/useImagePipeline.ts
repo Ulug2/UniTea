@@ -10,7 +10,7 @@ export type ImagePipelineOptions = {
 };
 
 export function useImagePipeline(options: ImagePipelineOptions = {}) {
-  const { allowEditing = true, aspect } = options;
+  const { allowEditing = false, aspect } = options;
 
   const pickAndPrepareImage = async (): Promise<string | null> => {
     try {

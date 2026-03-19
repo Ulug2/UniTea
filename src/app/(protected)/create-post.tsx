@@ -38,6 +38,7 @@ import { useOriginalPostForRepost } from "../../hooks/useOriginalPostForRepost";
 import { useImagePipeline } from "../../hooks/useImagePipeline";
 import { useCreatePostFormState } from "../../hooks/useCreatePostFormState";
 import { useCreatePostMutation } from "../../hooks/useCreatePostMutation";
+import { useImageAspectRatio } from "../../hooks/useImageAspectRatio";
 
 type PostInsert = Database["public"]["Tables"]["posts"]["Insert"];
 
@@ -81,6 +82,7 @@ export default function CreatePostScreen() {
   } = useCreatePostFormState({ type, repostId });
 
   const { pickAndPrepareImage } = useImagePipeline();
+  const previewImageAspectRatio = useImageAspectRatio(image);
 
   const goBack = () => {
     reset();
@@ -526,7 +528,13 @@ export default function CreatePostScreen() {
               >
                 <AntDesign name="close" size={20} color="white" />
               </Pressable>
-              <Image source={{ uri: image }} style={styles.imagePreview} />
+              <Image
+                source={{ uri: image }}
+                style={[
+                  styles.imagePreview,
+                  { aspectRatio: previewImageAspectRatio },
+                ]}
+              />
             </View>
           )}
 
@@ -830,7 +838,6 @@ const styles = StyleSheet.create({
   },
   imagePreview: {
     width: "100%",
-    aspectRatio: 1,
     borderRadius: 12,
   },
   footer: {
