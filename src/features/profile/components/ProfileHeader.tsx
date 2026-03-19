@@ -53,9 +53,7 @@ export function ProfileHeader({
             {totalVotes} total votes
           </Text>
         </View>
-        {currentUser?.is_founding_member === true && (
-          <FoundingBadge theme={theme} />
-        )}
+        {currentUser?.is_founding_member === true && <FoundingBadge />}
       </View>
     </View>
   );

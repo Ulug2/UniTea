@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "react-native";
 import { supabase } from "../lib/supabase";
 import { logger } from "../utils/logger";
@@ -16,14 +16,25 @@ type LoadingState = {
   resend: boolean;
 };
 
+type EmailRegistrationStatus = {
+  exists: boolean;
+  isVerified: boolean;
+};
+
 export type UseAuthFlowConfig = {
   timeoutMs: number;
   rateLimitCooldownMs: number;
   minPasswordLength: number;
+  emailRequestCooldownSeconds: number;
 };
 
 export function useAuthFlow(config: UseAuthFlowConfig) {
-  const { timeoutMs, rateLimitCooldownMs, minPasswordLength } = config;
+  const {
+    timeoutMs,
+    rateLimitCooldownMs,
+    minPasswordLength,
+    emailRequestCooldownSeconds,
+  } = config;
   const { race } = useTimeoutRace();
   const splash = useSplashDuring();
   const rateLimit = useRateLimit({ cooldownMs: rateLimitCooldownMs });
@@ -38,12 +49,31 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [showResendOption, setShowResendOption] = useState(false);
+  const [emailRequestCooldownUntil, setEmailRequestCooldownUntil] = useState(0);
+  const [cooldownNow, setCooldownNow] = useState(Date.now());
   const [loadingState, setLoadingState] = useState<LoadingState>({
     login: false,
     signup: false,
     forgot: false,
     resend: false,
   });
+
+  useEffect(() => {
+    if (emailRequestCooldownUntil <= Date.now()) return;
+
+    const timer = setInterval(() => {
+      setCooldownNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [emailRequestCooldownUntil]);
+
+  const emailRequestCooldownSecondsRemaining = useMemo(() => {
+    const remainingMs = Math.max(0, emailRequestCooldownUntil - cooldownNow);
+    return Math.ceil(remainingMs / 1000);
+  }, [emailRequestCooldownUntil, cooldownNow]);
+
+  const isEmailRequestCooldownActive = emailRequestCooldownSecondsRemaining > 0;
 
   const isLoading =
     loadingState.login ||
@@ -78,6 +108,23 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     []
   );
 
+  const startEmailRequestCooldown = useCallback(() => {
+    const expiresAt = Date.now() + emailRequestCooldownSeconds * 1000;
+    setEmailRequestCooldownUntil(expiresAt);
+    setCooldownNow(Date.now());
+  }, [emailRequestCooldownSeconds]);
+
+  const checkEmailRequestCooldownOrAlert = useCallback((): boolean => {
+    if (!isEmailRequestCooldownActive) return true;
+    Alert.alert(
+      "Please Wait",
+      `You can request another email in ${emailRequestCooldownSecondsRemaining} second${
+        emailRequestCooldownSecondsRemaining === 1 ? "" : "s"
+      }.`
+    );
+    return false;
+  }, [isEmailRequestCooldownActive, emailRequestCooldownSecondsRemaining]);
+
   const checkRateLimitOrAlert = useCallback((): boolean => {
     if (!rateLimit.isLimited) return true;
     Alert.alert(
@@ -89,6 +136,54 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     logAuthEvent("rate_limit_hit", { remainingMinutes: rateLimit.remainingMinutes });
     return false;
   }, [rateLimit.isLimited, rateLimit.remainingMinutes, logAuthEvent]);
+
+  const getEmailRegistrationStatus = useCallback(
+    async (sanitizedEmail: string): Promise<EmailRegistrationStatus | null> => {
+      try {
+        const { data, error } = await supabase.functions.invoke("check-email-exists", {
+          body: { email: sanitizedEmail },
+        });
+
+        if (error) {
+          logAuthEvent("check_email_exists_invoke_error", {
+            email: sanitizedEmail,
+            message: error.message,
+            name: error.name,
+            context: (error as { context?: unknown }).context ?? null,
+          });
+          return null;
+        }
+
+        if (!data || typeof data !== "object") {
+          logAuthEvent("check_email_exists_invalid_payload", {
+            email: sanitizedEmail,
+            payloadType: typeof data,
+          });
+          return null;
+        }
+
+        if (typeof (data as { error?: unknown }).error === "string") {
+          logAuthEvent("check_email_exists_server_error", {
+            email: sanitizedEmail,
+            message: (data as { error?: string }).error,
+          });
+          return null;
+        }
+
+        const exists = Boolean((data as { exists?: unknown }).exists);
+        const isVerified = Boolean((data as { isVerified?: unknown }).isVerified);
+
+        return { exists, isVerified };
+      } catch (err) {
+        logAuthEvent("check_email_exists_threw", {
+          email: sanitizedEmail,
+          message: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+    },
+    [logAuthEvent]
+  );
 
   const applyAuthError = useCallback(
     (err: unknown): { message: string; kind: ReturnType<typeof normalizeAuthError>["kind"] } => {
@@ -117,7 +212,18 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       Alert.alert("Email Required", "Please enter your email address.");
       return;
     }
+    if (!checkEmailRequestCooldownOrAlert()) return;
     if (!checkRateLimitOrAlert()) return;
+
+    const registrationStatus = await getEmailRegistrationStatus(sanitizedEmail);
+    if (registrationStatus?.exists && registrationStatus.isVerified) {
+      setShowResendOption(false);
+      Alert.alert(
+        "Account Already Verified",
+        "This email already has a verified account. Please sign in instead."
+      );
+      return;
+    }
 
     setLoadingState((prev) => ({ ...prev, resend: true }));
     logAuthEvent("resend_verification_started", { email: sanitizedEmail });
@@ -138,6 +244,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       }
 
       logAuthEvent("resend_verification_success");
+      startEmailRequestCooldown();
       Alert.alert("Email Sent", "Please check your inbox for the verification link.");
       setShowResendOption(false);
     } catch (err: unknown) {
@@ -155,11 +262,14 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
   }, [
     email,
     sanitizeEmail,
+    checkEmailRequestCooldownOrAlert,
     checkRateLimitOrAlert,
     logAuthEvent,
     race,
     timeoutMs,
     applyAuthError,
+    startEmailRequestCooldown,
+    getEmailRegistrationStatus,
   ]);
 
   const resetPassword = useCallback(async () => {
@@ -171,6 +281,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       setEmailError("Please enter your email address.");
       return;
     }
+    if (!checkEmailRequestCooldownOrAlert()) return;
     if (!checkRateLimitOrAlert()) return;
 
     setLoadingState((prev) => ({ ...prev, forgot: true }));
@@ -212,6 +323,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       }
 
       logAuthEvent("password_reset_success");
+      startEmailRequestCooldown();
       Alert.alert(
         "Check Your Email",
         "We sent you a sign-in link. Tap it to log back into the app. You can then change your password in Settings."
@@ -232,11 +344,13 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
   }, [
     email,
     sanitizeEmail,
+    checkEmailRequestCooldownOrAlert,
     checkRateLimitOrAlert,
     logAuthEvent,
     race,
     timeoutMs,
     applyAuthError,
+    startEmailRequestCooldown,
   ]);
 
   const signInWithEmail = useCallback(async () => {
@@ -350,6 +464,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       setPasswordError("Password must contain at least one lowercase letter.");
       return;
     }
+    if (!checkEmailRequestCooldownOrAlert()) return;
     if (!checkRateLimitOrAlert()) return;
 
     setLoadingState((prev) => ({ ...prev, signup: true }));
@@ -357,23 +472,50 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
 
     try {
       await splash.run(async () => {
-        // Best-effort check; if it fails we proceed and rely on Supabase error.
-        try {
-          const { data: checkData } = await supabase.functions.invoke(
-            "check-email-exists",
-            { body: { email: sanitizedEmail } }
+        const registrationStatus = await getEmailRegistrationStatus(sanitizedEmail);
+
+        if (!registrationStatus) {
+          Alert.alert(
+            "Unable to verify email status",
+            "Please try again in a moment."
           );
-          if (checkData?.exists === true) {
-            Alert.alert(
-              "User already exists",
-              "An account with this email already exists. Please sign in instead."
-            );
-            throw new Error("user_already_registered");
-          }
-        } catch {
-          // ignore
+          throw new Error("email_status_check_failed");
         }
 
+        // Existing + verified: never send any email, ask user to sign in.
+        if (registrationStatus.exists && registrationStatus.isVerified) {
+          Alert.alert(
+            "User already exists",
+            "An account with this email already exists. Please sign in instead."
+          );
+          throw new Error("user_already_registered");
+        }
+
+        // Existing + unverified: resend verification email.
+        if (registrationStatus.exists) {
+          const { error: resendError } = await race(
+            supabase.auth.resend({
+              type: "signup",
+              email: sanitizedEmail,
+              options: { emailRedirectTo: "myunitea://callback" },
+            }),
+            timeoutMs
+          );
+
+          if (resendError) {
+            const { message } = applyAuthError(resendError);
+            setEmailError(message);
+            throw resendError;
+          }
+
+          logAuthEvent("signup_existing_unverified_resend_success");
+          startEmailRequestCooldown();
+          Alert.alert("Verify Your Email", "Please check your inbox for email verification!");
+          setShowResendOption(true);
+          return;
+        }
+
+        // No existing user: create account and send verification email.
         const { data, error } = await race(
           supabase.auth.signUp({
             email: sanitizedEmail,
@@ -386,12 +528,6 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
         if (error) {
           logAuthEvent("signup_failed", { error: error.message });
           const { message } = applyAuthError(error);
-          if (message.toLowerCase().includes("already exists")) {
-            Alert.alert(
-              "User already exists",
-              "An account with this email already exists. Please sign in instead."
-            );
-          }
           if (message.toLowerCase().includes("email") || message.toLowerCase().includes("account")) {
             setEmailError(message);
           } else {
@@ -402,10 +538,8 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
 
         if (!data.session) {
           logAuthEvent("signup_success_verification_required");
-          Alert.alert(
-            "Verify Your Email",
-            "Please check your inbox for email verification!"
-          );
+          startEmailRequestCooldown();
+          Alert.alert("Verify Your Email", "Please check your inbox for email verification!");
           setShowResendOption(true);
           return;
         }
@@ -424,6 +558,8 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
         );
       } else if (normalized.rawMessage === "user_already_registered") {
         // already alerted
+      } else if (normalized.rawMessage === "email_status_check_failed") {
+        // already alerted
       }
     } finally {
       setLoadingState((prev) => ({ ...prev, signup: false }));
@@ -435,12 +571,15 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     minPasswordLength,
     sanitizeEmail,
     isAllowedDomain,
+    checkEmailRequestCooldownOrAlert,
     checkRateLimitOrAlert,
     logAuthEvent,
     splash,
     race,
     timeoutMs,
     applyAuthError,
+    startEmailRequestCooldown,
+    getEmailRegistrationStatus,
   ]);
 
   const setModeAndReset = useCallback((nextMode: Mode) => {
@@ -476,6 +615,8 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     dismissResendOption: () => setShowResendOption(false),
     loadingState,
     isLoading,
+    isEmailRequestCooldownActive,
+    emailRequestCooldownSecondsRemaining,
     headline,
     helper,
 

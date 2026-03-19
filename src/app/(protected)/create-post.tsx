@@ -14,7 +14,12 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { AntDesign, Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  AntDesign,
+  Feather,
+  Ionicons,
+  MaterialCommunityIcons,
+} from "@expo/vector-icons";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -36,6 +41,8 @@ import { useCreatePostMutation } from "../../hooks/useCreatePostMutation";
 
 type PostInsert = Database["public"]["Tables"]["posts"]["Insert"];
 
+const MAX_POLL_OPTIONS = 11;
+
 export default function CreatePostScreen() {
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -45,10 +52,8 @@ export default function CreatePostScreen() {
   }>();
   const { session } = useAuth();
 
-  const {
-    originalPost,
-    isLoadingOriginal,
-  } = useOriginalPostForRepost(repostId);
+  const { originalPost, isLoadingOriginal } =
+    useOriginalPostForRepost(repostId);
 
   const {
     isLostFound,
@@ -116,17 +121,21 @@ export default function CreatePostScreen() {
       let cleanedPollOptions: string[] | undefined = undefined;
       if (!isLostFound && isPoll) {
         const normalized = Array.from(
-          new Set(
-            pollOptions
-              .map((o) => o.trim())
-              .filter((o) => o.length > 0)
-          )
+          new Set(pollOptions.map((o) => o.trim()).filter((o) => o.length > 0)),
         );
 
         if (normalized.length < 2) {
           Alert.alert(
             "Poll options required",
-            "Please provide at least two distinct poll options."
+            "Please provide at least two distinct poll options.",
+          );
+          return;
+        }
+
+        if (normalized.length > MAX_POLL_OPTIONS) {
+          Alert.alert(
+            "Too many poll options",
+            `You can add up to ${MAX_POLL_OPTIONS} options.`,
           );
           return;
         }
@@ -142,7 +151,7 @@ export default function CreatePostScreen() {
           logger.error("Image upload error", error as Error);
           Alert.alert(
             "Error",
-            error.message || "Failed to upload image. Please try again."
+            error.message || "Failed to upload image. Please try again.",
           );
           return;
         }
@@ -409,8 +418,15 @@ export default function CreatePostScreen() {
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>
                   Poll
                 </Text>
-                <Pressable onPress={handleTogglePoll} style={styles.pollRemoveButton}>
-                  <AntDesign name="close" size={18} color={theme.secondaryText} />
+                <Pressable
+                  onPress={handleTogglePoll}
+                  style={styles.pollRemoveButton}
+                >
+                  <AntDesign
+                    name="close"
+                    size={18}
+                    color={theme.secondaryText}
+                  />
                 </Pressable>
               </View>
 
@@ -420,7 +436,10 @@ export default function CreatePostScreen() {
                     <View
                       style={[
                         styles.pollOptionIndex,
-                        { borderColor: theme.border, backgroundColor: theme.background },
+                        {
+                          borderColor: theme.border,
+                          backgroundColor: theme.background,
+                        },
                       ]}
                     >
                       <Text
@@ -454,18 +473,24 @@ export default function CreatePostScreen() {
                     {pollOptions.length > 2 && (
                       <Pressable
                         onPress={() => {
-                          const next = pollOptions.filter((_, i) => i !== index);
+                          const next = pollOptions.filter(
+                            (_, i) => i !== index,
+                          );
                           setPollOptions(next.length >= 2 ? next : ["", ""]);
                         }}
                         style={styles.pollOptionRemoveButton}
                       >
-                        <AntDesign name="close" size={16} color={theme.secondaryText} />
+                        <AntDesign
+                          name="close"
+                          size={16}
+                          color={theme.secondaryText}
+                        />
                       </Pressable>
                     )}
                   </View>
                 ))}
 
-                {pollOptions.length < 4 && (
+                {pollOptions.length < MAX_POLL_OPTIONS && (
                   <Pressable
                     onPress={() => setPollOptions([...pollOptions, ""])}
                     style={[
@@ -541,7 +566,10 @@ export default function CreatePostScreen() {
                     />
                   )
                 ) : (
-                  <Image source={DEFAULT_AVATAR} style={styles.originalAvatar} />
+                  <Image
+                    source={DEFAULT_AVATAR}
+                    style={styles.originalAvatar}
+                  />
                 )}
                 <View style={styles.originalPostHeaderText}>
                   <Text style={[styles.originalAuthor, { color: theme.text }]}>
@@ -558,7 +586,7 @@ export default function CreatePostScreen() {
                     ]}
                   >
                     {formatDistanceToNowStrict(
-                      new Date(originalPost.created_at!)
+                      new Date(originalPost.created_at!),
                     )}{" "}
                     ago
                   </Text>
@@ -600,7 +628,10 @@ export default function CreatePostScreen() {
                 />
               </View>
               <View style={styles.footerActionsRow}>
-                <Pressable onPress={handleTogglePoll} style={styles.footerButton}>
+                <Pressable
+                  onPress={handleTogglePoll}
+                  style={styles.footerButton}
+                >
                   <MaterialCommunityIcons
                     name="poll"
                     size={24}

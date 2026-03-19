@@ -1,4 +1,4 @@
-// Check if an email is already registered (auth.users). Used before signUp to avoid sending confirmation email to existing users.
+// Check if an email is already registered (auth.users) and whether it's already verified.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -34,7 +34,7 @@ serve(async (req) => {
     const normalized = typeof email === "string" ? email.trim().toLowerCase() : "";
     if (!normalized) {
       return new Response(
-        JSON.stringify({ error: "Email required", exists: false }),
+        JSON.stringify({ error: "Email required", exists: false, isVerified: false }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -45,24 +45,47 @@ serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // List users and look for this email (Admin API has no getUserByEmail; we use listUsers)
-    const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    if (error) {
-      return new Response(
-        JSON.stringify({ error: error.message, exists: false }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // List users and look for this email. We paginate through all users to avoid
+    // missing matches that are beyond the first page.
+    const perPage = 100;
+    let page = 1;
+    let matchedUser:
+      | { email_confirmed_at?: string | null; confirmed_at?: string | null }
+      | undefined;
+
+    while (!matchedUser) {
+      const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
+      if (error) {
+        return new Response(
+          JSON.stringify({ error: error.message, exists: false, isVerified: false }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const users = data.users ?? [];
+      matchedUser = users.find(
+        (u) => (u.email ?? "").toLowerCase() === normalized,
+      ) as
+        | { email_confirmed_at?: string | null; confirmed_at?: string | null }
+        | undefined;
+
+      if (users.length < perPage) break;
+      page += 1;
     }
 
-    const exists = data.users.some((u) => (u.email ?? "").toLowerCase() === normalized);
+    const exists = Boolean(matchedUser);
+    const isVerified = Boolean(
+      matchedUser &&
+        (matchedUser.email_confirmed_at ?? matchedUser.confirmed_at),
+    );
 
     return new Response(
-      JSON.stringify({ exists }),
+      JSON.stringify({ exists, isVerified }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
     return new Response(
-      JSON.stringify({ error: String(e), exists: false }),
+      JSON.stringify({ error: String(e), exists: false, isVerified: false }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

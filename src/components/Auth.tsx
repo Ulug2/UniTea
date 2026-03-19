@@ -48,6 +48,7 @@ const AUTH_CONFIG = {
   TIMEOUT_MS: 30000, // 30 seconds
   RATE_LIMIT_COOLDOWN_MS: 300000, // 5 minutes
   MIN_PASSWORD_LENGTH: 8,
+  EMAIL_REQUEST_COOLDOWN_SECONDS: 60,
 } as const;
 
 export default function Auth() {
@@ -73,6 +74,8 @@ export default function Auth() {
     dismissResendOption,
     loadingState,
     isLoading,
+    isEmailRequestCooldownActive,
+    emailRequestCooldownSecondsRemaining,
     headline,
     helper,
     resendVerificationEmail,
@@ -83,7 +86,12 @@ export default function Auth() {
     timeoutMs: AUTH_CONFIG.TIMEOUT_MS,
     rateLimitCooldownMs: AUTH_CONFIG.RATE_LIMIT_COOLDOWN_MS,
     minPasswordLength: AUTH_CONFIG.MIN_PASSWORD_LENGTH,
+    emailRequestCooldownSeconds: AUTH_CONFIG.EMAIL_REQUEST_COOLDOWN_SECONDS,
   });
+
+  const isPrimaryEmailRequestMode = mode === "signup" || mode === "forgot";
+  const isPrimaryButtonDisabled =
+    isLoading || (isPrimaryEmailRequestMode && isEmailRequestCooldownActive);
 
   const handleOpenExternalLink = useCallback(async (url: string) => {
     try {
@@ -237,7 +245,7 @@ export default function Auth() {
               </Text>
               <Pressable
                 onPress={resendVerificationEmail}
-                disabled={loadingState.resend}
+                disabled={loadingState.resend || isEmailRequestCooldownActive}
                 style={styles.resendButton}
               >
                 {loadingState.resend ? (
@@ -246,7 +254,9 @@ export default function Auth() {
                   <Text
                     style={[styles.resendButtonText, { color: theme.primary }]}
                   >
-                    Resend Email
+                    {isEmailRequestCooldownActive
+                      ? `Resend Email (${emailRequestCooldownSecondsRemaining}s)`
+                      : "Resend Email"}
                   </Text>
                 )}
               </Pressable>
@@ -257,9 +267,9 @@ export default function Auth() {
             style={[
               styles.primaryButton,
               { backgroundColor: theme.primary },
-              isLoading && styles.disabledButton,
+              isPrimaryButtonDisabled && styles.disabledButton,
             ]}
-            disabled={isLoading}
+            disabled={isPrimaryButtonDisabled}
             onPress={
               mode === "login"
                 ? signInWithEmail
@@ -274,14 +284,25 @@ export default function Auth() {
               <ActivityIndicator color="#fff" size="small" />
             ) : (
               <Text style={styles.primaryButtonText}>
-                {mode === "login"
-                  ? "Log In"
-                  : mode === "signup"
-                    ? "Create account"
-                    : "Send Reset Link"}
+                {isPrimaryEmailRequestMode && isEmailRequestCooldownActive
+                  ? `Wait ${emailRequestCooldownSecondsRemaining}s`
+                  : mode === "login"
+                    ? "Log In"
+                    : mode === "signup"
+                      ? "Create account"
+                      : "Send Reset Link"}
               </Text>
             )}
           </Pressable>
+
+          {isEmailRequestCooldownActive && (
+            <Text
+              style={[styles.emailCooldownText, { color: theme.secondaryText }]}
+            >
+              You can request another email in{" "}
+              {emailRequestCooldownSecondsRemaining}s.
+            </Text>
+          )}
 
           <Text style={[styles.exclusiveNote, { color: theme.secondaryText }]}>
             Only available for Nazarbayev University students
@@ -455,6 +476,11 @@ const styles = StyleSheet.create({
   exclusiveNote: {
     fontSize: FONT_SIZES.sm,
     textAlign: "center",
+  },
+  emailCooldownText: {
+    fontSize: FONT_SIZES.sm,
+    textAlign: "center",
+    marginTop: SPACING.xs,
   },
   switchRow: {
     flexDirection: "row",

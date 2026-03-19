@@ -1,17 +1,15 @@
 import React from "react";
 import { Text, StyleSheet } from "react-native";
-import type { Theme } from "../../../context/ThemeContext";
+import { useTheme } from "../../../context/ThemeContext";
 
-type FoundingBadgeProps = {
-  theme: Theme;
-};
+const FOUNDING_FATHER_GOLD_DARK = "#FFD700";
+const FOUNDING_FATHER_GOLD_LIGHT = "#B8860B";
 
-export function FoundingBadge({ theme }: FoundingBadgeProps) {
-  return (
-    <Text style={[styles.label, { color: theme.primary }]}>
-      {"Founding Member"}
-    </Text>
-  );
+export function FoundingBadge() {
+  const { isDark } = useTheme();
+  const color = isDark ? FOUNDING_FATHER_GOLD_DARK : FOUNDING_FATHER_GOLD_LIGHT;
+
+  return <Text style={[styles.label, { color }]}>{"Founding Father"}</Text>;
 }
 
 const styles = StyleSheet.create({
