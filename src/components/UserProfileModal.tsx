@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   Dimensions,
-  Image,
   Alert,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -15,12 +14,16 @@ import { useTheme } from "../context/ThemeContext";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 import { Database } from "../types/database.types";
-import SupabaseImage from "./SupabaseImage";
-import { DEFAULT_AVATAR } from "../constants/images";
-import { useBanUser, type BanDuration } from "../features/profile/hooks/useBanUser";
+import { FlippableAvatar } from "../features/profile/components/FlippableAvatar";
+import {
+  useBanUser,
+  type BanDuration,
+} from "../features/profile/hooks/useBanUser";
 import { useBlockUser } from "../features/posts/hooks/useBlockUser";
 
 const screenWidth = Dimensions.get("window").width;
+const FOUNDING_FATHER_GOLD_DARK = "#FFD700";
+const FOUNDING_FATHER_GOLD_LIGHT = "#B8860B";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
@@ -46,14 +49,14 @@ export default function UserProfileModal({
   currentUserId,
   isAdmin = false,
 }: UserProfileModalProps) {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
+  const foundingFatherColor = isDark
+    ? FOUNDING_FATHER_GOLD_DARK
+    : FOUNDING_FATHER_GOLD_LIGHT;
   const [showBanDuration, setShowBanDuration] = useState(false);
   const banUserMutation = useBanUser();
   const blockUserMutation = useBlockUser(currentUserId ?? null);
-  const canBan =
-    isAdmin &&
-    Boolean(currentUserId) &&
-    currentUserId !== userId;
+  const canBan = isAdmin && Boolean(currentUserId) && currentUserId !== userId;
   const canBlock = Boolean(currentUserId) && currentUserId !== userId;
 
   const handleBlockUser = () => {
@@ -68,31 +71,32 @@ export default function UserProfileModal({
           onPress: () => {
             blockUserMutation.mutate(
               { targetUserId: userId, scope: "profile_only" },
-              { onSuccess: onClose }
+              { onSuccess: onClose },
             );
           },
         },
-      ]
+      ],
     );
   };
 
   // Fetch user profile
-  const { data: profile, isLoading: isLoadingProfile } = useQuery<Profile | null>({
-    queryKey: ["user-profile", userId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
+  const { data: profile, isLoading: isLoadingProfile } =
+    useQuery<Profile | null>({
+      queryKey: ["user-profile", userId],
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", userId)
+          .single();
 
-      if (error) throw error;
-      return data;
-    },
-    enabled: visible && Boolean(userId),
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    gcTime: 1000 * 60 * 30,
-  });
+        if (error) throw error;
+        return data;
+      },
+      enabled: visible && Boolean(userId),
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      gcTime: 1000 * 60 * 30,
+    });
 
   // Fetch user's posts to calculate total vote count (refetch when modal opens so it's up to date)
   const { data: totalVotes = 0, isLoading: isLoadingVotes } = useQuery<number>({
@@ -106,7 +110,10 @@ export default function UserProfileModal({
 
       if (error) throw error;
 
-      return (data || []).reduce((sum: number, post: any) => sum + (post.vote_score || 0), 0);
+      return (data || []).reduce(
+        (sum: number, post: any) => sum + (post.vote_score || 0),
+        0,
+      );
     },
     enabled: visible && Boolean(userId),
     staleTime: 0, // Always refetch when modal opens so total votes is current
@@ -136,22 +143,10 @@ export default function UserProfileModal({
             <>
               {/* Avatar - Bigger size */}
               <View style={styles.avatarContainer}>
-                {profile?.avatar_url ? (
-                  profile.avatar_url.startsWith("http") ? (
-                    <Image
-                      source={{ uri: profile.avatar_url }}
-                      style={styles.avatar}
-                    />
-                  ) : (
-                    <SupabaseImage
-                      path={profile.avatar_url}
-                      bucket="avatars"
-                      style={styles.avatar}
-                    />
-                  )
-                ) : (
-                  <Image source={DEFAULT_AVATAR} style={styles.avatar} />
-                )}
+                <FlippableAvatar
+                  currentUser={profile ?? null}
+                  onAvatarPress={() => {}}
+                />
               </View>
 
               {/* Username */}
@@ -174,14 +169,29 @@ export default function UserProfileModal({
                     },
                   ]}
                 >
-                  {totalVotes >= 0 ? `${totalVotes}` : `${totalVotes}`} total votes
+                  {totalVotes >= 0 ? `${totalVotes}` : `${totalVotes}`} total
+                  votes
                 </Text>
               </View>
+
+              {profile?.is_founding_member === true && (
+                <Text
+                  style={[
+                    styles.foundingFatherText,
+                    { color: foundingFatherColor },
+                  ]}
+                >
+                  Founding Father
+                </Text>
+              )}
 
               {/* Ban User (admin only) */}
               {canBan ? (
                 <Pressable
-                  style={[styles.banButton, { borderColor: theme.error ?? "#EF4444" }]}
+                  style={[
+                    styles.banButton,
+                    { borderColor: theme.error ?? "#EF4444" },
+                  ]}
                   onPress={() => setShowBanDuration(true)}
                   disabled={banUserMutation.isPending}
                 >
@@ -190,7 +200,12 @@ export default function UserProfileModal({
                     size={20}
                     color={theme.error ?? "#EF4444"}
                   />
-                  <Text style={[styles.banButtonText, { color: theme.error ?? "#EF4444" }]}>
+                  <Text
+                    style={[
+                      styles.banButtonText,
+                      { color: theme.error ?? "#EF4444" },
+                    ]}
+                  >
                     Ban User
                   </Text>
                 </Pressable>
@@ -199,7 +214,10 @@ export default function UserProfileModal({
               {/* Block User */}
               {canBlock ? (
                 <Pressable
-                  style={[styles.blockButton, { borderColor: theme.secondaryText ?? "#9CA3AF" }]}
+                  style={[
+                    styles.blockButton,
+                    { borderColor: theme.secondaryText ?? "#9CA3AF" },
+                  ]}
                   onPress={handleBlockUser}
                   disabled={blockUserMutation.isPending}
                 >
@@ -208,7 +226,12 @@ export default function UserProfileModal({
                     size={20}
                     color={theme.secondaryText ?? "#9CA3AF"}
                   />
-                  <Text style={[styles.blockButtonText, { color: theme.secondaryText ?? "#9CA3AF" }]}>
+                  <Text
+                    style={[
+                      styles.blockButtonText,
+                      { color: theme.secondaryText ?? "#9CA3AF" },
+                    ]}
+                  >
                     Block User
                   </Text>
                 </Pressable>
@@ -216,10 +239,7 @@ export default function UserProfileModal({
 
               {/* Close Button */}
               <Pressable
-                style={[
-                  styles.closeButton,
-                  { backgroundColor: theme.border },
-                ]}
+                style={[styles.closeButton, { backgroundColor: theme.border }]}
                 onPress={onClose}
               >
                 <Text style={[styles.closeButtonText, { color: theme.text }]}>
@@ -252,7 +272,10 @@ export default function UserProfileModal({
             {BAN_OPTIONS.map((opt) => (
               <Pressable
                 key={opt.value}
-                style={[styles.banOption, { backgroundColor: theme.background }]}
+                style={[
+                  styles.banOption,
+                  { backgroundColor: theme.background },
+                ]}
                 onPress={() => {
                   setShowBanDuration(false);
                   Alert.alert(
@@ -271,11 +294,11 @@ export default function UserProfileModal({
                                 Alert.alert("Done", "User has been banned.");
                                 onClose();
                               },
-                            }
+                            },
                           );
                         },
                       },
-                    ]
+                    ],
                   );
                 }}
                 disabled={banUserMutation.isPending}
@@ -320,11 +343,6 @@ const styles = StyleSheet.create({
   avatarContainer: {
     marginBottom: 24,
   },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-  },
   avatarText: {
     fontSize: 48,
     fontWeight: "600",
@@ -345,6 +363,11 @@ const styles = StyleSheet.create({
   votesText: {
     fontSize: 18,
     fontWeight: "600",
+  },
+  foundingFatherText: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 20,
   },
   closeButton: {
     paddingVertical: 12,

@@ -10,6 +10,8 @@ const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
 });
 
+const MAX_POLL_OPTIONS = 11;
+
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
 function getCorsHeaders(req: Request) {
@@ -210,6 +212,10 @@ Text: "${textToModerate.slice(0, 2000)}"`;
             .filter((o) => o.length > 0)
         )
       );
+
+      if (normalizedOptions.length > MAX_POLL_OPTIONS) {
+        throw new Error(`You can add up to ${MAX_POLL_OPTIONS} poll options`);
+      }
 
       if (normalizedOptions.length >= 2) {
         // Create poll row
