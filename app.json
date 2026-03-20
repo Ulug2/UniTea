@@ -38,6 +38,11 @@
               "scheme": "https",
               "host": "unitea.app",
               "pathPrefix": "/post"
+            },
+            {
+              "scheme": "https",
+              "host": "unitea.app",
+              "pathPrefix": "/lostfoundpost"
             }
           ],
           "category": [

@@ -3,7 +3,11 @@
  */
 
 import { Alert, Share, Platform } from 'react-native';
-import { getPostShareUrl, sharePost } from '../../utils/sharePost';
+import {
+  getPostShareUrl,
+  getLostFoundShareUrl,
+  sharePost,
+} from '../../utils/sharePost';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -29,6 +33,19 @@ describe('getPostShareUrl', () => {
   });
 });
 
+// ── getLostFoundShareUrl ───────────────────────────────────────────────────
+describe('getLostFoundShareUrl', () => {
+  it('uses "/post/" universal-link path', () => {
+    const url = getLostFoundShareUrl('abc-123');
+    expect(url).toMatch(/\/post\/abc-123/);
+  });
+
+  it('adds postType=lost_found query param', () => {
+    const url = getLostFoundShareUrl('abc-123');
+    expect(url).toContain('postType=lost_found');
+  });
+});
+
 // ── iOS native share ─────────────────────────────────────────────────────────
 
 describe('sharePost on iOS', () => {
@@ -41,6 +58,13 @@ describe('sharePost on iOS', () => {
     expect(Share.share).toHaveBeenCalledWith(
       expect.objectContaining({ url: expect.stringContaining('post-1'), message: expect.any(String) })
     );
+  });
+
+  it('generates lost&found share URL when postType="lost_found"', async () => {
+    await sharePost('post-1', 'lost_found');
+    const callArg = (Share.share as jest.Mock).mock.calls[0][0];
+    expect(callArg.url).toContain('/post/post-1');
+    expect(callArg.url).toContain('postType=lost_found');
   });
 
   it('swallows AbortError silently without Alert', async () => {
