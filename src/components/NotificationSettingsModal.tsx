@@ -1,5 +1,6 @@
 import React from "react";
 import {
+    Alert,
     Modal,
     View,
     Text,
@@ -7,8 +8,11 @@ import {
     StyleSheet,
     Switch,
     ActivityIndicator,
+    Linking,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -56,11 +60,15 @@ export default function NotificationSettingsModal({
             }
 
             if (!data) {
+                // If we don't yet have a settings row, reflect the current OS permission
+                // state so toggles aren't shown ON when the device can't receive pushes.
+                const { status } = await Notifications.getPermissionsAsync();
+                const granted = status === "granted";
                 return {
                     user_id: userId,
                     push_token: null,
-                    notify_chats: true,
-                    notify_upvotes: true,
+                    notify_chats: granted,
+                    notify_upvotes: granted,
                 };
             }
 
@@ -131,15 +139,117 @@ export default function NotificationSettingsModal({
 
     const handleToggle =
         (field: "notify_chats" | "notify_upvotes") =>
-            (value: boolean) => {
-                updateSettingMutation.mutate({ field, value });
+            async (value: boolean) => {
+                // Turning OFF doesn't require any OS permission.
+                if (!value) {
+                    updateSettingMutation.mutate({ field, value });
+                    return;
+                }
+
+                const { status, canAskAgain } = await Notifications.getPermissionsAsync();
+
+                // Request permissions if allowed; otherwise fall back to OS settings.
+                if (status !== "granted") {
+                    if (canAskAgain) {
+                        const { status: newStatus } = await Notifications.requestPermissionsAsync();
+                        if (newStatus !== "granted") {
+                            // Hard deny / denial: clear both toggles + token.
+                            await supabase
+                                .from("notification_settings")
+                                .upsert(
+                                    {
+                                        user_id: userId!,
+                                        push_token: null,
+                                        notify_chats: false,
+                                        notify_upvotes: false,
+                                    },
+                                    { onConflict: "user_id" }
+                                );
+                            queryClient.invalidateQueries({
+                                queryKey: ["notification-settings", userId],
+                            });
+
+                            Alert.alert(
+                                "Notifications Disabled",
+                                "Push notifications were denied. Enable them in your device settings to receive alerts."
+                            );
+                            return;
+                        }
+                    } else {
+                        // Hard-denied: native prompt won't show again.
+                        await supabase
+                            .from("notification_settings")
+                            .upsert(
+                                {
+                                    user_id: userId!,
+                                    push_token: null,
+                                    notify_chats: false,
+                                    notify_upvotes: false,
+                                },
+                                { onConflict: "user_id" }
+                            );
+                        queryClient.invalidateQueries({
+                            queryKey: ["notification-settings", userId],
+                        });
+
+                        Alert.alert(
+                            "Notifications Disabled",
+                            "Push notifications are disabled on your device. Please enable them in Settings to receive alerts.",
+                            [
+                                { text: "Cancel", style: "cancel" },
+                                { text: "Open Settings", onPress: () => Linking.openSettings() },
+                            ]
+                        );
+                        return;
+                    }
+                }
+
+                // At this point, OS permission is granted.
+                const expoProjectId =
+                    Constants?.expoConfig?.extra?.eas?.projectId ??
+                    Constants?.easConfig?.projectId;
+
+                if (!expoProjectId) {
+                    Alert.alert(
+                        "Notifications Setup Error",
+                        "Expo projectId is missing. Please check app.json/app.config."
+                    );
+                    return;
+                }
+
+                const token = await Notifications.getExpoPushTokenAsync({
+                    projectId: expoProjectId,
+                });
+
+                // Preserve the other toggle value (if we already have one loaded),
+                // but ensure the toggled one becomes true.
+                const prevNotifyChats = settings?.notify_chats ?? false;
+                const prevNotifyUpvotes = settings?.notify_upvotes ?? false;
+
+                await supabase
+                    .from("notification_settings")
+                    .upsert(
+                        {
+                            user_id: userId!,
+                            push_token: token.data,
+                            notify_chats: field === "notify_chats" ? true : prevNotifyChats,
+                            notify_upvotes: field === "notify_upvotes" ? true : prevNotifyUpvotes,
+                        },
+                        { onConflict: "user_id" }
+                    );
+
+                queryClient.invalidateQueries({
+                    queryKey: ["notification-settings", userId],
+                });
             };
 
     const effectiveSettings: NotificationSettings = settings || {
         user_id: userId || "",
         push_token: null,
-        notify_chats: true,
-        notify_upvotes: true,
+        // If we don't yet have a settings row, default based on current OS permission.
+        // We never request permission here automatically.
+        notify_chats: false,
+        notify_upvotes: false,
     };
 
     return (

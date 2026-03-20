@@ -8,6 +8,7 @@ import * as Linking from "expo-linking";
 import { useMyProfile } from "../../features/profile/hooks/useMyProfile";
 import BannedScreen from "../../components/BannedScreen";
 import { FilterProvider } from "../../context/FilterContext";
+import { usePushNotifications } from "../../hooks/usePushNotifications";
 
 export default function AppLayout() {
   const { theme } = useTheme();
@@ -20,6 +21,10 @@ export default function AppLayout() {
     (profile.is_permanently_banned === true ||
       (profile.banned_until != null &&
         new Date(profile.banned_until) > new Date()));
+
+  // Ensure notification permission + Expo push token registration + handler
+  // setup runs whenever the user is authenticated.
+  usePushNotifications();
 
   useEffect(() => {
     if (!loading && !session) {
