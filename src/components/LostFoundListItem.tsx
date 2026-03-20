@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, Text, Pressable, StyleSheet, Image, Alert } from "react-native";
+import { View, Text, Pressable, StyleSheet, Image, Alert, ScrollView } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -11,6 +11,7 @@ import UserProfileModal from "./UserProfileModal";
 import { DEFAULT_AVATAR } from "../constants/images";
 import { useMyProfile } from "../features/profile/hooks/useMyProfile";
 import { sharePost } from "../utils/sharePost";
+// Note: gallery widths/size are intentionally fixed to avoid reflow flicker.
 
 export type LostFoundPostForMenu = {
   postId: string;
@@ -24,6 +25,7 @@ type LostFoundListItemProps = {
   content: string;
   title: string | null;
   imageUrl: string | null;
+  imageUrls?: string[] | null;
   category: string | null;
   location: string | null;
   isAnonymous: boolean | null;
@@ -36,14 +38,121 @@ type LostFoundListItemProps = {
   onImageLoad?: () => void;
 };
 
+function normalizeImagePaths(
+  singleImagePath: string | null | undefined,
+  multiImagePaths: string[] | null | undefined,
+): string[] {
+  return Array.from(
+    new Set(
+      [
+        ...(Array.isArray(multiImagePaths) ? multiImagePaths : []),
+        ...(singleImagePath ? [singleImagePath] : []),
+      ]
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
+}
+
+const GALLERY_IMAGE_HEIGHT = 310;
+
+function LostFoundGalleryItem({
+  uri,
+  isLast,
+  onLoadImage,
+  onPress,
+}: {
+  uri: string;
+  isLast: boolean;
+  onLoadImage?: () => void;
+  onPress: () => void;
+}) {
+  // Fixed width prevents layout shifting while images are still resolving.
+  const imageWidth = 330;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        width: imageWidth,
+        height: GALLERY_IMAGE_HEIGHT,
+        marginRight: isLast ? 0 : 4,
+        borderRadius: 10,
+        overflow: "hidden",
+      }}
+    >
+      {uri.startsWith("http") ? (
+        <Image
+          source={{ uri }}
+          style={{ width: "100%", height: "100%" }}
+          resizeMode="cover"
+          onLoad={onLoadImage}
+        />
+      ) : (
+        <SupabaseImage
+          path={uri}
+          bucket="post-images"
+          contentFit="cover"
+          style={{ width: "100%", height: "100%" }}
+          onLoad={onLoadImage}
+        />
+      )}
+    </Pressable>
+  );
+}
+
+function LostFoundSingleImage({
+  uri,
+  onPress,
+  onLoadImage,
+}: {
+  uri: string;
+  onPress: () => void;
+  onLoadImage?: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        width: "100%",
+        height: GALLERY_IMAGE_HEIGHT,
+        borderRadius: 10,
+        overflow: "hidden",
+      }}
+    >
+      {uri.startsWith("http") ? (
+        <Image
+          source={{ uri }}
+          style={{ width: "100%", height: "100%" }}
+          resizeMode="cover"
+          onLoad={onLoadImage}
+        />
+      ) : (
+        <SupabaseImage
+          path={uri}
+          bucket="post-images"
+          contentFit="cover"
+          style={{ width: "100%", height: "100%" }}
+          onLoad={onLoadImage}
+        />
+      )}
+    </Pressable>
+  );
+}
+
 // Custom comparison function for better memoization (prevents unnecessary re-renders)
-const arePropsEqual = (prevProps: LostFoundListItemProps, nextProps: LostFoundListItemProps) => {
+const arePropsEqual = (
+  prevProps: LostFoundListItemProps,
+  nextProps: LostFoundListItemProps,
+) => {
   return (
     prevProps.postId === nextProps.postId &&
     prevProps.userId === nextProps.userId &&
     prevProps.content === nextProps.content &&
     prevProps.title === nextProps.title &&
     prevProps.imageUrl === nextProps.imageUrl &&
+    JSON.stringify(prevProps.imageUrls ?? []) ===
+    JSON.stringify(nextProps.imageUrls ?? []) &&
     prevProps.category === nextProps.category &&
     prevProps.location === nextProps.location &&
     prevProps.isAnonymous === nextProps.isAnonymous &&
@@ -62,6 +171,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   content,
   title,
   imageUrl,
+  imageUrls,
   category,
   location,
   isAnonymous,
@@ -82,7 +192,8 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   const [imageLoaded, setImageLoaded] = useState(false);
   const onImageLoadCalledRef = useRef(false);
 
-  const hasImage = !!imageUrl;
+  const displayImageUrls = normalizeImagePaths(imageUrl, imageUrls);
+  const hasImage = displayImageUrls.length > 0;
 
   // Notify parent when all media has loaded (for skeleton reveal)
   useEffect(() => {
@@ -103,8 +214,8 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
 
   // No post image – consider loaded
   useEffect(() => {
-    if (!imageUrl) setImageLoaded(true);
-  }, [imageUrl]);
+    if (displayImageUrls.length === 0) setImageLoaded(true);
+  }, [displayImageUrls.length]);
 
   // Prevent duplicate chat creation requests
   const chatCreationInProgress = useRef(false);
@@ -118,7 +229,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   const retryOperation = async <T,>(
     operation: () => Promise<T>,
     maxRetries: number = 3,
-    delay: number = 1000
+    delay: number = 1000,
   ): Promise<T> => {
     let lastError: any;
 
@@ -136,7 +247,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
         // Wait before retrying (exponential backoff)
         if (i < maxRetries - 1) {
           await new Promise((resolve) =>
-            setTimeout(resolve, delay * Math.pow(2, i))
+            setTimeout(resolve, delay * Math.pow(2, i)),
           );
         }
       }
@@ -168,7 +279,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
           .from("chats")
           .select("id")
           .or(
-            `and(participant_1_id.eq.${currentUserId},participant_2_id.eq.${userId}),and(participant_1_id.eq.${userId},participant_2_id.eq.${currentUserId})`
+            `and(participant_1_id.eq.${currentUserId},participant_2_id.eq.${userId}),and(participant_1_id.eq.${userId},participant_2_id.eq.${currentUserId})`,
           )
           .limit(1)
           .maybeSingle();
@@ -208,7 +319,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
               .from("chats")
               .select("id")
               .or(
-                `and(participant_1_id.eq.${currentUserId},participant_2_id.eq.${userId}),and(participant_1_id.eq.${userId},participant_2_id.eq.${currentUserId})`
+                `and(participant_1_id.eq.${currentUserId},participant_2_id.eq.${userId}),and(participant_1_id.eq.${userId},participant_2_id.eq.${currentUserId})`,
               )
               .limit(1)
               .single();
@@ -362,16 +473,13 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
       fontSize: 16,
       fontFamily: "Poppins_500Medium",
     },
-    imageContainer: {
-      marginTop: 12,
-      marginBottom: 8,
-      borderRadius: 12,
-      overflow: "hidden",
+    imageGalleryContainer: {
+      marginTop: 14,
+      marginBottom: 6,
     },
-    postImage: {
-      width: "100%",
-      aspectRatio: 4 / 3,
-      borderRadius: 12,
+    imageGalleryGrid: {
+      flexDirection: "row",
+      alignItems: "center",
     },
   });
 
@@ -382,106 +490,120 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   };
 
   return (
-    <Pressable
+    <View
       style={styles.card}
-      onPress={() => router.push(`/lostfoundpost/${postId}`)}
-      onLongPress={() =>
-        onLongPress?.({ postId, userId, username: username ?? "Unknown" })
-      }
-      delayLongPress={400}
     >
-      {/* HEADER */}
-      <View style={styles.header}>
-        <Pressable
-          style={styles.userInfo}
-          onPress={() => {
-            if (!isAnonymous && userId && userId !== currentUserId) {
-              setProfileModalVisible(true);
-            }
-          }}
-          disabled={isAnonymous || !userId || userId === currentUserId}
-        >
-          {avatarUrl ? (
-            avatarUrl.startsWith("http") ? (
-              <Image
-                source={{ uri: avatarUrl }}
-                style={styles.avatarImage}
-                onLoad={() => setAvatarLoaded(true)}
-              />
-            ) : (
-              <SupabaseImage
-                path={avatarUrl}
-                bucket="avatars"
-                style={styles.avatarImage}
-                onLoad={() => setAvatarLoaded(true)}
-              />
-            )
-          ) : (
-            <Image
-              source={DEFAULT_AVATAR}
-              style={styles.avatarImage}
-              onLoad={() => setAvatarLoaded(true)}
-            />
-          )}
-          <Text style={styles.username}>
-            {isAnonymous
-              ? currentUserId === userId
-                ? "You"
-                : "Anonymous"
-              : username || "Unknown"}
-          </Text>
-        </Pressable>
-        <Text style={styles.time}>
-          {createdAt
-            ? `${formatDistanceToNowStrict(new Date(createdAt))} ago`
-            : "Recently"}
-        </Text>
-      </View>
-
-      {/* CATEGORY AND LOCATION */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 4,
-        }}
+      <Pressable
+        onPress={() => router.push(`/lostfoundpost/${postId}`)}
+        onLongPress={() =>
+          onLongPress?.({ postId, userId, username: username ?? "Unknown" })
+        }
+        delayLongPress={400}
       >
-        <Text style={styles.title}>{displayTitle}</Text>
-        {location && (
-          <View style={styles.locationContainer}>
-            <Ionicons
-              name="location-outline"
-              size={14}
-              color={theme.secondaryText}
-            />
-            <Text style={styles.locationText}>{location}</Text>
-          </View>
-        )}
-      </View>
+        {/* HEADER */}
+        <View style={styles.header}>
+          <Pressable
+            style={styles.userInfo}
+            onPress={(e) => {
+              e.stopPropagation();
+              if (!isAnonymous && userId && userId !== currentUserId) {
+                setProfileModalVisible(true);
+              }
+            }}
+            disabled={isAnonymous || !userId || userId === currentUserId}
+          >
+            {avatarUrl ? (
+              avatarUrl.startsWith("http") ? (
+                <Image
+                  source={{ uri: avatarUrl }}
+                  style={styles.avatarImage}
+                  onLoad={() => setAvatarLoaded(true)}
+                />
+              ) : (
+                <SupabaseImage
+                  path={avatarUrl}
+                  bucket="avatars"
+                  style={styles.avatarImage}
+                  onLoad={() => setAvatarLoaded(true)}
+                />
+              )
+            ) : (
+              <Image
+                source={DEFAULT_AVATAR}
+                style={styles.avatarImage}
+                onLoad={() => setAvatarLoaded(true)}
+              />
+            )}
+            <Text style={styles.username}>
+              {isAnonymous
+                ? currentUserId === userId
+                  ? "You"
+                  : "Anonymous"
+                : username || "Unknown"}
+            </Text>
+          </Pressable>
+          <Text style={styles.time}>
+            {createdAt
+              ? `${formatDistanceToNowStrict(new Date(createdAt))} ago`
+              : "Recently"}
+          </Text>
+        </View>
 
-      {/* CONTENT */}
-      <Text style={styles.description} numberOfLines={3}>
-        {content}
-      </Text>
+        {/* CATEGORY AND LOCATION */}
+        <View
+          style={{
+            flexDirection: "column",
+            alignItems: "flex-start",
+            gap: 8,
+            marginBottom: 4,
+          }}
+        >
+          <Text style={styles.title}>{displayTitle}</Text>
+          {location && (
+            <View style={styles.locationContainer}>
+              <Ionicons
+                name="location-outline"
+                size={14}
+                color={theme.secondaryText}
+              />
+              <Text style={styles.locationText}>{location}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* CONTENT */}
+        <Text style={styles.description} numberOfLines={3}>
+          {content}
+        </Text>
+      </Pressable>
 
       {/* IMAGE */}
-      {imageUrl && (
-        <View style={styles.imageContainer}>
-          {imageUrl.startsWith("http") ? (
-            <Image
-              source={{ uri: imageUrl }}
-              style={styles.postImage}
-              resizeMode="cover"
-              onLoad={() => setImageLoaded(true)}
+      {displayImageUrls.length > 0 && (
+        <View style={styles.imageGalleryContainer}>
+          {displayImageUrls.length === 1 ? (
+            <LostFoundSingleImage
+              uri={displayImageUrls[0]}
+              onLoadImage={() => setImageLoaded(true)}
+              onPress={() => router.push(`/lostfoundpost/${postId}`)}
             />
           ) : (
-            <SupabaseImage
-              path={imageUrl}
-              bucket="post-images"
-              style={styles.postImage}
-              onLoad={() => setImageLoaded(true)}
-            />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.imageGalleryGrid}
+              nestedScrollEnabled
+              scrollEnabled
+            >
+              {displayImageUrls.map((uri, index) => (
+                <LostFoundGalleryItem
+                  key={`${uri}-${index}`}
+                  uri={uri}
+                  isLast={index === displayImageUrls.length - 1}
+                  onLoadImage={() => setImageLoaded(true)}
+                  onPress={() => router.push(`/lostfoundpost/${postId}`)}
+                />
+              ))}
+            </ScrollView>
           )}
         </View>
       )}
@@ -533,7 +655,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
           isAdmin={isAdmin}
         />
       )}
-    </Pressable>
+    </View>
   );
 }, arePropsEqual);
 

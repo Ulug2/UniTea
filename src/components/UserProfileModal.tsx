@@ -181,7 +181,7 @@ export default function UserProfileModal({
                     { color: foundingFatherColor },
                   ]}
                 >
-                  Founding Father
+                  Founding Member
                 </Text>
               )}
 

@@ -123,7 +123,7 @@ export function FlippableAvatar({
         {avatarContent}
       </Animated.View>
 
-      {/* Back face — Founding Father badge, only mounted for founding members */}
+      {/* Back face — Founding Member badge, only mounted for founding members */}
       {currentUser?.is_founding_member === true && (
         <Animated.View
           style={[

@@ -7,41 +7,70 @@ import { logger } from "../utils/logger";
 export type ImagePipelineOptions = {
   allowEditing?: boolean;
   aspect?: [number, number];
+  allowsMultipleSelection?: boolean;
+  selectionLimit?: number;
 };
 
 export function useImagePipeline(options: ImagePipelineOptions = {}) {
-  const { allowEditing = false, aspect } = options;
+  const {
+    allowEditing = false,
+    aspect,
+    allowsMultipleSelection = false,
+    selectionLimit = 10,
+  } = options;
 
-  const pickAndPrepareImage = async (): Promise<string | null> => {
+  const prepareImage = async (uri: string): Promise<string> => {
+    const manipResult = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: IMAGE_MAX_WIDTH } }],
+      {
+        compress: IMAGE_COMPRESS_QUALITY,
+        format: ImageManipulator.SaveFormat[IMAGE_SAVE_FORMAT as "WEBP"],
+      }
+    );
+
+    return manipResult.uri;
+  };
+
+  const pickAndPrepareImages = async (): Promise<string[]> => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
         allowsEditing: allowEditing,
         ...(aspect ? { aspect } : {}),
+        ...(allowsMultipleSelection
+          ? {
+              allowsMultipleSelection: true,
+              selectionLimit,
+            }
+          : {}),
         quality: 0.8,
       });
 
-      if (result.canceled || !result.assets?.[0]?.uri) {
-        return null;
+      if (result.canceled || !result.assets?.length) {
+        return [];
       }
 
-      const manipResult = await ImageManipulator.manipulateAsync(
-        result.assets[0].uri,
-        [{ resize: { width: IMAGE_MAX_WIDTH } }],
-        {
-          compress: IMAGE_COMPRESS_QUALITY,
-          format: ImageManipulator.SaveFormat[IMAGE_SAVE_FORMAT as "WEBP"],
-        }
+      const preparedImages = await Promise.all(
+        result.assets
+          .map((asset) => asset.uri)
+          .filter((uri): uri is string => Boolean(uri))
+          .map((uri) => prepareImage(uri))
       );
 
-      return manipResult.uri;
+      return preparedImages;
     } catch (err) {
       logger.error("Error processing image in pipeline", err as Error);
       Alert.alert("Error", "Failed to process image. Please try again.");
-      return null;
+      return [];
     }
   };
 
-  return { pickAndPrepareImage };
+  const pickAndPrepareImage = async (): Promise<string | null> => {
+    const uris = await pickAndPrepareImages();
+    return uris[0] ?? null;
+  };
+
+  return { pickAndPrepareImage, pickAndPrepareImages };
 }
 

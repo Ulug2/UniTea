@@ -1,0 +1,74 @@
+-- Support multiple images per post while keeping backward compatibility with image_url.
+
+ALTER TABLE public.posts
+ADD COLUMN IF NOT EXISTS image_urls text[];
+
+-- Backfill existing rows so old posts expose image_urls too.
+UPDATE public.posts
+SET image_urls = ARRAY[image_url]
+WHERE image_url IS NOT NULL
+  AND (image_urls IS NULL OR array_length(image_urls, 1) IS NULL);
+
+-- Keep posts_summary_view in sync with new columns.
+DROP VIEW IF EXISTS public.posts_summary_view;
+
+CREATE VIEW public.posts_summary_view AS
+SELECT
+    p.id                      AS post_id,
+    p.user_id,
+    p.content,
+    p.title,
+    p.image_url,
+    p.image_urls,
+    p.category,
+    p.location,
+    p.post_type,
+    p.is_anonymous,
+    p.is_deleted,
+    p.is_edited,
+    p.created_at,
+    p.updated_at,
+    p.edited_at,
+    p.view_count,
+    p.repost_comment,
+    p.reposted_from_post_id,
+
+    pr.username,
+    pr.avatar_url,
+    pr.is_verified,
+    pr.is_banned,
+
+    COALESCE(ps.comment_count, 0) AS comment_count,
+    COALESCE(ps.vote_score,    0) AS vote_score,
+    COALESCE(ps.repost_count,  0) AS repost_count,
+    COALESCE(ps.hot_score,     0) AS hot_score,
+
+    (
+        SELECT v.vote_type
+        FROM public.votes v
+        WHERE v.post_id = p.id
+          AND v.user_id = auth.uid()
+        LIMIT 1
+    ) AS user_vote,
+
+    op.id              AS original_post_id,
+    op.content         AS original_content,
+    op.user_id         AS original_user_id,
+    opr.username       AS original_author_username,
+    opr.avatar_url     AS original_author_avatar,
+    op.image_url       AS original_image_url,
+    op.image_urls      AS original_image_urls,
+    op.is_anonymous    AS original_is_anonymous,
+    op.created_at      AS original_created_at
+
+FROM public.posts p
+JOIN  public.profiles pr       ON p.user_id = pr.id
+LEFT JOIN public.post_stats ps ON ps.post_id = p.id
+LEFT JOIN public.posts op      ON p.reposted_from_post_id = op.id
+LEFT JOIN public.profiles opr  ON op.user_id = opr.id
+
+WHERE p.is_deleted = FALSE OR p.is_deleted IS NULL;
+
+ALTER VIEW public.posts_summary_view SET (security_invoker = true);
+REVOKE ALL ON public.posts_summary_view FROM PUBLIC;
+GRANT SELECT ON public.posts_summary_view TO authenticated;

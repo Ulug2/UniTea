@@ -1,5 +1,5 @@
 -- ============================================================
--- Migration: Add "Founding Father" badge logic to profiles
+-- Migration: Add "Founding Member" badge logic to profiles
 -- ============================================================
 
 -- ────────────────────────────────────────────────────────────

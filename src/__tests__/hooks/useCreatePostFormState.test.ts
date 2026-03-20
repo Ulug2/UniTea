@@ -8,7 +8,7 @@ describe('useCreatePostFormState', () => {
       const { result } = renderHook(() => useCreatePostFormState({ type: 'feed' }));
 
       expect(result.current.content).toBe('');
-      expect(result.current.image).toBeNull();
+      expect(result.current.images).toEqual([]);
       expect(result.current.isAnonymous).toBe(true);
       expect(result.current.isSubmitting).toBe(false);
       expect(result.current.isPoll).toBe(false);
@@ -79,11 +79,12 @@ describe('useCreatePostFormState', () => {
       expect(result.current.canSubmit).toBe(false);
     });
 
-    it('is true when both content and location are non-empty', () => {
+    it('is true when title, content, and location are non-empty', () => {
       const { result } = renderHook(() =>
         useCreatePostFormState({ type: 'lost_found' })
       );
       act(() => {
+        result.current.setTitle('Student ID Card');
         result.current.setContent('Lost my keys');
         result.current.setLocation('Library');
       });
@@ -112,7 +113,7 @@ describe('useCreatePostFormState', () => {
       const { result } = renderHook(() =>
         useCreatePostFormState({ repostId: 'post-abc' })
       );
-      act(() => { result.current.setImage('file://photo.jpg'); });
+      act(() => { result.current.setImages(['file://photo.jpg']); });
       expect(result.current.canSubmit).toBe(true);
     });
   });
@@ -176,7 +177,7 @@ describe('useCreatePostFormState', () => {
 
       act(() => {
         result.current.setContent('Some text');
-        result.current.setImage('file://img.jpg');
+        result.current.setImages(['file://img.jpg']);
         result.current.setIsAnonymous(false);
         result.current.setIsSubmitting(true);
         result.current.setIsPoll(true);
@@ -188,7 +189,7 @@ describe('useCreatePostFormState', () => {
       act(() => { result.current.reset(); });
 
       expect(result.current.content).toBe('');
-      expect(result.current.image).toBeNull();
+        expect(result.current.images).toEqual([]);
       expect(result.current.isAnonymous).toBe(true);
       expect(result.current.isPoll).toBe(false);
       expect(result.current.pollOptions).toEqual(['', '']);

@@ -588,6 +588,7 @@ export type Database = {
           edited_at: string | null
           id: string
           image_url: string | null
+          image_urls: string[] | null
           is_anonymous: boolean | null
           is_deleted: boolean | null
           is_edited: boolean | null
@@ -607,6 +608,7 @@ export type Database = {
           edited_at?: string | null
           id?: string
           image_url?: string | null
+          image_urls?: string[] | null
           is_anonymous?: boolean | null
           is_deleted?: boolean | null
           is_edited?: boolean | null
@@ -626,6 +628,7 @@ export type Database = {
           edited_at?: string | null
           id?: string
           image_url?: string | null
+          image_urls?: string[] | null
           is_anonymous?: boolean | null
           is_deleted?: boolean | null
           is_edited?: boolean | null
@@ -908,6 +911,7 @@ export type Database = {
           edited_at: string | null
           hot_score: number | null
           image_url: string | null
+          image_urls: string[] | null
           is_anonymous: boolean | null
           is_banned: boolean | null
           is_deleted: boolean | null
@@ -919,6 +923,7 @@ export type Database = {
           original_content: string | null
           original_created_at: string | null
           original_image_url: string | null
+          original_image_urls: string[] | null
           original_is_anonymous: boolean | null
           original_post_id: string | null
           original_user_id: string | null

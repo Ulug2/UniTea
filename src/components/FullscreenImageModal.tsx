@@ -305,6 +305,15 @@ export function resolvePostImageUri(
 ): string | null {
   if (!imageUrl) return null;
   if (imageUrl.startsWith("http")) return imageUrl;
+  // In the create-post flow we may already have local URIs (e.g. file://...).
+  // expo-image can load these directly, so don't rewrite them to Supabase URLs.
+  if (
+    imageUrl.startsWith("file://") ||
+    imageUrl.startsWith("content://") ||
+    imageUrl.startsWith("data:")
+  ) {
+    return imageUrl;
+  }
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
   return `${supabaseUrl}/storage/v1/object/public/post-images/${imageUrl}`;
 }

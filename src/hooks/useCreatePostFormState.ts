@@ -13,7 +13,7 @@ export function useCreatePostFormState(params: CreatePostMode) {
   const isRepost = Boolean(repostId);
 
   const [content, setContent] = useState<string>("");
-  const [image, setImage] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [isAnonymous, setIsAnonymous] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -26,7 +26,7 @@ export function useCreatePostFormState(params: CreatePostMode) {
 
   const reset = useCallback(() => {
     setContent("");
-    setImage(null);
+    setImages([]);
     setIsAnonymous(true);
     setIsPoll(false);
     setPollOptions(["", ""]);
@@ -47,7 +47,7 @@ export function useCreatePostFormState(params: CreatePostMode) {
 
     if (isRepost) {
       // Reposts can be image-only or text-only; content optional.
-      return Boolean(content.trim()) || Boolean(image);
+      return Boolean(content.trim()) || images.length > 0;
     }
 
     // Regular feed post
@@ -55,8 +55,8 @@ export function useCreatePostFormState(params: CreatePostMode) {
       return hasPollContent;
     }
 
-    return Boolean(content.trim());
-  }, [isLostFound, isRepost, isPoll, content, title, location, image, hasPollContent]);
+    return Boolean(content.trim()) || images.length > 0;
+  }, [isLostFound, isRepost, isPoll, content, title, location, images, hasPollContent]);
 
   return {
     // mode
@@ -66,8 +66,8 @@ export function useCreatePostFormState(params: CreatePostMode) {
     // form state
     content,
     setContent,
-    image,
-    setImage,
+    images,
+    setImages,
     isAnonymous,
     setIsAnonymous,
     isSubmitting,

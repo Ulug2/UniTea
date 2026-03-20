@@ -18,7 +18,11 @@ import ReportModal from "../../../components/ReportModal";
 import CustomInput from "../../../components/CustomInput";
 import { router } from "expo-router";
 import { FontAwesome, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useInfiniteQuery, useIsMutating, useMutation } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useIsMutating,
+  useMutation,
+} from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useBlockUser } from "../../../features/posts/hooks/useBlockUser";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
@@ -41,7 +45,9 @@ export default function LostFoundScreen() {
   const { theme } = useTheme();
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
-  const [selectedPost, setSelectedPost] = useState<LostFoundPostForMenu | null>(null);
+  const [selectedPost, setSelectedPost] = useState<LostFoundPostForMenu | null>(
+    null,
+  );
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -114,16 +120,22 @@ export default function LostFoundScreen() {
     const allPosts = postsData?.pages.flat() ?? [];
     // Remove duplicates by post_id
     const uniquePosts = Array.from(
-      new Map(allPosts.map((post) => [post.post_id, post])).values()
+      new Map(allPosts.map((post) => [post.post_id, post])).values(),
     );
 
     // Scope-aware block filtering: anonymous_only hides anon posts, profile_only hides public posts
     return uniquePosts.filter((post) => {
-      if (isBlockedPost(blocks, post.user_id, post.is_anonymous ?? false)) return false;
+      if (isBlockedPost(blocks, post.user_id, post.is_anonymous ?? false))
+        return false;
       if (
         post.original_user_id &&
-        isBlockedPost(blocks, post.original_user_id, post.original_is_anonymous ?? false)
-      ) return false;
+        isBlockedPost(
+          blocks,
+          post.original_user_id,
+          post.original_is_anonymous ?? false,
+        )
+      )
+        return false;
       return true;
     });
   }, [postsData, blocks]);
@@ -137,7 +149,12 @@ export default function LostFoundScreen() {
       const title = (post.title ?? "").toLowerCase();
       const category = (post.category ?? "").toLowerCase();
       const location = (post.location ?? "").toLowerCase();
-      return content.includes(q) || title.includes(q) || category.includes(q) || location.includes(q);
+      return (
+        content.includes(q) ||
+        title.includes(q) ||
+        category.includes(q) ||
+        location.includes(q)
+      );
     });
   }, [lostFoundPosts, debouncedQuery]);
 
@@ -169,13 +186,19 @@ export default function LostFoundScreen() {
           style: "destructive",
           onPress: () => deletePostMutation.mutate(selectedPost.postId),
         },
-      ]
+      ],
     );
   }, [selectedPost, deletePostMutation]);
 
   // Report post mutation
   const reportPostMutation = useMutation({
-    mutationFn: async ({ postId, reason }: { postId: string; reason: string }) => {
+    mutationFn: async ({
+      postId,
+      reason,
+    }: {
+      postId: string;
+      reason: string;
+    }) => {
       if (!currentUserId) throw new Error("User ID missing");
       const { error } = await supabase.from("reports").insert({
         reporter_id: currentUserId,
@@ -190,7 +213,10 @@ export default function LostFoundScreen() {
       setShowMenu(false);
     },
     onError: (error: unknown) => {
-      Alert.alert("Error", (error as Error)?.message ?? "Failed to submit report");
+      Alert.alert(
+        "Error",
+        (error as Error)?.message ?? "Failed to submit report",
+      );
     },
   });
 
@@ -199,7 +225,7 @@ export default function LostFoundScreen() {
       if (!selectedPost) return;
       reportPostMutation.mutate({ postId: selectedPost.postId, reason });
     },
-    [selectedPost, reportPostMutation]
+    [selectedPost, reportPostMutation],
   );
 
   // L&F posts are always public, so block scope is always profile_only
@@ -221,7 +247,7 @@ export default function LostFoundScreen() {
               { onSuccess: () => setSelectedPost(null) },
             ),
         },
-      ]
+      ],
     );
   }, [selectedPost, blockUserMutation]);
 
@@ -257,6 +283,7 @@ export default function LostFoundScreen() {
         content={item.content}
         title={item.title ?? null}
         imageUrl={item.image_url}
+        imageUrls={item.image_urls ?? null}
         category={item.category}
         location={item.location}
         isAnonymous={item.is_anonymous}
@@ -268,7 +295,7 @@ export default function LostFoundScreen() {
         onImageLoad={index < 5 ? onItemReady : undefined}
       />
     ),
-    [handleItemLongPress, onItemReady]
+    [handleItemLongPress, onItemReady],
   );
 
   // Show skeleton while loading initial data
@@ -331,7 +358,9 @@ export default function LostFoundScreen() {
           ListEmptyComponent={
             !isLoading ? (
               <View style={styles.emptyContainer}>
-                <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
+                <Text
+                  style={[styles.emptyText, { color: theme.secondaryText }]}
+                >
                   {debouncedQuery
                     ? "No results for your search"
                     : "No lost & found posts yet"}
@@ -364,10 +393,16 @@ export default function LostFoundScreen() {
           style={menuStyles.overlay}
           onPress={() => setShowMenu(false)}
         >
-          <View style={[menuStyles.menuContainer, { backgroundColor: theme.card }]}>
+          <View
+            style={[menuStyles.menuContainer, { backgroundColor: theme.card }]}
+          >
             {canDeletePost ? (
               <Pressable style={menuStyles.menuItem} onPress={handleDeletePost}>
-                <MaterialCommunityIcons name="delete" size={20} color="#EF4444" />
+                <MaterialCommunityIcons
+                  name="delete"
+                  size={20}
+                  color="#EF4444"
+                />
                 <Text style={[menuStyles.menuText, { color: "#EF4444" }]}>
                   Delete Post
                 </Text>
@@ -381,7 +416,11 @@ export default function LostFoundScreen() {
                   setShowReportModal(true);
                 }}
               >
-                <MaterialCommunityIcons name="flag" size={20} color={theme.text} />
+                <MaterialCommunityIcons
+                  name="flag"
+                  size={20}
+                  color={theme.text}
+                />
                 <Text style={[menuStyles.menuText, { color: theme.text }]}>
                   Report Content
                 </Text>
@@ -395,7 +434,11 @@ export default function LostFoundScreen() {
                   handleBlockUser();
                 }}
               >
-                <MaterialCommunityIcons name="block-helper" size={20} color={theme.text} />
+                <MaterialCommunityIcons
+                  name="block-helper"
+                  size={20}
+                  color={theme.text}
+                />
                 <Text style={[menuStyles.menuText, { color: theme.text }]}>
                   Block User
                 </Text>
