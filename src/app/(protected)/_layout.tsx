@@ -37,8 +37,43 @@ export default function AppLayout() {
         if (!parsed.path) return;
 
         const pathParts = parsed.path.split("/").filter(Boolean);
+        const queryParams = (parsed as any).queryParams ?? {};
+        const getQueryParam = (key: string): string | undefined => {
+          const v = queryParams[key];
+          if (typeof v === "string") return v;
+          if (Array.isArray(v)) return v[0];
+          return undefined;
+        };
+
+        // `Linking.parse()` should provide `queryParams`, but on some platforms
+        // it may be missing/empty. Fallback to searching the raw URL string.
+        const getQueryParamFromRawUrl = (key: string): string | undefined => {
+          const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const m = url.match(new RegExp(`[?&]${escapedKey}=([^&#]+)`));
+          if (!m) return undefined;
+          try {
+            return decodeURIComponent(m[1]);
+          } catch {
+            return m[1];
+          }
+        };
+
+        const postType =
+          getQueryParam("postType") ||
+          getQueryParam("post_type") ||
+          getQueryParam("type") ||
+          getQueryParamFromRawUrl("postType") ||
+          getQueryParamFromRawUrl("post_type") ||
+          getQueryParamFromRawUrl("type");
+
         if (pathParts[0] === "post" && pathParts[1]) {
-          router.navigate(`/post/${pathParts[1]}?fromDeeplink=1`);
+          // `/post/<id>?postType=lost_found` should open the lost&found detail screen.
+          // This keeps universal-link configuration aligned with the existing `/post/*` path.
+          if (postType === "lost_found") {
+            router.navigate(`/lostfoundpost/${pathParts[1]}?fromDeeplink=1`);
+          } else {
+            router.navigate(`/post/${pathParts[1]}?fromDeeplink=1`);
+          }
         } else if (pathParts[0] === "lostfoundpost" && pathParts[1]) {
           router.navigate(`/lostfoundpost/${pathParts[1]}?fromDeeplink=1`);
         }

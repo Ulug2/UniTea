@@ -15,7 +15,11 @@ export function getPostShareUrl(postId: string): string {
  */
 export function getLostFoundShareUrl(postId: string): string {
   const base = APP_URL.replace(/\/$/, "");
-  return `${base}/lostfoundpost/${postId}`;
+  // Use the same `/post/<id>` universal-link path as regular feed posts.
+  // Deep-link router will look for `postType=lost_found` and redirect
+  // to the dedicated lost&found detail screen.
+  const encodedId = encodeURIComponent(postId);
+  return `${base}/post/${encodedId}?postType=lost_found`;
 }
 
 const SHARE_TITLE = "Share Post";
