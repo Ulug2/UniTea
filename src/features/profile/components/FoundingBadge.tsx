@@ -9,7 +9,7 @@ export function FoundingBadge() {
   const { isDark } = useTheme();
   const color = isDark ? FOUNDING_FATHER_GOLD_DARK : FOUNDING_FATHER_GOLD_LIGHT;
 
-  return <Text style={[styles.label, { color }]}>{"Founding Father"}</Text>;
+  return <Text style={[styles.label, { color }]}>{"Founding Member"}</Text>;
 }
 
 const styles = StyleSheet.create({

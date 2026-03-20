@@ -1,5 +1,5 @@
-import { useRef, useState, useMemo } from "react";
-import { useLocalSearchParams, router } from "expo-router";
+import { useRef, useState, useMemo, useEffect } from "react";
+import { useLocalSearchParams, router, useNavigation } from "expo-router";
 import {
   Text,
   View,
@@ -20,7 +20,10 @@ import { useAuth } from "../../../context/AuthContext";
 import { supabase } from "../../../lib/supabase";
 import SupabaseImage from "../../../components/SupabaseImage";
 import { sharePost } from "../../../utils/sharePost";
-import { FullscreenImageModal, resolvePostImageUri } from "../../../components/FullscreenImageModal";
+import {
+  FullscreenImageModal,
+  resolvePostImageUri,
+} from "../../../components/FullscreenImageModal";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -30,6 +33,7 @@ const LOST_BG = "#FEE2E2";
 const FOUND_COLOR = "#16A34A";
 const FOUND_BG = "#DCFCE7";
 const TEAL = "#5DBEBC";
+const GALLERY_IMAGE_HEIGHT = 310;
 
 const SAFETY_REMINDER =
   "Please meet in public places on campus when exchanging items. " +
@@ -182,13 +186,32 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
 
     // Post image
     imageContainer: {
-      borderRadius: 12,
-      overflow: "hidden",
       marginBottom: 16,
     },
     postImage: {
       width: "100%",
       aspectRatio: 4 / 3,
+      borderRadius: 12,
+    },
+    imageGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    imageTile: {
+      width: "48%",
+      aspectRatio: 1,
+      borderRadius: 12,
+      overflow: "hidden",
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+      backgroundColor: theme.background,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    imageTileImage: {
+      width: "100%",
+      height: "100%",
     },
 
     // Action row (chat + share)
@@ -269,13 +292,55 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
   });
 }
 
+function LostFoundDetailGalleryItem({
+  uri,
+  isLast,
+  onPress,
+}: {
+  uri: string;
+  isLast: boolean;
+  onPress: () => void;
+}) {
+  // Fixed width prevents layout shifting while the image's intrinsic size
+  // is still being resolved.
+  const width = 330;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        width,
+        height: GALLERY_IMAGE_HEIGHT,
+        marginRight: isLast ? 0 : 4,
+        borderRadius: 10,
+        overflow: "hidden",
+      }}
+    >
+      {uri.startsWith("http") ? (
+        <Image
+          source={{ uri }}
+          style={{ width: "100%", height: "100%" }}
+          resizeMode="cover"
+        />
+      ) : (
+        <SupabaseImage
+          path={uri}
+          bucket="post-images"
+          contentFit="cover"
+          style={{ width: "100%", height: "100%" }}
+        />
+      )}
+    </Pressable>
+  );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Retry a Supabase operation with exponential back-off. */
 async function retryOp<T>(
   op: () => Promise<T>,
   maxRetries = 3,
-  baseDelay = 1000
+  baseDelay = 1000,
 ): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < maxRetries; i++) {
@@ -292,6 +357,21 @@ async function retryOp<T>(
   throw lastErr;
 }
 
+function normalizeImagePaths(
+  singleImagePath: string | null | undefined,
+  multiImagePaths: string[] | null | undefined,
+): string[] {
+  return Array.from(
+    new Set(
+      [
+        ...(Array.isArray(multiImagePaths) ? multiImagePaths : []),
+        ...(singleImagePath ? [singleImagePath] : []),
+      ]
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -304,17 +384,32 @@ export default function LostFoundPostDetailed() {
   const { session } = useAuth();
   const currentUserId = session?.user?.id ?? null;
 
+  const navigation = useNavigation();
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const chatInProgress = useRef(false);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const [isGalleryInteracting, setIsGalleryInteracting] = useState(false);
 
   const styles = useMemo(
     () => buildStyles(theme, insets.top, insets.bottom),
-    [theme, insets.top, insets.bottom]
+    [theme, insets.top, insets.bottom],
   );
 
+  // Prevent iOS back/close gestures from firing while the user is swiping the
+  // horizontal gallery.
+  useEffect(() => {
+    navigation.setOptions({
+      gestureEnabled: !isGalleryInteracting,
+      fullScreenGestureEnabled: !isGalleryInteracting,
+    });
+  }, [navigation, isGalleryInteracting]);
+
   // ── Data fetching ────────────────────────────────────────────────────────────
-  const { data: post, isLoading, error } = useQuery<PostsSummaryViewRow | null>({
+  const {
+    data: post,
+    isLoading,
+    error,
+  } = useQuery<PostsSummaryViewRow | null>({
     queryKey: ["lostfound-detail", postId],
     queryFn: async () => {
       if (!postId) return null;
@@ -345,7 +440,7 @@ export default function LostFoundPostDetailed() {
           .select("id")
           .or(
             `and(participant_1_id.eq.${currentUserId},participant_2_id.eq.${targetId}),` +
-            `and(participant_1_id.eq.${targetId},participant_2_id.eq.${currentUserId})`
+              `and(participant_1_id.eq.${targetId},participant_2_id.eq.${currentUserId})`,
           )
           .limit(1)
           .maybeSingle();
@@ -377,7 +472,7 @@ export default function LostFoundPostDetailed() {
               .select("id")
               .or(
                 `and(participant_1_id.eq.${currentUserId},participant_2_id.eq.${targetId}),` +
-                `and(participant_1_id.eq.${targetId},participant_2_id.eq.${currentUserId})`
+                  `and(participant_1_id.eq.${targetId},participant_2_id.eq.${currentUserId})`,
               )
               .limit(1)
               .single();
@@ -396,8 +491,8 @@ export default function LostFoundPostDetailed() {
         e.message?.includes("network") || e.message?.includes("timeout")
           ? "Network error. Please check your connection."
           : e.code === "42501"
-          ? "You don't have permission to create a chat."
-          : "Failed to start chat. Please try again.";
+            ? "You don't have permission to create a chat."
+            : "Failed to start chat. Please try again.";
       Alert.alert("Error", msg);
     } finally {
       setIsCreatingChat(false);
@@ -426,6 +521,7 @@ export default function LostFoundPostDetailed() {
   const isLost = post.category === "lost";
   const isAnonymous = post.is_anonymous ?? false;
   const isOwnPost = currentUserId === post.user_id;
+  const displayImageUrls = normalizeImagePaths(post.image_url, post.image_urls);
 
   const categoryPrefix = isLost ? "Lost" : "Found";
   const title = post.title
@@ -434,7 +530,9 @@ export default function LostFoundPostDetailed() {
   const description = post.content;
 
   const displayName = isAnonymous
-    ? currentUserId === post.user_id ? "You (Anonymous)" : "Anonymous"
+    ? currentUserId === post.user_id
+      ? "You (Anonymous)"
+      : "Anonymous"
     : post.username;
 
   const initial = displayName.charAt(0).toUpperCase();
@@ -448,8 +546,8 @@ export default function LostFoundPostDetailed() {
     : null;
 
   const badgeColor = isLost ? LOST_COLOR : FOUND_COLOR;
-  const badgeBg    = isLost ? LOST_BG    : FOUND_BG;
-  const badgeLabel = isLost ? "Lost"     : "Found";
+  const badgeBg = isLost ? LOST_BG : FOUND_BG;
+  const badgeLabel = isLost ? "Lost" : "Found";
 
   // ── JSX ──────────────────────────────────────────────────────────────────────
   return (
@@ -469,14 +567,16 @@ export default function LostFoundPostDetailed() {
       >
         {/* ── Main detail card ── */}
         <View style={styles.card}>
-
           {/* User row + category badge */}
           <View style={styles.userRow}>
             <View style={styles.userLeft}>
               {/* Avatar: image if available, initials otherwise */}
               {!isAnonymous && post.avatar_url ? (
                 post.avatar_url.startsWith("http") ? (
-                  <Image source={{ uri: post.avatar_url }} style={styles.avatarImage} />
+                  <Image
+                    source={{ uri: post.avatar_url }}
+                    style={styles.avatarImage}
+                  />
                 ) : (
                   <SupabaseImage
                     path={post.avatar_url}
@@ -491,10 +591,16 @@ export default function LostFoundPostDetailed() {
               )}
 
               <View style={styles.userDetails}>
-                <Text style={styles.username} numberOfLines={1}>{displayName}</Text>
+                <Text style={styles.username} numberOfLines={1}>
+                  {displayName}
+                </Text>
                 {timeAgo && (
                   <View style={styles.timeRow}>
-                    <Ionicons name="time-outline" size={12} color={theme.secondaryText} />
+                    <Ionicons
+                      name="time-outline"
+                      size={12}
+                      color={theme.secondaryText}
+                    />
                     <Text style={styles.time}>{timeAgo}</Text>
                   </View>
                 )}
@@ -528,7 +634,11 @@ export default function LostFoundPostDetailed() {
           {/* Location */}
           {post.location ? (
             <View style={styles.metaRow}>
-              <Ionicons name="location-outline" size={16} color={theme.secondaryText} />
+              <Ionicons
+                name="location-outline"
+                size={16}
+                color={theme.secondaryText}
+              />
               <Text style={styles.metaText}>{post.location}</Text>
             </View>
           ) : null}
@@ -536,31 +646,50 @@ export default function LostFoundPostDetailed() {
           {/* Date */}
           {formattedDate ? (
             <View style={styles.metaRow}>
-              <Ionicons name="calendar-outline" size={16} color={theme.secondaryText} />
+              <Ionicons
+                name="calendar-outline"
+                size={16}
+                color={theme.secondaryText}
+              />
               <Text style={styles.metaText}>{formattedDate}</Text>
             </View>
           ) : null}
 
-          {/* Post image — tap to expand */}
-          {post.image_url ? (
-            <Pressable
-              style={styles.imageContainer}
-              onPress={() => setFullscreenUri(resolvePostImageUri(post.image_url))}
-            >
-              {post.image_url.startsWith("http") ? (
-                <Image
-                  source={{ uri: post.image_url }}
-                  style={styles.postImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <SupabaseImage
-                  path={post.image_url}
-                  bucket="post-images"
-                  style={styles.postImage}
-                />
-              )}
-            </Pressable>
+          {/* Post image(s) — tap to expand */}
+          {displayImageUrls.length > 0 ? (
+            <View style={styles.imageContainer}>
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={false}
+                onStartShouldSetResponderCapture={() => true}
+                // RN typings only expose the event here; returning `true` ensures
+                // the horizontal gallery captures swipe gestures exclusively.
+                onMoveShouldSetResponderCapture={() => true}
+                onResponderGrant={() => setIsGalleryInteracting(true)}
+                onResponderRelease={() => setIsGalleryInteracting(false)}
+                onTouchStart={() => setIsGalleryInteracting(true)}
+                onTouchEnd={() => setIsGalleryInteracting(false)}
+                onScrollBeginDrag={() => setIsGalleryInteracting(true)}
+                onMomentumScrollEnd={() => setIsGalleryInteracting(false)}
+                onScrollEndDrag={() => setIsGalleryInteracting(false)}
+                contentContainerStyle={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                {displayImageUrls.map((uri, index) => (
+                  <LostFoundDetailGalleryItem
+                    key={`${uri}-${index}`}
+                    uri={uri}
+                    isLast={index === displayImageUrls.length - 1}
+                    onPress={() =>
+                      setFullscreenUri(resolvePostImageUri(uri))
+                    }
+                  />
+                ))}
+              </ScrollView>
+            </View>
           ) : null}
 
           <View style={styles.divider} />
@@ -577,7 +706,11 @@ export default function LostFoundPostDetailed() {
                 onPress={handleContactPress}
                 disabled={isCreatingChat}
               >
-                <MaterialCommunityIcons name="message-outline" size={20} color="#fff" />
+                <MaterialCommunityIcons
+                  name="message-outline"
+                  size={20}
+                  color="#fff"
+                />
                 <Text style={styles.chatButtonText}>
                   {isCreatingChat ? "Opening chat…" : "Chat"}
                 </Text>

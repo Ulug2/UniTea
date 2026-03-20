@@ -8,6 +8,7 @@ export type PostsSummaryViewRow = {
   content: string;
   title: string | null;
   image_url: string | null;
+  image_urls?: string[] | null;
   category: string | null;
   location: string | null;
   post_type: string;
@@ -35,6 +36,7 @@ export type PostsSummaryViewRow = {
   original_author_username?: string | null;
   original_author_avatar?: string | null;
   original_image_url?: string | null;
+  original_image_urls?: string[] | null;
   original_is_anonymous?: boolean | null;
   original_created_at?: string | null;
 };

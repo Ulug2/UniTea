@@ -27,8 +27,7 @@ import {
 import { useTheme } from "../../context/ThemeContext";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
-import { Database } from "../../types/database.types";
-import { uploadImage, getImageUrl } from "../../utils/supabaseImages";
+import { uploadImage } from "../../utils/supabaseImages";
 import { formatDistanceToNowStrict } from "date-fns";
 import nuLogo from "../../../assets/images/nu-logo.png";
 import SupabaseImage from "../../components/SupabaseImage";
@@ -39,10 +38,62 @@ import { useImagePipeline } from "../../hooks/useImagePipeline";
 import { useCreatePostFormState } from "../../hooks/useCreatePostFormState";
 import { useCreatePostMutation } from "../../hooks/useCreatePostMutation";
 import { useImageAspectRatio } from "../../hooks/useImageAspectRatio";
-
-type PostInsert = Database["public"]["Tables"]["posts"]["Insert"];
+import {
+  FullscreenImageModal,
+  resolvePostImageUri,
+} from "../../components/FullscreenImageModal";
 
 const MAX_POLL_OPTIONS = 11;
+const MAX_POST_IMAGES = 5;
+const DESCRIPTION_INPUT_MIN_HEIGHT = 48;
+const DESCRIPTION_INPUT_MAX_HEIGHT = 420;
+
+type SelectedImagePreviewProps = {
+  uri: string;
+  onRemove: () => void;
+  onOpen: () => void;
+  isLast: boolean;
+};
+
+function SelectedImagePreview({
+  uri,
+  onRemove,
+  onOpen,
+  isLast,
+}: SelectedImagePreviewProps) {
+  const previewImageAspectRatio = useImageAspectRatio(uri);
+  const imageHeight = 355;
+  const imageWidth = Math.max(
+    120,
+    Math.min(380, imageHeight * previewImageAspectRatio),
+  );
+
+  return (
+    <View
+      style={[
+        styles.galleryImageItem,
+        {
+          width: imageWidth,
+          height: imageHeight,
+          marginRight: isLast ? 0 : 4,
+        },
+      ]}
+    >
+      <Pressable onPress={onRemove} style={styles.galleryRemoveButton}>
+        <AntDesign name="close" size={16} color="white" />
+      </Pressable>
+      <Pressable onPress={onOpen}>
+        <Image
+          source={{ uri }}
+          style={styles.galleryImagePreview}
+          // Always fill the thumbnail height; if aspect ratio differs, crop instead
+          // of showing blank space.
+          resizeMode="cover"
+        />
+      </Pressable>
+    </View>
+  );
+}
 
 export default function CreatePostScreen() {
   const { theme, isDark } = useTheme();
@@ -52,7 +103,18 @@ export default function CreatePostScreen() {
     repostId?: string;
   }>();
   const { session } = useAuth();
+  const [expandedImageUri, setExpandedImageUri] = React.useState<string | null>(
+    null,
+  );
+  const scrollViewRef = React.useRef<ScrollView | null>(null);
 
+  const contentSectionLayoutRef = React.useRef<{ y: number; height: number } | null>(
+    null,
+  );
+  const [isContentFocused, setIsContentFocused] = React.useState(false);
+  const [contentInputHeight, setContentInputHeight] = React.useState(
+    DESCRIPTION_INPUT_MIN_HEIGHT,
+  );
   const { originalPost, isLoadingOriginal } =
     useOriginalPostForRepost(repostId);
 
@@ -61,8 +123,8 @@ export default function CreatePostScreen() {
     isRepost,
     content,
     setContent,
-    image,
-    setImage,
+    images,
+    setImages,
     isAnonymous,
     setIsAnonymous,
     isSubmitting,
@@ -81,25 +143,53 @@ export default function CreatePostScreen() {
     canSubmit,
   } = useCreatePostFormState({ type, repostId });
 
-  const { pickAndPrepareImage } = useImagePipeline();
-  const previewImageAspectRatio = useImageAspectRatio(image);
+  const { pickAndPrepareImages } = useImagePipeline({
+    allowsMultipleSelection: true,
+    selectionLimit: MAX_POST_IMAGES,
+  });
 
   const goBack = () => {
     reset();
-    // Return to the tab the user came from so they stay in context
-    if (isLostFound) {
-      router.replace("/(protected)/(tabs)/lostfound");
-    } else {
-      router.replace("/(protected)/(tabs)");
+    // Use `back` so the previous feed screen stays mounted,
+    // preserving its FlatList scroll position.
+    if (typeof (router as any).back === "function") {
+      router.back();
+      return;
     }
+    // Fallback (should be rare): return to the likely originating tab.
+    router.replace(isLostFound ? "/(protected)/(tabs)/lostfound" : "/(protected)/(tabs)");
   };
 
   const pickImage = async () => {
-    const uri = await pickAndPrepareImage();
-    if (uri) {
-      setImage(uri);
+    const selectedUris = await pickAndPrepareImages();
+    if (selectedUris.length > 0) {
+      setImages((previous) => {
+        const merged = [...previous, ...selectedUris];
+        const unique = Array.from(new Set(merged));
+        return unique.slice(0, MAX_POST_IMAGES);
+      });
     }
   };
+
+  const scrollToContentInput = React.useCallback(
+    (animated: boolean = true) => {
+      const layout = contentSectionLayoutRef.current;
+      if (!layout || !scrollViewRef.current) return;
+      // Scroll just enough so the focused input stays above the header/keyboard.
+      scrollViewRef.current.scrollTo({
+        y: Math.max(0, layout.y - 16),
+        animated,
+      });
+    },
+    [],
+  );
+
+  React.useEffect(() => {
+    if (!isContentFocused) return;
+    // Defer to after RN applies keyboard layout adjustments.
+    const t = setTimeout(() => scrollToContentInput(true), 50);
+    return () => clearTimeout(t);
+  }, [isContentFocused, scrollToContentInput]);
 
   // Create post mutation with optimistic UI updates (like Instagram/X)
   const createPostMutation = useCreatePostMutation({
@@ -118,6 +208,7 @@ export default function CreatePostScreen() {
 
     try {
       let imagePath: string | undefined = undefined;
+      let imagePaths: string[] = [];
 
       // If poll is enabled on feed posts, validate options
       let cleanedPollOptions: string[] | undefined = undefined;
@@ -145,10 +236,14 @@ export default function CreatePostScreen() {
         cleanedPollOptions = normalized;
       }
 
-      // Upload image first if present
-      if (image) {
+      // Upload selected images first if present.
+      // The backend stores both image_url (first) and image_urls (all) for compatibility.
+      if (images.length > 0) {
         try {
-          imagePath = await uploadImage(image, supabase);
+          imagePaths = await Promise.all(
+            images.map((localUri) => uploadImage(localUri, supabase)),
+          );
+          imagePath = imagePaths[0];
         } catch (error: any) {
           logger.error("Image upload error", error as Error);
           Alert.alert(
@@ -162,6 +257,7 @@ export default function CreatePostScreen() {
       // Fire the mutation (optimistic UI will update feed); no need to await here
       createPostMutation.mutate({
         imagePath,
+        imagePaths,
         postContent: content,
         postTitle: title,
         postLocation: location,
@@ -246,12 +342,19 @@ export default function CreatePostScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={0}
         style={{ flex: 1 }}
       >
         <ScrollView
+          ref={scrollViewRef}
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingBottom: Math.min(insets.bottom, 18) + 24,
+          }}
         >
           {/* LOST & FOUND CATEGORY SELECTOR */}
           {isLostFound && (
@@ -382,7 +485,12 @@ export default function CreatePostScreen() {
           )}
 
           {/* CONTENT INPUT */}
-          <View style={styles.contentSection}>
+          <View
+            style={styles.contentSection}
+            onLayout={(e) => {
+              contentSectionLayoutRef.current = e.nativeEvent.layout;
+            }}
+          >
             {isLostFound && (
               <Text style={[styles.sectionLabel, { color: theme.text }]}>
                 Description *
@@ -402,13 +510,32 @@ export default function CreatePostScreen() {
                     : "What's on your mind?"
               }
               placeholderTextColor={theme.secondaryText}
-              style={[styles.contentInput, { color: theme.text }]}
+              style={[styles.contentInput, { color: theme.text, height: contentInputHeight }]}
               keyboardAppearance={isDark ? "dark" : "light"}
               onChangeText={setContent}
               value={content}
               multiline
               autoFocus={!isLostFound && !isRepost}
-              scrollEnabled={true}
+              scrollEnabled={contentInputHeight >= DESCRIPTION_INPUT_MAX_HEIGHT - 1}
+              onFocus={() => {
+                setIsContentFocused(true);
+                scrollToContentInput(true);
+              }}
+              onBlur={() => setIsContentFocused(false)}
+              onContentSizeChange={(e) => {
+                const next =
+                  e.nativeEvent.contentSize.height + 20; // include vertical padding
+                const clamped = Math.max(
+                  DESCRIPTION_INPUT_MIN_HEIGHT,
+                  Math.min(DESCRIPTION_INPUT_MAX_HEIGHT, next),
+                );
+                setContentInputHeight(clamped);
+
+                if (isContentFocused) {
+                  // Keep the expanding textarea visible.
+                  scrollToContentInput(true);
+                }
+              }}
               textAlignVertical="top"
             />
           </View>
@@ -520,21 +647,45 @@ export default function CreatePostScreen() {
           )}
 
           {/* IMAGE PREVIEW */}
-          {image && (
-            <View style={styles.imageContainer}>
-              <Pressable
-                onPress={() => setImage(null)}
-                style={styles.removeImageButton}
+          {images.length > 0 && (
+            <View style={styles.imageGalleryContainer}>
+              <View style={styles.imageGalleryHeader}>
+                <Text
+                  style={[
+                    styles.sectionLabel,
+                    { color: theme.text, marginBottom: 0 },
+                  ]}
+                >
+                  Images
+                </Text>
+                <Text
+                  style={[
+                    styles.galleryCountText,
+                    { color: theme.secondaryText },
+                  ]}
+                >
+                  {images.length}/{MAX_POST_IMAGES}
+                </Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.imageGalleryGrid}
               >
-                <AntDesign name="close" size={20} color="white" />
-              </Pressable>
-              <Image
-                source={{ uri: image }}
-                style={[
-                  styles.imagePreview,
-                  { aspectRatio: previewImageAspectRatio },
-                ]}
-              />
+                {images.map((uri, index) => (
+                  <SelectedImagePreview
+                    key={`${uri}-${index}`}
+                    uri={uri}
+                    isLast={index === images.length - 1}
+                    onOpen={() => setExpandedImageUri(resolvePostImageUri(uri))}
+                    onRemove={() =>
+                      setImages((current) =>
+                        current.filter((_, i) => i !== index),
+                      )
+                    }
+                  />
+                ))}
+              </ScrollView>
             </View>
           )}
 
@@ -617,7 +768,7 @@ export default function CreatePostScreen() {
             {
               backgroundColor: theme.card,
               borderTopColor: theme.border,
-              paddingBottom: Math.min(insets.bottom, 18),
+              paddingBottom: 20,
             },
           ]}
         >
@@ -662,6 +813,12 @@ export default function CreatePostScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      <FullscreenImageModal
+        visible={Boolean(expandedImageUri)}
+        uri={expandedImageUri}
+        onClose={() => setExpandedImageUri(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -820,25 +977,48 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_400Regular",
     paddingVertical: 10,
     minHeight: 48,
-    maxHeight: 280,
+    maxHeight: 420,
     textAlignVertical: "top",
   },
-  imageContainer: {
-    marginVertical: 15,
+  imageGalleryContainer: {
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  imageGalleryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  galleryCountText: {
+    fontSize: 13,
+    fontFamily: "Poppins_400Regular",
+  },
+  imageGalleryGrid: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  galleryImageItem: {
     position: "relative",
+    borderRadius: 10,
+    overflow: "hidden",
   },
-  removeImageButton: {
+  galleryRemoveButton: {
     position: "absolute",
+    right: 6,
+    top: 6,
     zIndex: 1,
-    right: 10,
-    top: 10,
-    padding: 8,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    borderRadius: 20,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
   },
-  imagePreview: {
+  galleryImagePreview: {
     width: "100%",
-    borderRadius: 12,
+    height: "100%",
+    borderRadius: 10,
   },
   footer: {
     flexDirection: "row",
@@ -859,6 +1039,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   footerButton: {
+    justifyContent: "center",
+    alignItems: "center",
     padding: 5,
   },
   originalPostPreview: {

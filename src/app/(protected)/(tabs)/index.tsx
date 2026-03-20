@@ -187,6 +187,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
         userId={item.user_id}
         content={item.content}
         imageUrl={item.image_url}
+        imageUrls={item.image_urls ?? null}
         category={item.category}
         location={item.location}
         postType={item.post_type}
@@ -206,6 +207,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
         repostComment={item.repost_comment}
         originalContent={item.original_content}
         originalImageUrl={item.original_image_url}
+        originalImageUrls={item.original_image_urls ?? null}
         originalUserId={item.original_user_id}
         originalAuthorUsername={item.original_author_username}
         originalAuthorAvatar={item.original_author_avatar}

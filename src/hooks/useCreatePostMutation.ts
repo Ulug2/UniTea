@@ -1,11 +1,11 @@
 import { useMutation, UseMutationResult, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
-import { uploadImage } from "../utils/supabaseImages";
 import { logger } from "../utils/logger";
 import { Alert } from "react-native";
 
 type CreatePostVariables = {
   imagePath: string | undefined;
+  imagePaths?: string[];
   postContent: string;
   postTitle: string;
   postLocation: string;
@@ -34,10 +34,24 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         throw new Error("You must be logged in to create a post.");
       }
 
-      const { postContent, postTitle, postLocation, postIsAnonymous, postCategory, pollOptions, imagePath } =
+      const {
+        postContent,
+        postTitle,
+        postLocation,
+        postIsAnonymous,
+        postCategory,
+        pollOptions,
+        imagePath,
+        imagePaths,
+      } =
         variables;
 
-      if (!resolvedRepostId && !postContent.trim()) {
+      const normalizedImagePaths = (imagePaths ?? []).filter(
+        (path): path is string => Boolean(path?.trim()),
+      );
+      const primaryImagePath = normalizedImagePaths[0] ?? imagePath;
+
+      if (!resolvedRepostId && !postContent.trim() && !primaryImagePath) {
         throw new Error("Content is required");
       }
 
@@ -48,7 +62,8 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
       const postPayload = {
         content: postContent.trim() || "",
         post_type: isLostFound ? "lost_found" : "feed",
-        image_url: imagePath || null,
+        image_url: primaryImagePath || null,
+        image_urls: normalizedImagePaths.length > 0 ? normalizedImagePaths : null,
         is_anonymous: isLostFound ? false : postIsAnonymous,
         ...(isLostFound && {
           title: postTitle.trim(),
@@ -118,6 +133,12 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         user_id: currentUserId || "",
         content: variables.postContent.trim(),
         image_url: variables.imagePath || null,
+        image_urls:
+          variables.imagePaths && variables.imagePaths.length > 0
+            ? variables.imagePaths
+            : variables.imagePath
+              ? [variables.imagePath]
+              : null,
         category: null,
         location: null,
         post_type: "feed",

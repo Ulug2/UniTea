@@ -11,6 +11,7 @@ const openai = new OpenAI({
 });
 
 const MAX_POLL_OPTIONS = 11;
+const MAX_POST_IMAGES = 5;
 
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
@@ -63,6 +64,7 @@ serve(async (req: Request) => {
       content,
       title,
       image_url,
+      image_urls,
       post_type,
       is_anonymous,
       location,
@@ -110,47 +112,69 @@ Text: "${textToModerate.slice(0, 2000)}"`;
       }
     }
 
-    // 4. Image Moderation (if image_url is present)
-    if (image_url) {
+    const normalizedImageUrls = Array.from(
+      new Set(
+        [
+          ...(Array.isArray(image_urls) ? image_urls : []),
+          ...(image_url ? [image_url] : []),
+        ]
+          .filter((value): value is string => typeof value === "string")
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+      )
+    ).slice(0, MAX_POST_IMAGES);
+
+    if (
+      Array.isArray(image_urls) &&
+      image_urls.filter((value) => typeof value === "string" && value.trim().length > 0).length >
+        MAX_POST_IMAGES
+    ) {
+      throw new Error(`You can upload up to ${MAX_POST_IMAGES} images per post`);
+    }
+
+    // 4. Image Moderation (if image_urls are present)
+    if (normalizedImageUrls.length > 0) {
       try {
-        // Generate a signed URL for OpenAI to access the image
-        // Valid for 5 minutes (enough time for OpenAI to process)
-        const { data: signedUrlData, error: signedUrlError } =
-          await supabase.storage.from("post-images").createSignedUrl(image_url, 300);
+        for (const currentImageUrl of normalizedImageUrls) {
+          // Generate a signed URL for OpenAI to access the image
+          // Valid for 5 minutes (enough time for OpenAI to process)
+          const { data: signedUrlData, error: signedUrlError } =
+            await supabase.storage.from("post-images").createSignedUrl(currentImageUrl, 300);
 
-        if (signedUrlError || !signedUrlData?.signedUrl) {
-          console.error("Error creating signed URL:", signedUrlError);
-          throw new Error("Failed to process image");
-        }
+          if (signedUrlError || !signedUrlData?.signedUrl) {
+            console.error("Error creating signed URL:", signedUrlError);
+            throw new Error("Failed to process image");
+          }
 
-        // Use GPT-4o-mini for image moderation (content + visible text/curse words)
-        const imageModerationResponse = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text:
-                    "Is this image appropriate for a safe community app? Does it contain any visible curse words, offensive text (in any alphabet; include Kazakh/Russian in Latin e.g. Kotakbas, Qotaqbas, or obfuscated like pid@ras), nudity, violence, hate symbols, or inappropriate content in any language? If yes to any, reply only NO. Otherwise reply only YES.",
-                },
-                {
-                  type: "image_url",
-                  image_url: { url: signedUrlData.signedUrl },
-                },
-              ],
-            },
-          ],
-          max_tokens: 10,
-        });
+          // Use GPT-4o-mini for image moderation (content + visible text/curse words)
+          const imageModerationResponse = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      "Is this image appropriate for a safe community app? Does it contain any visible curse words, offensive text (in any alphabet; include Kazakh/Russian in Latin e.g. Kotakbas, Qotaqbas, or obfuscated like pid@ras), nudity, violence, hate symbols, or inappropriate content in any language? If yes to any, reply only NO. Otherwise reply only YES.",
+                  },
+                  {
+                    type: "image_url",
+                    image_url: { url: signedUrlData.signedUrl },
+                  },
+                ],
+              },
+            ],
+            max_tokens: 10,
+          });
 
-        const answer = imageModerationResponse.choices[0]?.message?.content
-          ?.trim()
-          .toUpperCase();
+          const answer = imageModerationResponse.choices[0]?.message?.content
+            ?.trim()
+            .toUpperCase();
 
-        if (!answer || answer.includes("NO")) {
-          throw new Error("Image violates community guidelines");
+          if (!answer || answer.includes("NO")) {
+            throw new Error("Image violates community guidelines");
+          }
         }
       } catch (error: any) {
         // If it's already our custom error, re-throw it
@@ -168,7 +192,8 @@ Text: "${textToModerate.slice(0, 2000)}"`;
       user_id: user.id,
       content: content?.trim() || "",
       post_type: post_type || "feed",
-      image_url: image_url || null,
+      image_url: normalizedImageUrls[0] || null,
+      image_urls: normalizedImageUrls.length > 0 ? normalizedImageUrls : null,
       is_anonymous: is_anonymous ?? false,
     };
 

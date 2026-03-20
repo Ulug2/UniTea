@@ -27,7 +27,9 @@ const USER_ID = 'user-abc';
 
 const defaultVars = {
   imagePath: undefined,
+  imagePaths: [],
   postContent: 'Hello world',
+  postTitle: '',
   postLocation: '',
   postIsAnonymous: false,
   postCategory: 'lost' as const,
@@ -186,6 +188,30 @@ describe('useCreatePostMutation', () => {
 
       const queryKeys = invalidateSpy.mock.calls.map((c) => (c[0] as any)?.queryKey);
       expect(queryKeys).toContainEqual(['posts', 'feed']);
+    });
+
+    it('sends image_urls and keeps first item as image_url', async () => {
+      mockFetchSuccess({ id: 'post-4' });
+
+      const { result } = renderHook(
+        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.mutate({
+          ...defaultVars,
+          postContent: '',
+          imagePaths: ['posts/a.webp', 'posts/b.webp'],
+          imagePath: 'posts/a.webp',
+        });
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const fetchBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(fetchBody.image_urls).toEqual(['posts/a.webp', 'posts/b.webp']);
+      expect(fetchBody.image_url).toBe('posts/a.webp');
     });
   });
 

@@ -36,6 +36,16 @@ const ProfilePostItem = memo(
       return item.content;
     }, [isLostFound, item]);
 
+    const finalContent = useMemo(() => {
+      const text = (displayContent ?? "").trim();
+      const hasImage =
+        Boolean((item as PostSummary).image_url) ||
+        Boolean((item as PostSummary).image_urls?.length);
+
+      if (!text && hasImage) return "[image]";
+      return displayContent;
+    }, [displayContent, item]);
+
     const timeAgo = useMemo(() => {
       return item.created_at
         ? formatDistanceToNowStrict(new Date(item.created_at), {
@@ -66,7 +76,7 @@ const ProfilePostItem = memo(
           style={[styles.postContent, { color: theme.text }]}
           numberOfLines={2}
         >
-          {displayContent}
+          {finalContent}
         </Text>
         <View style={styles.postFooter}>
           {!isLostFound && (

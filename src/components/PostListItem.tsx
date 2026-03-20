@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Image, Pressable, Text, View, StyleSheet } from "react-native";
+import {
+  Image,
+  Pressable,
+  Text,
+  View,
+  StyleSheet,
+  ScrollView,
+} from "react-native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNowStrict } from "date-fns";
@@ -85,7 +92,14 @@ function _buildStyles(theme: Theme) {
       fontFamily: "Poppins_500Medium",
     },
     time: { fontSize: 12, color: theme.secondaryText, marginLeft: 10 },
-    postImage: { width: "100%", borderRadius: 15, marginTop: 8 },
+    // Keep feed post image height consistent regardless of image aspect ratio.
+    postImage: {
+      width: "100%",
+      borderRadius: 10,
+      marginTop: 14,
+      marginBottom: 6,
+      overflow: "hidden",
+    },
     contentText: {
       fontSize: 16,
       marginTop: 6,
@@ -139,6 +153,7 @@ type PostListItemProps = {
   userId: string;
   content: string;
   imageUrl: string | null;
+  imageUrls?: string[] | null;
   category: string | null;
   location: string | null;
   postType?: string;
@@ -164,6 +179,7 @@ type PostListItemProps = {
   repostComment?: string | null;
   originalContent?: string | null;
   originalImageUrl?: string | null;
+  originalImageUrls?: string[] | null;
   originalUserId?: string | null;
   originalAuthorUsername?: string | null;
   originalAuthorAvatar?: string | null;
@@ -186,6 +202,120 @@ type PostListItemProps = {
   isAdmin?: boolean;
 };
 
+function normalizeImagePaths(
+  singleImagePath: string | null | undefined,
+  multiImagePaths: string[] | null | undefined,
+): string[] {
+  const deduped = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(multiImagePaths) ? multiImagePaths : []),
+        ...(singleImagePath ? [singleImagePath] : []),
+      ]
+        .map((path) => String(path ?? "").trim())
+        .filter((path) => path.length > 0),
+    ),
+  );
+
+  return deduped;
+}
+
+type HorizontalGalleryProps = {
+  imagePaths: string[];
+  onImagePress?: (uri: string) => void;
+  onLoadImage?: () => void;
+  height?: number;
+  topMargin?: number;
+};
+
+function HorizontalImageGallery({
+  imagePaths,
+  onImagePress,
+  onLoadImage,
+  height = 310,
+  topMargin = 14,
+}: HorizontalGalleryProps) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: topMargin,
+        marginBottom: 6,
+      }}
+    >
+      {imagePaths.map((path, index) => (
+        <HorizontalImageGalleryItem
+          key={`${path}-${index}`}
+          path={path}
+          height={height}
+          isLast={index === imagePaths.length - 1}
+          onPress={onImagePress}
+          onLoadImage={onLoadImage}
+        />
+      ))}
+    </ScrollView>
+  );
+}
+
+type HorizontalGalleryItemProps = {
+  path: string;
+  height: number;
+  isLast: boolean;
+  onPress?: (uri: string) => void;
+  onLoadImage?: () => void;
+};
+
+function HorizontalImageGalleryItem({
+  path,
+  height,
+  isLast,
+  onPress,
+  onLoadImage,
+}: HorizontalGalleryItemProps) {
+  const resolvedUri = resolvePostImageUri(path);
+  const ratio = useImageAspectRatio(resolvedUri);
+  const width = Math.max(120, Math.min(330, height * ratio));
+
+  const onTap = (e: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onPress && resolvedUri) onPress(resolvedUri);
+  };
+
+  return (
+    <Pressable
+      onPress={onTap}
+      style={{
+        width,
+        height,
+        marginRight: isLast ? 0 : 4,
+        borderRadius: 10,
+        overflow: "hidden",
+      }}
+    >
+      {path.startsWith("http") ? (
+        <Image
+          source={{ uri: path }}
+          style={{ width: "100%", height: "100%" }}
+          resizeMode="cover"
+          onLoad={onLoadImage}
+        />
+      ) : (
+        <SupabaseImage
+          path={path}
+          bucket="post-images"
+          contentFit="cover"
+          style={{ width: "100%", height: "100%" }}
+          onLoad={onLoadImage}
+        />
+      )}
+    </Pressable>
+  );
+}
+
 // Custom comparison function for better memoization (prevents unnecessary re-renders)
 const arePropsEqual = (
   prevProps: PostListItemProps,
@@ -197,6 +327,8 @@ const arePropsEqual = (
     prevProps.userId === nextProps.userId &&
     prevProps.content === nextProps.content &&
     prevProps.imageUrl === nextProps.imageUrl &&
+    JSON.stringify(prevProps.imageUrls ?? []) ===
+    JSON.stringify(nextProps.imageUrls ?? []) &&
     prevProps.category === nextProps.category &&
     prevProps.location === nextProps.location &&
     prevProps.postType === nextProps.postType &&
@@ -216,13 +348,15 @@ const arePropsEqual = (
     prevProps.repostComment === nextProps.repostComment &&
     prevProps.originalContent === nextProps.originalContent &&
     prevProps.originalImageUrl === nextProps.originalImageUrl &&
+    JSON.stringify(prevProps.originalImageUrls ?? []) ===
+    JSON.stringify(nextProps.originalImageUrls ?? []) &&
     prevProps.originalAuthorUsername === nextProps.originalAuthorUsername &&
     prevProps.originalAuthorAvatar === nextProps.originalAuthorAvatar &&
     prevProps.originalIsAnonymous === nextProps.originalIsAnonymous &&
     prevProps.originalCreatedAt === nextProps.originalCreatedAt &&
     prevProps.isDetailedPost === nextProps.isDetailedPost &&
     prevProps.disableCommentInteraction ===
-      nextProps.disableCommentInteraction &&
+    nextProps.disableCommentInteraction &&
     prevProps.isBookmarked === nextProps.isBookmarked &&
     prevProps.onImagePress === nextProps.onImagePress &&
     prevProps.isAdmin === nextProps.isAdmin
@@ -234,6 +368,7 @@ const PostListItem = React.memo(function PostListItem({
   userId,
   content,
   imageUrl,
+  imageUrls,
   isAnonymous,
   isEdited,
   createdAt,
@@ -247,6 +382,7 @@ const PostListItem = React.memo(function PostListItem({
   repostComment,
   originalContent,
   originalImageUrl,
+  originalImageUrls,
   originalUserId,
   originalAuthorUsername,
   originalAuthorAvatar,
@@ -268,19 +404,35 @@ const PostListItem = React.memo(function PostListItem({
   const [contentExpanded, setContentExpanded] = useState(false);
   const [originalContentExpanded, setOriginalContentExpanded] = useState(false);
   const [avatarLoaded, setAvatarLoaded] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [loadedImageCount, setLoadedImageCount] = useState(0);
 
   // Check if this is a repost
   const isRepost = !!repostedFromPostId;
+  const displayImageUrls = normalizeImagePaths(imageUrl, imageUrls);
+  const displayOriginalImageUrls = normalizeImagePaths(
+    originalImageUrl,
+    originalImageUrls,
+  );
   const hasAvatar =
     !!(isRepost ? originalAuthorAvatar : avatarUrl) || isAnonymous;
-  const hasImage = !!imageUrl;
-  const resolvedImageUri = resolvePostImageUri(imageUrl);
-  const resolvedOriginalImageUri = resolvePostImageUri(originalImageUrl);
-  const postImageAspectRatio = useImageAspectRatio(resolvedImageUri);
-  const originalImageAspectRatio = useImageAspectRatio(
-    resolvedOriginalImageUri,
+  const hasImage = displayImageUrls.length > 0;
+  const resolvedImageUri = resolvePostImageUri(displayImageUrls[0] ?? null);
+  const resolvedOriginalImageUri = resolvePostImageUri(
+    displayOriginalImageUrls[0] ?? null,
   );
+
+  // Single-image layout should not be constrained by a fixed height.
+  // We derive the layout height from the actual image aspect ratio.
+  const postImageAspectRatio = useImageAspectRatio(
+    displayImageUrls.length === 1 ? resolvedImageUri : null,
+  );
+  const originalImageAspectRatio = useImageAspectRatio(
+    displayOriginalImageUrls.length === 1 ? resolvedOriginalImageUri : null,
+  );
+
+  useEffect(() => {
+    setLoadedImageCount(0);
+  }, [postId, displayImageUrls.length]);
 
   // Notify parent when all media has loaded (for feed skeleton)
   useEffect(() => {
@@ -289,10 +441,24 @@ const PostListItem = React.memo(function PostListItem({
       onImageLoad();
       return;
     }
-    if ((!hasAvatar || avatarLoaded) && (!hasImage || imageLoaded)) {
+    if (
+      (!hasAvatar || avatarLoaded) &&
+      (!hasImage || loadedImageCount >= displayImageUrls.length)
+    ) {
       onImageLoad();
     }
-  }, [onImageLoad, hasAvatar, hasImage, avatarLoaded, imageLoaded]);
+  }, [
+    onImageLoad,
+    hasAvatar,
+    hasImage,
+    avatarLoaded,
+    loadedImageCount,
+    displayImageUrls.length,
+  ]);
+
+  const markImageLoaded = () => {
+    setLoadedImageCount((current) => current + 1);
+  };
 
   // Handle profile view - only for other users, not yourself
   const handleProfilePress = (
@@ -388,34 +554,34 @@ const PostListItem = React.memo(function PostListItem({
                   />
                 )
               ) : // Show regular post author
-              isAnonymous ? (
-                <Image
-                  source={nuLogo}
-                  style={styles.avatar}
-                  onLoad={() => setAvatarLoaded(true)}
-                />
-              ) : avatarUrl ? (
-                avatarUrl.startsWith("http") ? (
+                isAnonymous ? (
                   <Image
-                    source={{ uri: avatarUrl }}
+                    source={nuLogo}
                     style={styles.avatar}
                     onLoad={() => setAvatarLoaded(true)}
                   />
+                ) : avatarUrl ? (
+                  avatarUrl.startsWith("http") ? (
+                    <Image
+                      source={{ uri: avatarUrl }}
+                      style={styles.avatar}
+                      onLoad={() => setAvatarLoaded(true)}
+                    />
+                  ) : (
+                    <SupabaseImage
+                      path={avatarUrl}
+                      bucket="avatars"
+                      style={styles.avatar}
+                      onLoad={() => setAvatarLoaded(true)}
+                    />
+                  )
                 ) : (
-                  <SupabaseImage
-                    path={avatarUrl}
-                    bucket="avatars"
+                  <Image
+                    source={DEFAULT_AVATAR}
                     style={styles.avatar}
                     onLoad={() => setAvatarLoaded(true)}
                   />
-                )
-              ) : (
-                <Image
-                  source={DEFAULT_AVATAR}
-                  style={styles.avatar}
-                  onLoad={() => setAvatarLoaded(true)}
-                />
-              )}
+                )}
               <Text style={styles.username}>
                 {isAnonymous
                   ? userId === currentUserId
@@ -441,34 +607,43 @@ const PostListItem = React.memo(function PostListItem({
 
           {/* REPOST IMAGE (if user added image when reposting) */}
           {isRepost &&
-            imageUrl &&
-            (onImagePress ? (
-              <Pressable
-                onPress={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (resolvedImageUri) onImagePress(resolvedImageUri);
-                }}
-              >
+            displayImageUrls.length > 0 &&
+            (displayImageUrls.length === 1 ? (
+              onImagePress ? (
+                <Pressable
+                  onPress={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (resolvedImageUri) onImagePress(resolvedImageUri);
+                  }}
+                >
+                  <SupabaseImage
+                    path={displayImageUrls[0]}
+                    bucket="post-images"
+                    style={[
+                      styles.postImage,
+                      { aspectRatio: postImageAspectRatio },
+                    ]}
+                    onLoad={markImageLoaded}
+                  />
+                </Pressable>
+              ) : (
                 <SupabaseImage
-                  path={imageUrl}
+                  path={displayImageUrls[0]}
                   bucket="post-images"
                   style={[
                     styles.postImage,
                     { aspectRatio: postImageAspectRatio },
                   ]}
-                  onLoad={() => setImageLoaded(true)}
+                  onLoad={markImageLoaded}
                 />
-              </Pressable>
+              )
             ) : (
-              <SupabaseImage
-                path={imageUrl}
-                bucket="post-images"
-                style={[
-                  styles.postImage,
-                  { aspectRatio: postImageAspectRatio },
-                ]}
-                onLoad={() => setImageLoaded(true)}
+              <HorizontalImageGallery
+                imagePaths={displayImageUrls}
+                onImagePress={onImagePress}
+                onLoadImage={markImageLoaded}
+                height={310}
               />
             ))}
 
@@ -520,36 +695,48 @@ const PostListItem = React.memo(function PostListItem({
                     </Pressable>
                   )}
                 {/* Original post image (when present in the reposted post) */}
-                {originalImageUrl &&
-                  (onImagePress ? (
-                    <Pressable
-                      onPress={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (resolvedOriginalImageUri)
-                          onImagePress(resolvedOriginalImageUri);
-                      }}
-                    >
+                {displayOriginalImageUrls.length > 0 &&
+                  (displayOriginalImageUrls.length === 1 ? (
+                    onImagePress ? (
+                      <Pressable
+                        onPress={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (resolvedOriginalImageUri)
+                            onImagePress(resolvedOriginalImageUri);
+                        }}
+                      >
+                        <SupabaseImage
+                          path={displayOriginalImageUrls[0]}
+                          bucket="post-images"
+                          style={[
+                            styles.postImage,
+                            {
+                              marginTop: 14,
+                              aspectRatio: originalImageAspectRatio,
+                            },
+                          ]}
+                        />
+                      </Pressable>
+                    ) : (
                       <SupabaseImage
-                        path={originalImageUrl}
+                        path={displayOriginalImageUrls[0]}
                         bucket="post-images"
                         style={[
                           styles.postImage,
                           {
-                            marginTop: 8,
+                            marginTop: 14,
                             aspectRatio: originalImageAspectRatio,
                           },
                         ]}
                       />
-                    </Pressable>
+                    )
                   ) : (
-                    <SupabaseImage
-                      path={originalImageUrl}
-                      bucket="post-images"
-                      style={[
-                        styles.postImage,
-                        { marginTop: 8, aspectRatio: originalImageAspectRatio },
-                      ]}
+                    <HorizontalImageGallery
+                      imagePaths={displayOriginalImageUrls}
+                      onImagePress={onImagePress}
+                      height={310}
+                      topMargin={14}
                     />
                   ))}
                 {/* Original post poll (Poll renders null if the post has no poll) */}
@@ -564,34 +751,43 @@ const PostListItem = React.memo(function PostListItem({
             ) : (
               // Regular post content
               <>
-                {imageUrl &&
-                  (onImagePress ? (
-                    <Pressable
-                      onPress={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (resolvedImageUri) onImagePress(resolvedImageUri);
-                      }}
-                    >
+                {displayImageUrls.length > 0 &&
+                  (displayImageUrls.length === 1 ? (
+                    onImagePress ? (
+                      <Pressable
+                        onPress={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (resolvedImageUri) onImagePress(resolvedImageUri);
+                        }}
+                      >
+                        <SupabaseImage
+                          path={displayImageUrls[0]}
+                          bucket="post-images"
+                          style={[
+                            styles.postImage,
+                            { aspectRatio: postImageAspectRatio },
+                          ]}
+                          onLoad={markImageLoaded}
+                        />
+                      </Pressable>
+                    ) : (
                       <SupabaseImage
-                        path={imageUrl}
+                        path={displayImageUrls[0]}
                         bucket="post-images"
                         style={[
                           styles.postImage,
                           { aspectRatio: postImageAspectRatio },
                         ]}
-                        onLoad={() => setImageLoaded(true)}
+                        onLoad={markImageLoaded}
                       />
-                    </Pressable>
+                    )
                   ) : (
-                    <SupabaseImage
-                      path={imageUrl}
-                      bucket="post-images"
-                      style={[
-                        styles.postImage,
-                        { aspectRatio: postImageAspectRatio },
-                      ]}
-                      onLoad={() => setImageLoaded(true)}
+                    <HorizontalImageGallery
+                      imagePaths={displayImageUrls}
+                      onImagePress={onImagePress}
+                      onLoadImage={markImageLoaded}
+                      height={310}
                     />
                   ))}
                 {content && (
