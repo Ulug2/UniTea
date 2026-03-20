@@ -113,29 +113,29 @@ async function registerForPushNotificationsAsync() {
         return null; // Return early if projectId is missing
     }
 
-    const { status: existingStatus } =
-        await Notifications.getPermissionsAsync();
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
-    if (existingStatus !== "granted") {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-    }
-
-    if (finalStatus !== "granted") {
-        logger.warn("Failed to get push token for push notification!");
-        return null;
-    }
-
     try {
+        // Only prompt when the caller explicitly wants to request permissions.
+        // (We decide whether to prompt in the hook effect by checking
+        // notification_settings existence.)
+        //
+        // Note: this helper historically prompted on every call. We now split
+        // "request permission" vs "read permissions" at the call site.
+        if (finalStatus !== "granted") {
+            logger.info("Push permission not granted yet; no Expo token will be fetched.");
+            return { status: finalStatus, pushToken: null };
+        }
+
         const token = await Notifications.getExpoPushTokenAsync({
             projectId: expoProjectId,
         });
         logger.info("Push notification token obtained successfully");
-        return token.data;
+        return { status: finalStatus, pushToken: token.data };
     } catch (error) {
         logger.error("Error getting Expo push token", error as Error);
-        return null;
+        return { status: finalStatus, pushToken: null };
     }
 }
 
@@ -150,35 +150,99 @@ export function usePushNotifications() {
 
         const setup = async () => {
             try {
-                const pushToken = await registerForPushNotificationsAsync();
-
-                if (!isMounted || !pushToken) return;
-
-                // Add timeout wrapper for the Supabase call (10 second timeout)
-                const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Request timeout')), 10000);
-                });
-
-                const supabasePromise = supabase
+                const existingSettings = await supabase
                     .from("notification_settings")
-                    .upsert(
-                        {
-                            user_id: userId,
-                            push_token: pushToken,
-                        },
-                        { onConflict: "user_id" }
-                    );
+                    .select("push_token, notify_chats, notify_upvotes")
+                    .eq("user_id", userId)
+                    .maybeSingle();
 
-                const result = await Promise.race([supabasePromise, timeoutPromise]) as any;
+                if (!isMounted) return;
 
-                if (result?.error) {
-                    logger.error(
-                        "Error saving push token to notification_settings",
-                        result.error as Error,
-                        { userId }
-                    );
+                const { status: permissionStatus } =
+                    await Notifications.getPermissionsAsync();
+
+                // If the user has never had a notification_settings row created yet,
+                // this is the "new account" / first-open flow: prompt for permission once.
+                if (!existingSettings.data) {
+                    if (permissionStatus !== "granted") {
+                        const { status } = await Notifications.requestPermissionsAsync();
+                        if (status !== "granted") {
+                            // User denied permission: turn toggles off permanently (until they enable again).
+                            await supabase
+                                .from("notification_settings")
+                                .upsert(
+                                    {
+                                        user_id: userId,
+                                        push_token: null,
+                                        notify_chats: false,
+                                        notify_upvotes: false,
+                                    },
+                                    { onConflict: "user_id" }
+                                );
+                            return;
+                        }
+                    }
+
+                    const reg = await registerForPushNotificationsAsync();
+                    if (!isMounted || !reg?.pushToken) return;
+
+                    // Add timeout wrapper for the Supabase call (10 second timeout)
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error("Request timeout")), 10000);
+                    });
+
+                    const supabasePromise = supabase
+                        .from("notification_settings")
+                        .upsert(
+                            {
+                                user_id: userId,
+                                push_token: reg.pushToken,
+                            },
+                            { onConflict: "user_id" }
+                        );
+
+                    const result = (await Promise.race([supabasePromise, timeoutPromise])) as any;
+
+                    if (result?.error) {
+                        logger.error(
+                            "Error saving push token to notification_settings",
+                            result.error as Error,
+                            { userId }
+                        );
+                    } else {
+                        logger.info("Push token saved successfully", { userId });
+                    }
+                    return;
+                }
+
+                // Existing user row exists:
+                // - If permission is granted, refresh Expo token (no permission prompt).
+                // - If permission is denied, ensure toggles are off (do not prompt again).
+                if (permissionStatus === "granted") {
+                    const reg = await registerForPushNotificationsAsync();
+                    if (!isMounted || !reg?.pushToken) return;
+
+                    await supabase
+                        .from("notification_settings")
+                        .upsert(
+                            {
+                                user_id: userId,
+                                push_token: reg.pushToken,
+                            },
+                            { onConflict: "user_id" }
+                        );
                 } else {
-                    logger.info("Push token saved successfully", { userId });
+                    await supabase
+                        .from("notification_settings")
+                        .upsert(
+                            {
+                                user_id: userId,
+                                push_token: null,
+                                notify_chats: false,
+                                notify_upvotes: false,
+                            },
+                            { onConflict: "user_id" }
+                        );
                 }
             } catch (error: any) {
                 // Silently handle timeout/network errors - don't crash the app
