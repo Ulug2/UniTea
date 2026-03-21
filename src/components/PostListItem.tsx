@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import {
   Image,
+  NativeSyntheticEvent,
   Pressable,
   Text,
+  TextLayoutEventData,
   View,
   StyleSheet,
   ScrollView,
@@ -402,7 +404,12 @@ const PostListItem = React.memo(function PostListItem({
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [contentExpanded, setContentExpanded] = useState(false);
+  const [repostCommentExpanded, setRepostCommentExpanded] = useState(false);
   const [originalContentExpanded, setOriginalContentExpanded] = useState(false);
+  const [isContentTruncated, setIsContentTruncated] = useState(false);
+  const [isRepostCommentTruncated, setIsRepostCommentTruncated] = useState(false);
+  const [isOriginalContentTruncated, setIsOriginalContentTruncated] =
+    useState(false);
   const [avatarLoaded, setAvatarLoaded] = useState(false);
   const [loadedImageCount, setLoadedImageCount] = useState(0);
 
@@ -434,6 +441,16 @@ const PostListItem = React.memo(function PostListItem({
     setLoadedImageCount(0);
   }, [postId, displayImageUrls.length]);
 
+  // Reset expansion/truncation state when list cell is reused for a different post.
+  useEffect(() => {
+    setContentExpanded(false);
+    setRepostCommentExpanded(false);
+    setOriginalContentExpanded(false);
+    setIsContentTruncated(false);
+    setIsRepostCommentTruncated(false);
+    setIsOriginalContentTruncated(false);
+  }, [postId, content, originalContent]);
+
   // Notify parent when all media has loaded (for feed skeleton)
   useEffect(() => {
     if (!onImageLoad) return;
@@ -458,6 +475,29 @@ const PostListItem = React.memo(function PostListItem({
 
   const markImageLoaded = () => {
     setLoadedImageCount((current) => current + 1);
+  };
+
+  const detectTruncation =
+    (setTruncated: (truncated: boolean) => void) =>
+    (event: NativeSyntheticEvent<TextLayoutEventData>) => {
+      if (isDetailedPost) return;
+      const lines = event.nativeEvent.lines ?? [];
+      const hasMoreThanMaxLines = lines.length > 4;
+      const lastRenderedLine = lines[Math.max(0, lines.length - 1)]?.text ?? "";
+      const visuallyEllipsized =
+        lines.length === 4 &&
+        (lastRenderedLine.endsWith("...") || lastRenderedLine.endsWith("…"));
+      setTruncated(hasMoreThanMaxLines || visuallyEllipsized);
+    };
+
+  const shouldShowReadMore = (
+    text: string | null | undefined,
+    isTruncated: boolean,
+  ) => {
+    if (!text) return false;
+    if (isTruncated) return true;
+    const newlineCount = text.match(/\n/g)?.length ?? 0;
+    return text.length > 180 || newlineCount >= 3;
   };
 
   // Handle profile view - only for other users, not yourself
@@ -602,7 +642,36 @@ const PostListItem = React.memo(function PostListItem({
 
           {/* REPOST USER'S CONTENT (if user added text when reposting) */}
           {isRepost && content && (
-            <Text style={styles.repostComment}>{content}</Text>
+            <View>
+              <Text
+                numberOfLines={isDetailedPost || repostCommentExpanded ? undefined : 4}
+                onTextLayout={detectTruncation(setIsRepostCommentTruncated)}
+                style={styles.repostComment}
+              >
+                {content}
+              </Text>
+              {!isDetailedPost &&
+                shouldShowReadMore(content, isRepostCommentTruncated) && (
+                <Pressable
+                  onPress={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setRepostCommentExpanded((prev) => !prev);
+                  }}
+                  style={{ marginTop: 4 }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 15,
+                      fontFamily: "Poppins_500Medium",
+                      color: theme.primary,
+                    }}
+                  >
+                    {repostCommentExpanded ? "show less" : "... read more"}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
           )}
 
           {/* REPOST IMAGE (if user added image when reposting) */}
@@ -665,14 +734,17 @@ const PostListItem = React.memo(function PostListItem({
                   numberOfLines={
                     isDetailedPost || originalContentExpanded ? undefined : 4
                   }
+                  onTextLayout={detectTruncation(setIsOriginalContentTruncated)}
                   style={[styles.originalContent, { color: theme.text }]}
                 >
                   {originalContent}
                 </Text>
                 {originalContent &&
                   !isDetailedPost &&
-                  (originalContent.length > 200 ||
-                    (originalContent.match(/\n/g)?.length ?? 0) >= 4) && (
+                  shouldShowReadMore(
+                    originalContent,
+                    isOriginalContentTruncated,
+                  ) && (
                     <Pressable
                       onPress={(e) => {
                         e.preventDefault();
@@ -796,13 +868,13 @@ const PostListItem = React.memo(function PostListItem({
                       numberOfLines={
                         isDetailedPost || contentExpanded ? undefined : 4
                       }
+                      onTextLayout={detectTruncation(setIsContentTruncated)}
                       style={[styles.contentText, { color: theme.text }]}
                     >
                       {content}
                     </Text>
                     {!isDetailedPost &&
-                      (content.length > 200 ||
-                        (content.match(/\n/g)?.length ?? 0) >= 4) && (
+                      shouldShowReadMore(content, isContentTruncated) && (
                         <Pressable
                           onPress={(e) => {
                             e.preventDefault();
