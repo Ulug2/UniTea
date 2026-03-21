@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Image,
   NativeSyntheticEvent,
@@ -147,6 +147,18 @@ function _buildStyles(theme: Theme) {
 function getStyles(theme: Theme) {
   if (!_styleCache.has(theme)) _styleCache.set(theme, _buildStyles(theme));
   return _styleCache.get(theme)!;
+}
+
+const READ_MORE_CHAR_THRESHOLD = 180;
+const READ_MORE_NEWLINE_THRESHOLD = 3;
+const READ_MORE_MEASURE_CHAR_THRESHOLD = 120;
+const READ_MORE_MEASURE_NEWLINE_THRESHOLD = 2;
+
+function createTextCacheKey(postId: string, variant: string, text: string): string {
+  const trimmed = text.trim();
+  const prefix = trimmed.slice(0, 48);
+  const suffix = trimmed.slice(-48);
+  return `${postId}:${variant}:${trimmed.length}:${prefix}:${suffix}`;
 }
 
 type PostListItemProps = {
@@ -410,6 +422,7 @@ const PostListItem = React.memo(function PostListItem({
   const [isRepostCommentTruncated, setIsRepostCommentTruncated] = useState(false);
   const [isOriginalContentTruncated, setIsOriginalContentTruncated] =
     useState(false);
+  const truncationCacheRef = useRef<Map<string, boolean>>(new Map());
   const [avatarLoaded, setAvatarLoaded] = useState(false);
   const [loadedImageCount, setLoadedImageCount] = useState(0);
 
@@ -440,6 +453,10 @@ const PostListItem = React.memo(function PostListItem({
   useEffect(() => {
     setLoadedImageCount(0);
   }, [postId, displayImageUrls.length]);
+
+  useEffect(() => {
+    truncationCacheRef.current.clear();
+  }, [postId]);
 
   // Reset expansion/truncation state when list cell is reused for a different post.
   useEffect(() => {
@@ -478,7 +495,10 @@ const PostListItem = React.memo(function PostListItem({
   };
 
   const detectTruncation =
-    (setTruncated: (truncated: boolean) => void) =>
+    (
+      cacheKey: string,
+      setTruncated: React.Dispatch<React.SetStateAction<boolean>>,
+    ) =>
     (event: NativeSyntheticEvent<TextLayoutEventData>) => {
       if (isDetailedPost) return;
       const lines = event.nativeEvent.lines ?? [];
@@ -487,18 +507,62 @@ const PostListItem = React.memo(function PostListItem({
       const visuallyEllipsized =
         lines.length === 4 &&
         (lastRenderedLine.endsWith("...") || lastRenderedLine.endsWith("…"));
-      setTruncated(hasMoreThanMaxLines || visuallyEllipsized);
+      const nextValue = hasMoreThanMaxLines || visuallyEllipsized;
+      const cachedValue = truncationCacheRef.current.get(cacheKey);
+      if (cachedValue !== nextValue) {
+        truncationCacheRef.current.set(cacheKey, nextValue);
+      }
+      setTruncated((current) => (current === nextValue ? current : nextValue));
     };
 
-  const shouldShowReadMore = (
-    text: string | null | undefined,
-    isTruncated: boolean,
-  ) => {
+  const isLikelyLongText = (text: string | null | undefined): boolean => {
     if (!text) return false;
-    if (isTruncated) return true;
     const newlineCount = text.match(/\n/g)?.length ?? 0;
-    return text.length > 180 || newlineCount >= 3;
+    return (
+      text.length > READ_MORE_CHAR_THRESHOLD ||
+      newlineCount >= READ_MORE_NEWLINE_THRESHOLD
+    );
   };
+
+  const shouldMeasureFallback = (text: string | null | undefined): boolean => {
+    if (!text) return false;
+    const newlineCount = text.match(/\n/g)?.length ?? 0;
+    return (
+      text.length > READ_MORE_MEASURE_CHAR_THRESHOLD ||
+      newlineCount >= READ_MORE_MEASURE_NEWLINE_THRESHOLD
+    );
+  };
+
+  const shouldShowReadMore = ({
+    text,
+    isMeasuredTruncated,
+  }: {
+    text: string | null | undefined;
+    isMeasuredTruncated: boolean;
+  }) => {
+    if (!text) return false;
+    return isMeasuredTruncated || isLikelyLongText(text);
+  };
+
+  const repostCommentKey = content
+    ? createTextCacheKey(postId, "repost_comment", content)
+    : null;
+  const originalContentKey = originalContent
+    ? createTextCacheKey(postId, "original_content", originalContent)
+    : null;
+  const regularContentKey = content
+    ? createTextCacheKey(postId, "regular_content", content)
+    : null;
+
+  const cachedRepostCommentTruncated = repostCommentKey
+    ? (truncationCacheRef.current.get(repostCommentKey) ?? false)
+    : false;
+  const cachedOriginalContentTruncated = originalContentKey
+    ? (truncationCacheRef.current.get(originalContentKey) ?? false)
+    : false;
+  const cachedRegularContentTruncated = regularContentKey
+    ? (truncationCacheRef.current.get(regularContentKey) ?? false)
+    : false;
 
   // Handle profile view - only for other users, not yourself
   const handleProfilePress = (
@@ -645,13 +709,28 @@ const PostListItem = React.memo(function PostListItem({
             <View>
               <Text
                 numberOfLines={isDetailedPost || repostCommentExpanded ? undefined : 4}
-                onTextLayout={detectTruncation(setIsRepostCommentTruncated)}
+                onTextLayout={
+                  repostCommentKey &&
+                  !isDetailedPost &&
+                  !repostCommentExpanded &&
+                  !isLikelyLongText(content) &&
+                  shouldMeasureFallback(content)
+                    ? detectTruncation(
+                        repostCommentKey,
+                        setIsRepostCommentTruncated,
+                      )
+                    : undefined
+                }
                 style={styles.repostComment}
               >
                 {content}
               </Text>
               {!isDetailedPost &&
-                shouldShowReadMore(content, isRepostCommentTruncated) && (
+                shouldShowReadMore({
+                  text: content,
+                  isMeasuredTruncated:
+                    isRepostCommentTruncated || cachedRepostCommentTruncated,
+                }) && (
                 <Pressable
                   onPress={(e) => {
                     e.preventDefault();
@@ -734,17 +813,30 @@ const PostListItem = React.memo(function PostListItem({
                   numberOfLines={
                     isDetailedPost || originalContentExpanded ? undefined : 4
                   }
-                  onTextLayout={detectTruncation(setIsOriginalContentTruncated)}
+                  onTextLayout={
+                    originalContentKey &&
+                    !isDetailedPost &&
+                    !originalContentExpanded &&
+                    !isLikelyLongText(originalContent) &&
+                    shouldMeasureFallback(originalContent)
+                      ? detectTruncation(
+                          originalContentKey,
+                          setIsOriginalContentTruncated,
+                        )
+                      : undefined
+                  }
                   style={[styles.originalContent, { color: theme.text }]}
                 >
                   {originalContent}
                 </Text>
                 {originalContent &&
                   !isDetailedPost &&
-                  shouldShowReadMore(
-                    originalContent,
-                    isOriginalContentTruncated,
-                  ) && (
+                  shouldShowReadMore({
+                    text: originalContent,
+                    isMeasuredTruncated:
+                      isOriginalContentTruncated ||
+                      cachedOriginalContentTruncated,
+                  }) && (
                     <Pressable
                       onPress={(e) => {
                         e.preventDefault();
@@ -868,13 +960,28 @@ const PostListItem = React.memo(function PostListItem({
                       numberOfLines={
                         isDetailedPost || contentExpanded ? undefined : 4
                       }
-                      onTextLayout={detectTruncation(setIsContentTruncated)}
+                      onTextLayout={
+                        regularContentKey &&
+                        !isDetailedPost &&
+                        !contentExpanded &&
+                        !isLikelyLongText(content) &&
+                        shouldMeasureFallback(content)
+                          ? detectTruncation(
+                              regularContentKey,
+                              setIsContentTruncated,
+                            )
+                          : undefined
+                      }
                       style={[styles.contentText, { color: theme.text }]}
                     >
                       {content}
                     </Text>
                     {!isDetailedPost &&
-                      shouldShowReadMore(content, isContentTruncated) && (
+                      shouldShowReadMore({
+                        text: content,
+                        isMeasuredTruncated:
+                          isContentTruncated || cachedRegularContentTruncated,
+                      }) && (
                         <Pressable
                           onPress={(e) => {
                             e.preventDefault();

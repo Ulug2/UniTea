@@ -3,6 +3,7 @@ import * as ImageManipulator from "expo-image-manipulator";
 import { Alert } from "react-native";
 import { IMAGE_COMPRESS_QUALITY, IMAGE_MAX_WIDTH, IMAGE_SAVE_FORMAT } from "../config/images";
 import { logger } from "../utils/logger";
+import { mapWithConcurrency } from "../utils/asyncConcurrency";
 
 export type ImagePipelineOptions = {
   allowEditing?: boolean;
@@ -12,6 +13,7 @@ export type ImagePipelineOptions = {
 };
 
 export function useImagePipeline(options: ImagePipelineOptions = {}) {
+  const IMAGE_PROCESSING_CONCURRENCY = 2;
   const {
     allowEditing = false,
     aspect,
@@ -51,11 +53,14 @@ export function useImagePipeline(options: ImagePipelineOptions = {}) {
         return [];
       }
 
-      const preparedImages = await Promise.all(
-        result.assets
-          .map((asset) => asset.uri)
-          .filter((uri): uri is string => Boolean(uri))
-          .map((uri) => prepareImage(uri))
+      const imageUris = result.assets
+        .map((asset) => asset.uri)
+        .filter((uri): uri is string => Boolean(uri));
+
+      const preparedImages = await mapWithConcurrency(
+        imageUris,
+        IMAGE_PROCESSING_CONCURRENCY,
+        (uri) => prepareImage(uri),
       );
 
       return preparedImages;
