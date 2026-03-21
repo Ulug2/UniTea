@@ -34,6 +34,7 @@ import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
 type PostSummary = PostsSummaryViewRow;
 
 const POSTS_PER_PAGE = 10;
+const ENABLE_FEED_DIAGNOSTICS = false;
 
 const FEED_FILTER_ORDER = ["hot", "new", "top"] as const;
 type FeedFilterType = (typeof FEED_FILTER_ORDER)[number];
@@ -154,6 +155,17 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
       (post) => !hiddenPostIds.includes(post.post_id),
     );
   }, [postsData, blocks, filter, hiddenPostIds]);
+
+  useEffect(() => {
+    if (!__DEV__ || !ENABLE_FEED_DIAGNOSTICS) return;
+    console.log("[feed-diagnostics]", {
+      filter,
+      postCount: posts.length,
+      isPending,
+      isRefetching,
+      isFetchingNextPage,
+    });
+  }, [filter, posts.length, isPending, isRefetching, isFetchingNextPage]);
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -310,6 +322,11 @@ export default function FeedScreen() {
   const { selectedFilter, setSelectedFilter } = useFilterContext();
   const queryClient = useQueryClient();
   const pagerRef = useRef<ScrollView>(null);
+  const resolvedInitialPageIndex = Math.max(
+    FEED_FILTER_ORDER.indexOf(selectedFilter as FeedFilterType),
+    0,
+  );
+  const [activePageIndex, setActivePageIndex] = useState(resolvedInitialPageIndex);
 
   const isCreatingPost = useIsMutating({ mutationKey: ["create-post"] }) > 0;
 
@@ -319,6 +336,7 @@ export default function FeedScreen() {
       selectedFilter as FeedFilterType,
     );
     if (pageIndex < 0) return;
+    setActivePageIndex(pageIndex);
     pagerRef.current?.scrollTo({
       x: pageIndex * SCREEN_WIDTH,
       y: 0,
@@ -334,6 +352,7 @@ export default function FeedScreen() {
         FEED_FILTER_ORDER.length - 1,
       );
       const filter = FEED_FILTER_ORDER[safePosition];
+      setActivePageIndex(safePosition);
       setSelectedFilter(filter);
     },
     [setSelectedFilter],
@@ -368,9 +387,7 @@ export default function FeedScreen() {
     };
   }, [queryClient]);
 
-  const initialPageIndex = FEED_FILTER_ORDER.indexOf(
-    selectedFilter as FeedFilterType,
-  );
+  const initialPageIndex = resolvedInitialPageIndex;
 
   return (
     <>
@@ -388,9 +405,13 @@ export default function FeedScreen() {
           }}
           style={styles.pager}
         >
-          {FEED_FILTER_ORDER.map((filter) => (
+          {FEED_FILTER_ORDER.map((filter, index) => (
             <View key={filter} style={styles.pageWrapper}>
-              <FeedPageContent filter={filter} />
+              {Math.abs(index - activePageIndex) <= 1 ? (
+                <FeedPageContent filter={filter} />
+              ) : (
+                <View style={[styles.page, { backgroundColor: theme.background }]} />
+              )}
             </View>
           ))}
         </ScrollView>

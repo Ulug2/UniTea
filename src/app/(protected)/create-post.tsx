@@ -42,9 +42,11 @@ import {
   FullscreenImageModal,
   resolvePostImageUri,
 } from "../../components/FullscreenImageModal";
+import { mapWithConcurrency } from "../../utils/asyncConcurrency";
 
 const MAX_POLL_OPTIONS = 11;
 const MAX_POST_IMAGES = 5;
+const MAX_CONCURRENT_UPLOADS = 3;
 const DESCRIPTION_INPUT_MIN_HEIGHT = 48;
 const DESCRIPTION_INPUT_MAX_HEIGHT = 420;
 
@@ -240,8 +242,10 @@ export default function CreatePostScreen() {
       // The backend stores both image_url (first) and image_urls (all) for compatibility.
       if (images.length > 0) {
         try {
-          imagePaths = await Promise.all(
-            images.map((localUri) => uploadImage(localUri, supabase)),
+          imagePaths = await mapWithConcurrency(
+            images,
+            MAX_CONCURRENT_UPLOADS,
+            (localUri) => uploadImage(localUri, supabase),
           );
           imagePath = imagePaths[0];
         } catch (error: any) {
