@@ -4,7 +4,21 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
+import { logger } from "../utils/logger";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+
+function isLikelyTransientGatewayError(error: unknown): boolean {
+  const msg = String(
+    error && typeof error === "object" && "message" in error
+      ? (error as { message?: string }).message
+      : error,
+  );
+  return (
+    msg.includes("502") ||
+    msg.includes("Bad gateway") ||
+    msg.includes("<!DOCTYPE html>")
+  );
+}
 
 type PollProps = {
   postId: string;
@@ -66,14 +80,18 @@ const Poll: React.FC<PollProps> = ({ postId }) => {
         .maybeSingle();
 
       if (error) {
-        console.error("[Poll] fetch error", error);
-        return null;
+        if (!isLikelyTransientGatewayError(error)) {
+          logger.error("[Poll] fetch error", error as Error);
+        }
+        throw error;
       }
 
       if (!data) return null;
 
       return data as PollData;
     },
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 8000),
     staleTime: 1000 * 30,
     gcTime: 1000 * 60 * 5,
   });

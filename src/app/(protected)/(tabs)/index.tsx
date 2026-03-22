@@ -261,6 +261,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
           renderItem={renderItem}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
+          nestedScrollEnabled
           removeClippedSubviews={true}
           maxToRenderPerBatch={4}
           updateCellsBatchingPeriod={100}

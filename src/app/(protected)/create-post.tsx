@@ -5,15 +5,16 @@ import {
   Text,
   TextInput,
   View,
-  KeyboardAvoidingView,
-  Platform,
   Image,
   Pressable,
   StyleSheet,
   Switch,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import {
   AntDesign,
   Feather,
@@ -37,7 +38,6 @@ import { useOriginalPostForRepost } from "../../hooks/useOriginalPostForRepost";
 import { useImagePipeline } from "../../hooks/useImagePipeline";
 import { useCreatePostFormState } from "../../hooks/useCreatePostFormState";
 import { useCreatePostMutation } from "../../hooks/useCreatePostMutation";
-import { useImageAspectRatio } from "../../hooks/useImageAspectRatio";
 import {
   FullscreenImageModal,
   resolvePostImageUri,
@@ -47,8 +47,11 @@ import { mapWithConcurrency } from "../../utils/asyncConcurrency";
 const MAX_POLL_OPTIONS = 11;
 const MAX_POST_IMAGES = 5;
 const MAX_CONCURRENT_UPLOADS = 3;
-const DESCRIPTION_INPUT_MIN_HEIGHT = 48;
-const DESCRIPTION_INPUT_MAX_HEIGHT = 420;
+/** Fixed tile size avoids layout jump from async Image.getSize (matches feed gallery tiles). */
+const CREATE_POST_GALLERY_TILE_WIDTH = 280;
+const CREATE_POST_GALLERY_TILE_HEIGHT = 355;
+/** Header row + strip; fixed height keeps layout stable when images appear. */
+const IMAGE_GALLERY_SECTION_HEIGHT = CREATE_POST_GALLERY_TILE_HEIGHT + 44;
 
 type SelectedImagePreviewProps = {
   uri: string;
@@ -57,26 +60,19 @@ type SelectedImagePreviewProps = {
   isLast: boolean;
 };
 
-function SelectedImagePreview({
+const SelectedImagePreview = React.memo(function SelectedImagePreview({
   uri,
   onRemove,
   onOpen,
   isLast,
 }: SelectedImagePreviewProps) {
-  const previewImageAspectRatio = useImageAspectRatio(uri);
-  const imageHeight = 355;
-  const imageWidth = Math.max(
-    120,
-    Math.min(380, imageHeight * previewImageAspectRatio),
-  );
-
   return (
     <View
       style={[
         styles.galleryImageItem,
         {
-          width: imageWidth,
-          height: imageHeight,
+          width: CREATE_POST_GALLERY_TILE_WIDTH,
+          height: CREATE_POST_GALLERY_TILE_HEIGHT,
           marginRight: isLast ? 0 : 4,
         },
       ]}
@@ -84,18 +80,18 @@ function SelectedImagePreview({
       <Pressable onPress={onRemove} style={styles.galleryRemoveButton}>
         <AntDesign name="close" size={16} color="white" />
       </Pressable>
-      <Pressable onPress={onOpen}>
-        <Image
+      <Pressable onPress={onOpen} style={styles.galleryImagePressable}>
+        <ExpoImage
           source={{ uri }}
           style={styles.galleryImagePreview}
-          // Always fill the thumbnail height; if aspect ratio differs, crop instead
-          // of showing blank space.
-          resizeMode="cover"
+          contentFit="cover"
+          transition={0}
+          cachePolicy="memory-disk"
         />
       </Pressable>
     </View>
   );
-}
+});
 
 export default function CreatePostScreen() {
   const { theme, isDark } = useTheme();
@@ -107,15 +103,6 @@ export default function CreatePostScreen() {
   const { session } = useAuth();
   const [expandedImageUri, setExpandedImageUri] = React.useState<string | null>(
     null,
-  );
-  const scrollViewRef = React.useRef<ScrollView | null>(null);
-
-  const contentSectionLayoutRef = React.useRef<{ y: number; height: number } | null>(
-    null,
-  );
-  const [isContentFocused, setIsContentFocused] = React.useState(false);
-  const [contentInputHeight, setContentInputHeight] = React.useState(
-    DESCRIPTION_INPUT_MIN_HEIGHT,
   );
   const { originalPost, isLoadingOriginal } =
     useOriginalPostForRepost(repostId);
@@ -172,26 +159,6 @@ export default function CreatePostScreen() {
       });
     }
   };
-
-  const scrollToContentInput = React.useCallback(
-    (animated: boolean = true) => {
-      const layout = contentSectionLayoutRef.current;
-      if (!layout || !scrollViewRef.current) return;
-      // Scroll just enough so the focused input stays above the header/keyboard.
-      scrollViewRef.current.scrollTo({
-        y: Math.max(0, layout.y - 16),
-        animated,
-      });
-    },
-    [],
-  );
-
-  React.useEffect(() => {
-    if (!isContentFocused) return;
-    // Defer to after RN applies keyboard layout adjustments.
-    const t = setTimeout(() => scrollToContentInput(true), 50);
-    return () => clearTimeout(t);
-  }, [isContentFocused, scrollToContentInput]);
 
   // Create post mutation with optimistic UI updates (like Instagram/X)
   const createPostMutation = useCreatePostMutation({
@@ -345,21 +312,22 @@ export default function CreatePostScreen() {
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={0}
         style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        enabled
       >
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.scrollView}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          contentContainerStyle={{
-            flexGrow: 1,
-            paddingBottom: Math.min(insets.bottom, 18) + 24,
-          }}
-        >
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            style={styles.scrollView}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            nestedScrollEnabled
+            automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+            contentContainerStyle={{
+              paddingBottom: Math.min(insets.bottom, 18) + 24,
+            }}
+          >
           {/* LOST & FOUND CATEGORY SELECTOR */}
           {isLostFound && (
             <View style={styles.categorySection}>
@@ -489,12 +457,7 @@ export default function CreatePostScreen() {
           )}
 
           {/* CONTENT INPUT */}
-          <View
-            style={styles.contentSection}
-            onLayout={(e) => {
-              contentSectionLayoutRef.current = e.nativeEvent.layout;
-            }}
-          >
+          <View style={styles.contentSection}>
             {isLostFound && (
               <Text style={[styles.sectionLabel, { color: theme.text }]}>
                 Description *
@@ -514,32 +477,13 @@ export default function CreatePostScreen() {
                     : "What's on your mind?"
               }
               placeholderTextColor={theme.secondaryText}
-              style={[styles.contentInput, { color: theme.text, height: contentInputHeight }]}
+              style={[styles.contentInput, { color: theme.text }]}
               keyboardAppearance={isDark ? "dark" : "light"}
               onChangeText={setContent}
               value={content}
               multiline
               autoFocus={!isLostFound && !isRepost}
-              scrollEnabled={contentInputHeight >= DESCRIPTION_INPUT_MAX_HEIGHT - 1}
-              onFocus={() => {
-                setIsContentFocused(true);
-                scrollToContentInput(true);
-              }}
-              onBlur={() => setIsContentFocused(false)}
-              onContentSizeChange={(e) => {
-                const next =
-                  e.nativeEvent.contentSize.height + 20; // include vertical padding
-                const clamped = Math.max(
-                  DESCRIPTION_INPUT_MIN_HEIGHT,
-                  Math.min(DESCRIPTION_INPUT_MAX_HEIGHT, next),
-                );
-                setContentInputHeight(clamped);
-
-                if (isContentFocused) {
-                  // Keep the expanding textarea visible.
-                  scrollToContentInput(true);
-                }
-              }}
+              scrollEnabled
               textAlignVertical="top"
             />
           </View>
@@ -674,6 +618,8 @@ export default function CreatePostScreen() {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
+                style={styles.imageGalleryFlatList}
                 contentContainerStyle={styles.imageGalleryGrid}
               >
                 {images.map((uri, index) => (
@@ -681,10 +627,12 @@ export default function CreatePostScreen() {
                     key={`${uri}-${index}`}
                     uri={uri}
                     isLast={index === images.length - 1}
-                    onOpen={() => setExpandedImageUri(resolvePostImageUri(uri))}
+                    onOpen={() =>
+                      setExpandedImageUri(resolvePostImageUri(uri))
+                    }
                     onRemove={() =>
                       setImages((current) =>
-                        current.filter((_, i) => i !== index),
+                        current.filter((u) => u !== uri),
                       )
                     }
                   />
@@ -772,7 +720,7 @@ export default function CreatePostScreen() {
             {
               backgroundColor: theme.card,
               borderTopColor: theme.border,
-              paddingBottom: 20,
+              paddingBottom: Math.max(insets.bottom, 20),
             },
           ]}
         >
@@ -815,6 +763,7 @@ export default function CreatePostScreen() {
               </Pressable>
             </>
           )}
+        </View>
         </View>
       </KeyboardAvoidingView>
 
@@ -987,6 +936,12 @@ const styles = StyleSheet.create({
   imageGalleryContainer: {
     marginTop: 14,
     marginBottom: 6,
+    height: IMAGE_GALLERY_SECTION_HEIGHT,
+  },
+  imageGalleryFlatList: {
+    width: "100%",
+    height: CREATE_POST_GALLERY_TILE_HEIGHT,
+    overflow: "hidden",
   },
   imageGalleryHeader: {
     flexDirection: "row",
@@ -1000,7 +955,10 @@ const styles = StyleSheet.create({
   },
   imageGalleryGrid: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "stretch",
+  },
+  galleryImagePressable: {
+    flex: 1,
   },
   galleryImageItem: {
     position: "relative",

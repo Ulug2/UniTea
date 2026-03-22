@@ -7,7 +7,7 @@ import {
   TextLayoutEventData,
   View,
   StyleSheet,
-  ScrollView,
+  FlatList,
 } from "react-native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,8 +25,6 @@ import UserProfileModal from "./UserProfileModal";
 import { useAuth } from "../context/AuthContext";
 import { sharePost } from "../utils/sharePost";
 import type { Theme } from "../context/ThemeContext";
-import { useImageAspectRatio } from "../hooks/useImageAspectRatio";
-
 // Shared style cache — all PostListItem instances with the same theme object reuse one StyleSheet.
 // This eliminates calling StyleSheet.create N times when the feed has N visible items.
 const _styleCache = new WeakMap<Theme, ReturnType<typeof _buildStyles>>();
@@ -102,6 +100,10 @@ function _buildStyles(theme: Theme) {
       marginBottom: 6,
       overflow: "hidden",
     },
+    /** Fixed height + cover avoids layout jump from async aspect ratio measurement. */
+    postImageFixedHeight: {
+      height: 400,
+    },
     contentText: {
       fontSize: 16,
       marginTop: 6,
@@ -148,6 +150,9 @@ function getStyles(theme: Theme) {
   if (!_styleCache.has(theme)) _styleCache.set(theme, _buildStyles(theme));
   return _styleCache.get(theme)!;
 }
+
+/** Matches create-post preview tiles; fixed width avoids async getSize layout shift. */
+const FEED_GALLERY_TILE_WIDTH = 280;
 
 const READ_MORE_CHAR_THRESHOLD = 180;
 const READ_MORE_NEWLINE_THRESHOLD = 3;
@@ -250,27 +255,27 @@ function HorizontalImageGallery({
   topMargin = 14,
 }: HorizontalGalleryProps) {
   return (
-    <ScrollView
+    <FlatList
       horizontal
+      data={imagePaths}
+      keyExtractor={(path, index) => `${path}-${index}`}
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{
-        flexDirection: "row",
-        alignItems: "center",
-        marginTop: topMargin,
-        marginBottom: 6,
-      }}
-    >
-      {imagePaths.map((path, index) => (
+      nestedScrollEnabled
+      renderItem={({ item: path, index }) => (
         <HorizontalImageGalleryItem
-          key={`${path}-${index}`}
           path={path}
           height={height}
           isLast={index === imagePaths.length - 1}
           onPress={onImagePress}
           onLoadImage={onLoadImage}
         />
-      ))}
-    </ScrollView>
+      )}
+      contentContainerStyle={{
+        alignItems: "center",
+        marginTop: topMargin,
+        marginBottom: 6,
+      }}
+    />
   );
 }
 
@@ -290,8 +295,7 @@ function HorizontalImageGalleryItem({
   onLoadImage,
 }: HorizontalGalleryItemProps) {
   const resolvedUri = resolvePostImageUri(path);
-  const ratio = useImageAspectRatio(resolvedUri);
-  const width = Math.max(120, Math.min(330, height * ratio));
+  const width = FEED_GALLERY_TILE_WIDTH;
 
   const onTap = (e: any) => {
     e.preventDefault();
@@ -439,15 +443,6 @@ const PostListItem = React.memo(function PostListItem({
   const resolvedImageUri = resolvePostImageUri(displayImageUrls[0] ?? null);
   const resolvedOriginalImageUri = resolvePostImageUri(
     displayOriginalImageUrls[0] ?? null,
-  );
-
-  // Single-image layout should not be constrained by a fixed height.
-  // We derive the layout height from the actual image aspect ratio.
-  const postImageAspectRatio = useImageAspectRatio(
-    displayImageUrls.length === 1 ? resolvedImageUri : null,
-  );
-  const originalImageAspectRatio = useImageAspectRatio(
-    displayOriginalImageUrls.length === 1 ? resolvedOriginalImageUri : null,
   );
 
   useEffect(() => {
@@ -768,10 +763,7 @@ const PostListItem = React.memo(function PostListItem({
                   <SupabaseImage
                     path={displayImageUrls[0]}
                     bucket="post-images"
-                    style={[
-                      styles.postImage,
-                      { aspectRatio: postImageAspectRatio },
-                    ]}
+                    style={[styles.postImage, styles.postImageFixedHeight]}
                     onLoad={markImageLoaded}
                   />
                 </Pressable>
@@ -779,10 +771,7 @@ const PostListItem = React.memo(function PostListItem({
                 <SupabaseImage
                   path={displayImageUrls[0]}
                   bucket="post-images"
-                  style={[
-                    styles.postImage,
-                    { aspectRatio: postImageAspectRatio },
-                  ]}
+                  style={[styles.postImage, styles.postImageFixedHeight]}
                   onLoad={markImageLoaded}
                 />
               )
@@ -873,26 +862,14 @@ const PostListItem = React.memo(function PostListItem({
                         <SupabaseImage
                           path={displayOriginalImageUrls[0]}
                           bucket="post-images"
-                          style={[
-                            styles.postImage,
-                            {
-                              marginTop: 14,
-                              aspectRatio: originalImageAspectRatio,
-                            },
-                          ]}
+                          style={[styles.postImage, styles.postImageFixedHeight]}
                         />
                       </Pressable>
                     ) : (
                       <SupabaseImage
                         path={displayOriginalImageUrls[0]}
                         bucket="post-images"
-                        style={[
-                          styles.postImage,
-                          {
-                            marginTop: 14,
-                            aspectRatio: originalImageAspectRatio,
-                          },
-                        ]}
+                        style={[styles.postImage, styles.postImageFixedHeight]}
                       />
                     )
                   ) : (
@@ -928,10 +905,7 @@ const PostListItem = React.memo(function PostListItem({
                         <SupabaseImage
                           path={displayImageUrls[0]}
                           bucket="post-images"
-                          style={[
-                            styles.postImage,
-                            { aspectRatio: postImageAspectRatio },
-                          ]}
+                          style={[styles.postImage, styles.postImageFixedHeight]}
                           onLoad={markImageLoaded}
                         />
                       </Pressable>
@@ -939,10 +913,7 @@ const PostListItem = React.memo(function PostListItem({
                       <SupabaseImage
                         path={displayImageUrls[0]}
                         bucket="post-images"
-                        style={[
-                          styles.postImage,
-                          { aspectRatio: postImageAspectRatio },
-                        ]}
+                        style={[styles.postImage, styles.postImageFixedHeight]}
                         onLoad={markImageLoaded}
                       />
                     )
