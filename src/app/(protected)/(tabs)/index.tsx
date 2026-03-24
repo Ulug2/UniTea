@@ -94,7 +94,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
           break;
 
         case "hot":
-          // Sort server-side on the indexed hot_score column (post_stats trigger table).
+          // Sort server-side on dynamic hot_score from posts_summary_view.
           // 10 rows per page — same as the other filters.
           const last7Days = new Date();
           last7Days.setDate(last7Days.getDate() - 7);

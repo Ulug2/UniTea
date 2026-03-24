@@ -406,7 +406,7 @@ function areMessageRowPropsEqual(
 ): boolean {
   return (
     prev.item === next.item &&
-    prev.nextMsg === next.nextMsg &&
+    (prev.nextMsg?.id ?? null) === (next.nextMsg?.id ?? null) &&
     prev.currentUserId === next.currentUserId &&
     prev.isDark === next.isDark &&
     prev.theme === next.theme

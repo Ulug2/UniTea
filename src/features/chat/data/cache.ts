@@ -120,10 +120,63 @@ export function prependIncomingMessage(
     [MESSAGES_QUERY_KEY, chatId],
     (old) => {
       if (!old) return prependMessage(old, newMessage);
-      const exists = old.pages.some((page) =>
-        page.some((m) => m.id === newMessage.id)
-      );
+      // Real-time INSERTs are always for the newest message, so it should be
+      // on the first page. Checking only page[0] avoids scanning the entire
+      // infinite list on every insert.
+      const firstPage = Array.isArray(old.pages?.[0]) ? old.pages[0] : [];
+      const exists = firstPage.some((m) => m?.id === newMessage.id);
       if (exists) return old;
+      return prependMessage(old, newMessage);
+    }
+  );
+}
+
+/**
+ * Upsert an incoming message into the paginated cache.
+ *
+ * Used for enrichment updates (e.g. fill `replyToMessage`) after an initial
+ * raw INSERT was already prepended.
+ */
+export function upsertIncomingMessage(
+  queryClient: QueryClient,
+  chatId: string,
+  newMessage: ChatMessageVM
+): void {
+  queryClient.setQueryData<MessagesQueryData>(
+    [MESSAGES_QUERY_KEY, chatId],
+    (old) => {
+      // If we somehow haven't got any cached pages yet, just prepend.
+      if (!old) return prependMessage(old, newMessage);
+
+      const safePages = Array.isArray(old.pages) ? old.pages : [[]];
+
+      // Since real-time INSERTs are always newest, try page[0] first to
+      // avoid scanning the whole infinite list.
+      if (Array.isArray(safePages[0])) {
+        const idx = safePages[0].findIndex((m) => m?.id === newMessage.id);
+        if (idx !== -1) {
+          const nextFirstPage = safePages[0].map((m) =>
+            m?.id === newMessage.id ? { ...m, ...newMessage } : m
+          );
+          return { ...old, pages: [nextFirstPage, ...safePages.slice(1)] };
+        }
+      }
+
+      // Fallback: scan all loaded pages (defensive for edge cases).
+      let found = false;
+      const nextPages = safePages.map((page) => {
+        if (!Array.isArray(page)) return page;
+        return page.map((m) => {
+          if (m?.id !== newMessage.id) return m;
+          found = true;
+          return { ...m, ...newMessage };
+        });
+      });
+
+      if (found) {
+        return { ...old, pages: nextPages };
+      }
+
       return prependMessage(old, newMessage);
     }
   );

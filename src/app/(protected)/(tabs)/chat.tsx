@@ -1,10 +1,4 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  RefreshControl,
-} from "react-native";
+import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import ChatListItem from "../../../components/ChatListItem";
 import ChatListSkeleton from "../../../components/ChatListSkeleton";
@@ -15,7 +9,11 @@ import { useAuth } from "../../../context/AuthContext";
 import { useMemo, useEffect, useRef, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { logger } from "../../../utils/logger";
-import { useBlocks, isBlockedChat } from "../../../hooks/useBlocks";
+import {
+  useBlocks,
+  isBlockedChat,
+  type BlockRecord,
+} from "../../../hooks/useBlocks";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import { saveChatToStorage } from "../../../utils/feedPersistence";
 
@@ -66,7 +64,7 @@ export default function ChatScreen() {
         .from("user_chats_summary")
         .select("*")
         .or(
-          `participant_1_id.eq.${currentUserId},participant_2_id.eq.${currentUserId}`
+          `participant_1_id.eq.${currentUserId},participant_2_id.eq.${currentUserId}`,
         )
         .order("last_message_at", { ascending: false, nullsFirst: false });
 
@@ -104,13 +102,15 @@ export default function ChatScreen() {
 
   // Removed aggressive refetch on focus - rely on cache and real-time subscriptions instead
   // This prevents UI lag and scroll jumps when navigating back to the chat list
-  
+
   // Prevent stuck loading state: cancel refetch if it's been stuck for too long
   useEffect(() => {
     if (isRefetchingChats) {
       const timeout = setTimeout(() => {
         // If still refetching after 10 seconds, something went wrong - cancel it
-        queryClient.cancelQueries({ queryKey: ["chat-summaries", currentUserId] });
+        queryClient.cancelQueries({
+          queryKey: ["chat-summaries", currentUserId],
+        });
         logger.warn("Chat summaries refetch timed out - cancelled", {
           userId: currentUserId,
           component: "ChatScreen",
@@ -181,7 +181,8 @@ export default function ChatScreen() {
           if (deletedChatId) {
             queryClient.setQueryData<ChatSummary[]>(
               ["chat-summaries", currentUserId],
-              (old) => old ? old.filter((s) => s.chat_id !== deletedChatId) : old,
+              (old) =>
+                old ? old.filter((s) => s.chat_id !== deletedChatId) : old,
             );
           }
           queryClient.invalidateQueries({
@@ -196,6 +197,20 @@ export default function ChatScreen() {
         }
 
         if (eventType === "INSERT") {
+          const insertedChat = payload.new as any;
+          const otherUserId =
+            insertedChat?.participant_1_id === currentUserId
+              ? insertedChat?.participant_2_id
+              : insertedChat?.participant_1_id;
+          const cachedBlocks =
+            queryClient.getQueryData<BlockRecord[]>([
+              "blocks",
+              currentUserId,
+            ]) || [];
+          if (isBlockedChat(cachedBlocks, otherUserId)) {
+            return;
+          }
+
           // New chat — rare event; invalidate so the list re-fetches on next access.
           queryClient.invalidateQueries({
             queryKey: ["chat-summaries", currentUserId],
@@ -206,6 +221,19 @@ export default function ChatScreen() {
 
         if (eventType === "UPDATE") {
           const updatedChat = payload.new as any;
+          const otherUserId =
+            updatedChat?.participant_1_id === currentUserId
+              ? updatedChat?.participant_2_id
+              : updatedChat?.participant_1_id;
+          const cachedBlocks =
+            queryClient.getQueryData<BlockRecord[]>([
+              "blocks",
+              currentUserId,
+            ]) || [];
+          if (isBlockedChat(cachedBlocks, otherUserId)) {
+            return;
+          }
+
           queryClient.setQueryData<ChatSummary[]>(
             ["chat-summaries", currentUserId],
             (oldSummaries) => {
@@ -258,27 +286,30 @@ export default function ChatScreen() {
           ]);
           if (updatedSummaries) {
             const cachedBlocks =
-              queryClient.getQueryData<string[]>(["blocks", currentUserId]) ||
-              [];
+              queryClient.getQueryData<BlockRecord[]>([
+                "blocks",
+                currentUserId,
+              ]) || [];
             const total = updatedSummaries.reduce(
               (sum: number, chat: ChatSummary) => {
                 const otherId =
                   chat.participant_1_id === currentUserId
                     ? chat.participant_2_id
                     : chat.participant_1_id;
-                if (cachedBlocks.includes(otherId)) return sum;
+                if (isBlockedChat(cachedBlocks, otherId)) return sum;
                 const isP1 = chat.participant_1_id === currentUserId;
                 return (
                   sum +
-                  (isP1
-                    ? chat.unread_count_p1 || 0
-                    : chat.unread_count_p2 || 0)
+                  (isP1 ? chat.unread_count_p1 || 0 : chat.unread_count_p2 || 0)
                 );
               },
               0,
             );
             queryClient.setQueriesData<number>(
-              { queryKey: ["global-unread-count", currentUserId], exact: false },
+              {
+                queryKey: ["global-unread-count", currentUserId],
+                exact: false,
+              },
               total,
             );
           }
@@ -302,7 +333,12 @@ export default function ChatScreen() {
         channelErrorLoggedRef.current = true;
         logger.warn(
           "Chat list realtime subscription failed. Check RLS SELECT policies on `chats`.",
-          { userId: currentUserId, component: "ChatScreen", channel: channelName, status },
+          {
+            userId: currentUserId,
+            component: "ChatScreen",
+            channel: channelName,
+            status,
+          },
         );
       } else if (status === "TIMED_OUT") {
         logger.warn("Chat list subscription timed out", {
@@ -356,9 +392,13 @@ export default function ChatScreen() {
       }
 
       channelP1.unsubscribe();
-      supabase.removeChannel(channelP1);
+      if (typeof (supabase as any).removeChannel === "function") {
+        (supabase as any).removeChannel(channelP1);
+      }
       channelP2.unsubscribe();
-      supabase.removeChannel(channelP2);
+      if (typeof (supabase as any).removeChannel === "function") {
+        (supabase as any).removeChannel(channelP2);
+      }
       channelErrorLoggedRef.current = false;
     };
   }, [currentUserId, queryClient]);
@@ -398,30 +438,34 @@ export default function ChatScreen() {
     retry: 2,
   });
 
-  const getOtherUser = useCallback((
-    chat: ChatSummary
-  ): { user: User | null; isAnonymous: boolean } => {
-    const otherUserId =
-      chat.participant_1_id === currentUserId
-        ? chat.participant_2_id
-        : chat.participant_1_id;
+  const getOtherUser = useCallback(
+    (chat: ChatSummary): { user: User | null; isAnonymous: boolean } => {
+      const otherUserId =
+        chat.participant_1_id === currentUserId
+          ? chat.participant_2_id
+          : chat.participant_1_id;
 
-    const isAnonymous = otherUserId.startsWith("anonymous-");
+      const isAnonymous = otherUserId.startsWith("anonymous-");
 
-    if (isAnonymous) {
-      return { user: null, isAnonymous: true };
-    }
+      if (isAnonymous) {
+        return { user: null, isAnonymous: true };
+      }
 
-    const user = users.find((u) => u.id === otherUserId) || null;
-    return { user, isAnonymous: false };
-  }, [currentUserId, users]);
+      const user = users.find((u) => u.id === otherUserId) || null;
+      return { user, isAnonymous: false };
+    },
+    [currentUserId, users],
+  );
 
   // Get unread count based on which participant is current user
-  const getUnreadCount = useCallback((chat: ChatSummary): number => {
-    return chat.participant_1_id === currentUserId
-      ? chat.unread_count_p1
-      : chat.unread_count_p2;
-  }, [currentUserId]);
+  const getUnreadCount = useCallback(
+    (chat: ChatSummary): number => {
+      return chat.participant_1_id === currentUserId
+        ? chat.unread_count_p1
+        : chat.unread_count_p2;
+    },
+    [currentUserId],
+  );
 
   // Persist chat list to AsyncStorage so cold-start shows data instantly.
   // Wait until users are loaded too so avatars/names are cached alongside summaries.
@@ -479,23 +523,19 @@ export default function ChatScreen() {
               created_at: item.created_at,
               last_message_at: item.last_message_at,
             };
-            queryClient.setQueryData(
-              ["chat", item.chat_id],
-              syntheticChat,
-              { updatedAt: 0 },
-            );
+            queryClient.setQueryData(["chat", item.chat_id], syntheticChat, {
+              updatedAt: 0,
+            });
             if (user && !isAnonymous) {
-              queryClient.setQueryData(
-                ["chat-other-user", otherUserId],
-                user,
-                { updatedAt: 0 },
-              );
+              queryClient.setQueryData(["chat-other-user", otherUserId], user, {
+                updatedAt: 0,
+              });
             }
           }}
         />
       );
     },
-    [getOtherUser, getUnreadCount, onItemReady, queryClient, currentUserId]
+    [getOtherUser, getUnreadCount, onItemReady, queryClient, currentUserId],
   );
 
   const styles = StyleSheet.create({

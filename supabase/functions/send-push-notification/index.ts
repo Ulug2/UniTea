@@ -53,7 +53,7 @@ serve(async (req) => {
       .from("notifications")
       .select("*")
       .eq("is_read", false)
-      .eq("push_sent", false) // Only fetch notifications that haven't been sent yet
+      .or("push_sent.eq.false,push_sent.is.null") // Fetch unsent notifications (false or NULL)
       .order("created_at", { ascending: false })
       .limit(100); // Process up to 100 notifications at a time
 
@@ -71,9 +71,10 @@ serve(async (req) => {
       );
     }
 
-    // Separate notifications by type: chat vs votes
+    // Separate notifications by type: chat vs votes vs comments
     const chatNotificationsByUser = new Map<string, NotificationRecord[]>();
     const voteNotificationsByUser = new Map<string, NotificationRecord[]>();
+    const commentNotificationsByUser = new Map<string, NotificationRecord[]>();
 
     for (const notification of notifications) {
       const userId = notification.user_id;
@@ -87,22 +88,17 @@ serve(async (req) => {
           voteNotificationsByUser.set(userId, []);
         }
         voteNotificationsByUser.get(userId)!.push(notification);
+      } else if (notification.type === "comment_reply") {
+        const commentUserId = notification.user_id;
+        if (!commentNotificationsByUser.has(commentUserId)) {
+          commentNotificationsByUser.set(commentUserId, []);
+        }
+        commentNotificationsByUser.get(commentUserId)!.push(notification);
       }
-      // Skip comment_reply for now (not in requirements)
     }
 
     const results: { userId: string; notificationCount: number; status: string }[] = [];
     const errors: { userId: string; error: string }[] = [];
-
-    // Helper: Get sender username for chat notifications
-    const getSenderUsername = async (userId: string): Promise<string> => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("username")
-        .eq("id", userId)
-        .single();
-      return data?.username || "Someone";
-    };
 
     // Helper: Truncate message to MAX_MESSAGE_LENGTH
     const truncateMessage = (message: string): string => {
@@ -110,42 +106,115 @@ serve(async (req) => {
       return message.substring(0, MAX_MESSAGE_LENGTH) + "...";
     };
 
-    // Helper: Get unread chat message count for badge (count from chat_messages, not notifications)
-    // This reflects the actual server-side count of unread messages for the user
-    const getUnreadChatCount = async (userId: string): Promise<number> => {
-      // Count unread messages from user_chats_summary view (optimized)
-      const { data: chatSummaries, error } = await supabase
-        .from("user_chats_summary")
-        .select("unread_count_p1, unread_count_p2, participant_1_id, participant_2_id")
-        .or(`participant_1_id.eq.${userId},participant_2_id.eq.${userId}`);
+    // Batch lookup for notification settings, sender usernames, and badge counts.
+    // This replaces sequential per-user DB calls inside the send loops.
+    const chatRecipientIds = Array.from(chatNotificationsByUser.keys());
+    const voteRecipientIds = Array.from(voteNotificationsByUser.keys());
 
-      if (error) {
-        console.error(`Error counting unread chats for user ${userId}:`, error);
-        return 0;
+    const chatSettingsByUserId = new Map<
+      string,
+      { push_token: string; notify_chats: boolean }
+    >();
+    if (chatRecipientIds.length > 0) {
+      const { data: chatSettingsRows, error: chatSettingsError } = await supabase
+        .from("notification_settings")
+        .select("user_id, push_token, notify_chats")
+        .in("user_id", chatRecipientIds);
+
+      if (!chatSettingsError && chatSettingsRows) {
+        for (const row of chatSettingsRows as any[]) {
+          if (row?.user_id) {
+            chatSettingsByUserId.set(row.user_id, {
+              push_token: row.push_token,
+              notify_chats: row.notify_chats,
+            });
+          }
+        }
+      }
+    }
+
+    const voteSettingsByUserId = new Map<
+      string,
+      { push_token: string; notify_upvotes: boolean }
+    >();
+    if (voteRecipientIds.length > 0) {
+      const { data: voteSettingsRows, error: voteSettingsError } = await supabase
+        .from("notification_settings")
+        .select("user_id, push_token, notify_upvotes")
+        .in("user_id", voteRecipientIds);
+
+      if (!voteSettingsError && voteSettingsRows) {
+        for (const row of voteSettingsRows as any[]) {
+          if (row?.user_id) {
+            voteSettingsByUserId.set(row.user_id, {
+              push_token: row.push_token,
+              notify_upvotes: row.notify_upvotes,
+            });
+          }
+        }
+      }
+    }
+
+    // For each recipient user, we use chatNotifications[0].related_user_id for title.
+    const chatSenderIds = Array.from(
+      new Set(
+        chatRecipientIds
+          .map((recipientId) => chatNotificationsByUser.get(recipientId)?.[0]?.related_user_id)
+          .filter(Boolean),
+      ),
+    ) as string[];
+
+    const senderUsernameById = new Map<string, string>();
+    if (chatSenderIds.length > 0) {
+      const { data: senderProfiles, error: senderProfilesError } = await supabase
+        .from("profiles")
+        .select("id, username")
+        .in("id", chatSenderIds);
+
+      if (!senderProfilesError && senderProfiles) {
+        for (const row of senderProfiles as any[]) {
+          if (row?.id) senderUsernameById.set(row.id, row.username || "Someone");
+        }
+      }
+    }
+
+    // Precompute unread badge counts for all chat recipients.
+    const unreadChatCountByUserId = new Map<string, number>();
+    for (const uid of chatRecipientIds) unreadChatCountByUserId.set(uid, 0);
+
+    if (chatRecipientIds.length > 0) {
+      const { data: p1Rows } = await supabase
+        .from("user_chats_summary")
+        .select("participant_1_id, unread_count_p1")
+        .in("participant_1_id", chatRecipientIds);
+
+      if (p1Rows) {
+        for (const row of p1Rows as any[]) {
+          const uid = row.participant_1_id as string;
+          const prev = unreadChatCountByUserId.get(uid) ?? 0;
+          unreadChatCountByUserId.set(uid, prev + (row.unread_count_p1 || 0));
+        }
       }
 
-      if (!chatSummaries) return 0;
+      const { data: p2Rows } = await supabase
+        .from("user_chats_summary")
+        .select("participant_2_id, unread_count_p2")
+        .in("participant_2_id", chatRecipientIds);
 
-      // Sum unread counts based on which participant is the user
-      const total = chatSummaries.reduce((sum: number, chat: any) => {
-        const isP1 = chat.participant_1_id === userId;
-        const unread = isP1 ? (chat.unread_count_p1 || 0) : (chat.unread_count_p2 || 0);
-        return sum + unread;
-      }, 0);
-
-      return total;
-    };
+      if (p2Rows) {
+        for (const row of p2Rows as any[]) {
+          const uid = row.participant_2_id as string;
+          const prev = unreadChatCountByUserId.get(uid) ?? 0;
+          unreadChatCountByUserId.set(uid, prev + (row.unread_count_p2 || 0));
+        }
+      }
+    }
 
     // Process chat notifications
     for (const [userId, chatNotifications] of chatNotificationsByUser) {
       try {
-        const { data: settings, error: settingsError } = await supabase
-          .from("notification_settings")
-          .select("push_token")
-          .eq("user_id", userId)
-          .single();
-
-        if (settingsError || !settings?.push_token) {
+        const settings = chatSettingsByUserId.get(userId);
+        if (!settings?.push_token || settings.notify_chats !== true) {
           continue;
         }
 
@@ -164,7 +233,7 @@ serve(async (req) => {
           .from("notifications")
           .update({ push_sent: true })
           .in("id", notificationIds)
-          .eq("push_sent", false); // Only update if not already sent (prevents race conditions)
+          .or("push_sent.is.null,push_sent.eq.false"); // Only update if not already sent (prevents race conditions)
 
         // If update failed or no rows were updated, notifications were already sent by another instance
         if (updateError) {
@@ -184,9 +253,9 @@ serve(async (req) => {
           continue;
         }
 
-        const senderUsername = await getSenderUsername(senderId);
+        const senderUsername = senderUsernameById.get(senderId) ?? "Someone";
         const messageBody = truncateMessage(latestChat.message || "Sent a message");
-        const unreadChatCount = await getUnreadChatCount(userId);
+        const unreadChatCount = unreadChatCountByUserId.get(userId) ?? 0;
 
         const pushPayload = {
           to: pushToken,
@@ -251,13 +320,8 @@ serve(async (req) => {
     // Process vote notifications (separate from chat, badge = 0)
     for (const [userId, voteNotifications] of voteNotificationsByUser) {
       try {
-        const { data: settings, error: settingsError } = await supabase
-          .from("notification_settings")
-          .select("push_token")
-          .eq("user_id", userId)
-          .single();
-
-        if (settingsError || !settings?.push_token) {
+        const settings = voteSettingsByUserId.get(userId);
+        if (!settings?.push_token || settings.notify_upvotes !== true) {
           continue;
         }
 
@@ -270,7 +334,7 @@ serve(async (req) => {
           .from("notifications")
           .update({ push_sent: true })
           .in("id", notificationIds)
-          .eq("push_sent", false); // Only update if not already sent
+          .or("push_sent.is.null,push_sent.eq.false"); // Only update if not already sent
 
         if (updateError) {
           console.error(`Error marking vote notifications as sent for user ${userId}:`, updateError);
@@ -291,12 +355,13 @@ serve(async (req) => {
         const pushPayload = {
           to: pushToken,
           title: "Your post got voted!",
-          body: `You received ${voteCount} new vote${voteCount > 1 ? "s" : ""}`,
+          body: voteNotifications[0].message, // Use actual milestone message from DB (e.g., "Your post received 10 upvotes!")
           sound: "default",
           badge: 0, // Votes do NOT increment device badge
           data: {
             notificationId: voteNotifications[0].id,
             type: "upvote",
+            relatedPostId: voteNotifications[0].related_post_id, // Enable routing to post detail
           },
         };
 
@@ -344,6 +409,106 @@ serve(async (req) => {
         errors.push({
           userId,
           error: (error?.message as string) || "Failed to send push notification",
+        });
+      }
+    }
+
+    // Process comment_reply notifications
+    for (const [userId, commentNotifications] of commentNotificationsByUser) {
+      try {
+        // Comment notifications ship "Always On" (Phase 1); settings toggle added in Phase 2
+        const pushToken = await supabase
+          .from("notification_settings")
+          .select("push_token")
+          .eq("user_id", userId)
+          .maybeSingle()
+          .then(({ data }) => data?.push_token);
+
+        if (!pushToken) {
+          continue; // Skip if no push token
+        }
+
+        // CRITICAL: Mark notifications as sent BEFORE sending to prevent race conditions
+        const notificationIds = commentNotifications.map((n) => n.id);
+        const { error: updateError } = await supabase
+          .from("notifications")
+          .update({ push_sent: true })
+          .in("id", notificationIds)
+          .or("push_sent.is.null,push_sent.eq.false"); // Only update if not already sent
+
+        if (updateError) {
+          console.error(`Error marking comment notifications as sent for user ${userId}:`, updateError);
+          continue;
+        }
+
+        // Verify notifications were actually marked
+        const { data: verifyNotifications } = await supabase
+          .from("notifications")
+          .select("id")
+          .in("id", notificationIds)
+          .eq("push_sent", true);
+
+        if (!verifyNotifications || verifyNotifications.length === 0) {
+          continue; // Already processed by another instance
+        }
+
+        const pushPayload = {
+          to: pushToken,
+          title: "New comment",
+          body: commentNotifications[0].message, // "Your post received a new comment."
+          sound: "default",
+          badge: 0, // Comments do NOT increment device badge
+          data: {
+            notificationId: commentNotifications[0].id,
+            type: "comment_reply",
+            relatedPostId: commentNotifications[0].related_post_id, // Enable routing to post detail
+          },
+        };
+
+        // Send push notification via Expo Push API
+        const pushResponse = await fetch(EXPO_PUSH_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate",
+          },
+          body: JSON.stringify(pushPayload),
+        });
+
+        if (!pushResponse.ok) {
+          const errorText = await pushResponse.text();
+          // Mark as not sent for retry
+          await supabase
+            .from("notifications")
+            .update({ push_sent: false })
+            .in("id", notificationIds);
+          throw new Error(`Expo Push API error: ${pushResponse.status} - ${errorText}`);
+        }
+
+        const pushResult = await pushResponse.json();
+
+        if (pushResult.data?.status === "ok") {
+          results.push({
+            userId,
+            notificationCount: commentNotifications.length,
+            status: "sent",
+          });
+        } else {
+          // Mark as not sent for retry
+          await supabase
+            .from("notifications")
+            .update({ push_sent: false })
+            .in("id", notificationIds);
+          errors.push({
+            userId,
+            error: String(pushResult.data?.message ?? "Unknown error"),
+          });
+        }
+      } catch (error: any) {
+        errors.push({
+          userId,
+          error: (error?.message as string) || "Failed to send comment push notification",
         });
       }
     }

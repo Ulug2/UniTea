@@ -1,69 +1,13 @@
 import { Tabs } from "expo-router";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import { useTheme } from "../../../context/ThemeContext";
-import React, { useEffect, useRef } from "react";
-import { View, Pressable, StyleSheet, AppState } from "react-native";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import * as Notifications from "expo-notifications";
-import { supabase } from "../../../lib/supabase";
-import { useAuth } from "../../../context/AuthContext";
-import { useBlocks } from "../../../hooks/useBlocks";
+import React from "react";
+import { View, Pressable, StyleSheet } from "react-native";
 import {
   FilterProvider,
   useFilterContext,
 } from "../../../context/FilterContext";
-
-// Hook to get global unread count for chat tab badge.
-//
-// The badge count is derived entirely from the `chat-summaries` cache that
-// chat.tsx keeps up-to-date via its two filtered Realtime channels.
-// No separate chat_messages subscription is needed here, and staleTime is
-// set to Infinity so the query never re-fetches on its own — it is only
-// refreshed when the app comes to foreground (AppState listener below) or
-// when chat.tsx's handleChatEvent calls setQueriesData.
-function useGlobalUnreadCount() {
-  const { session } = useAuth();
-  const currentUserId = session?.user?.id;
-  const queryClient = useQueryClient();
-
-  const { data: blocks = [] } = useBlocks();
-
-  const { data: unreadCount = 0 } = useQuery<number>({
-    queryKey: ["global-unread-count", currentUserId, blocks],
-    queryFn: async () => {
-      if (!currentUserId) return 0;
-
-      const { data, error } = await (supabase as any)
-        .from("user_chats_summary")
-        .select(
-          "unread_count_p1, unread_count_p2, participant_1_id, participant_2_id",
-        )
-        .or(
-          `participant_1_id.eq.${currentUserId},participant_2_id.eq.${currentUserId}`,
-        );
-
-      if (error) throw error;
-      if (!data) return 0;
-
-      return data.reduce((sum: number, chat: any) => {
-        const otherUserId =
-          chat.participant_1_id === currentUserId
-            ? chat.participant_2_id
-            : chat.participant_1_id;
-        if (blocks.includes(otherUserId)) return sum;
-        const isP1 = chat.participant_1_id === currentUserId;
-        return sum + (isP1 ? chat.unread_count_p1 || 0 : chat.unread_count_p2 || 0);
-      }, 0);
-    },
-    enabled: Boolean(currentUserId),
-    // Never re-fetches on its own; chat.tsx's filtered Realtime channels call
-    // setQueriesData to keep this value current without any DB round-trips.
-    staleTime: Infinity,
-    gcTime: 1000 * 60 * 30,
-  });
-
-  return unreadCount;
-}
+import { useGlobalUnreadCount } from "../../../hooks/useGlobalUnreadCount";
 
 function FilterButtons() {
   const { theme } = useTheme();
@@ -116,30 +60,7 @@ function FilterButtons() {
 
 export default function TabLayout() {
   const { theme } = useTheme();
-  const { session } = useAuth();
-  const currentUserId = session?.user?.id;
-  const queryClient = useQueryClient();
   const globalUnreadCount = useGlobalUnreadCount();
-
-  // When app comes to foreground, refetch unread count so tab badge and app icon badge stay correct
-  useEffect(() => {
-    if (!currentUserId) return;
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        queryClient.refetchQueries({
-          queryKey: ["global-unread-count", currentUserId],
-          exact: false,
-        });
-      }
-    });
-    return () => sub.remove();
-  }, [currentUserId, queryClient]);
-
-  // Keep app icon badge in sync with chat unread count
-  useEffect(() => {
-    const count = typeof globalUnreadCount === "number" ? globalUnreadCount : 0;
-    Notifications.setBadgeCountAsync(count).catch(() => {});
-  }, [globalUnreadCount]);
 
   return (
     <>

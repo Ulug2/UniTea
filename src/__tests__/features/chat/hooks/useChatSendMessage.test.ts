@@ -105,6 +105,35 @@ afterEach(() => {
 
 describe('useChatSendMessage', () => {
   describe('early returns', () => {
+    it('shows alert and skips send when chat participant is blocked', async () => {
+      const opts = makeOptions();
+      queryClient.setQueryData(['blocks', 'u1'], [
+        { userId: 'u2', scope: 'profile_only' },
+      ]);
+      queryClient.setQueryData(['chat-summaries', 'u1'], [
+        {
+          chat_id: 'chat-1',
+          participant_1_id: 'u1',
+          participant_2_id: 'u2',
+        },
+      ]);
+
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'hello' });
+      });
+
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Cannot send message',
+        expect.any(String),
+        expect.any(Array)
+      );
+      expect(mockFrom).not.toHaveBeenCalled();
+    });
+
     it('does not call supabase when chatId is empty', async () => {
       const opts = makeOptions();
       const { result } = renderHook(() => useChatSendMessage('', 'u1', opts), {

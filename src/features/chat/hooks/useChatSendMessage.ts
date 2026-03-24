@@ -36,6 +36,53 @@ type MutationContext = {
   optimisticMessage: ChatMessageVM;
 };
 
+type MinimalChat = {
+  participant_1_id: string | null;
+  participant_2_id: string | null;
+};
+
+type BlockRecord = {
+  userId: string;
+  scope: "anonymous_only" | "profile_only";
+};
+
+function isBlockedDirectMessage(
+  blocks: BlockRecord[],
+  otherUserId: string | null | undefined
+): boolean {
+  if (!otherUserId) return false;
+  return blocks.some(
+    (b) => b.userId === otherUserId && b.scope === "profile_only"
+  );
+}
+
+function getOtherUserIdFromCache(
+  queryClient: QueryClient,
+  currentUserId: string,
+  chatId: string
+): string | null {
+  const summaries =
+    queryClient.getQueryData<
+      Array<{
+        chat_id?: string;
+        participant_1_id?: string | null;
+        participant_2_id?: string | null;
+      }>
+    >(["chat-summaries", currentUserId]) ?? [];
+  const summary = summaries.find((s) => s.chat_id === chatId);
+  if (summary?.participant_1_id && summary?.participant_2_id) {
+    return summary.participant_1_id === currentUserId
+      ? summary.participant_2_id
+      : summary.participant_1_id;
+  }
+
+  const chat = queryClient.getQueryData<MinimalChat>(["chat", chatId]);
+  if (!chat?.participant_1_id || !chat.participant_2_id) return null;
+  return chat.participant_1_id === currentUserId
+    ? chat.participant_2_id
+    : chat.participant_1_id;
+}
+
 function checkServerRateLimit(
   queryClient: QueryClient,
   currentUserId: string,
@@ -89,6 +136,35 @@ export function useChatSendMessage(
         throw new Error("Missing chat ID or user ID");
       }
 
+      const cachedBlocks =
+        queryClient.getQueryData<BlockRecord[]>(["blocks", currentUserId]) || [];
+      if (cachedBlocks.length > 0) {
+        let otherUserId = getOtherUserIdFromCache(
+          queryClient,
+          currentUserId,
+          chatId
+        );
+
+        if (!otherUserId) {
+          const { data: chatRow } = await supabase
+            .from("chats")
+            .select("participant_1_id,participant_2_id")
+            .eq("id", chatId)
+            .single();
+
+          if (chatRow) {
+            otherUserId =
+              chatRow.participant_1_id === currentUserId
+                ? chatRow.participant_2_id
+                : chatRow.participant_1_id;
+          }
+        }
+
+        if (otherUserId && isBlockedDirectMessage(cachedBlocks, otherUserId)) {
+          throw new Error("CHAT_BLOCKED");
+        }
+      }
+
       try {
         await checkServerRateLimit(queryClient, currentUserId, chatId);
       } catch (rpcErr) {
@@ -126,6 +202,19 @@ export function useChatSendMessage(
     },
     onMutate: async ({ messageText, imageUrl, localImageUri, replyToId }) => {
       if (!chatId || !currentUserId) throw new Error("Missing chat ID or user ID");
+
+      const cachedBlocks =
+        queryClient.getQueryData<BlockRecord[]>(["blocks", currentUserId]) || [];
+      if (cachedBlocks.length > 0) {
+        const otherUserId = getOtherUserIdFromCache(
+          queryClient,
+          currentUserId,
+          chatId
+        );
+        if (otherUserId && isBlockedDirectMessage(cachedBlocks, otherUserId)) {
+          throw new Error("CHAT_BLOCKED");
+        }
+      }
 
       queryClient.cancelQueries({ queryKey: ["chat-messages", chatId] });
       queryClient.cancelQueries({ queryKey: ["chat-summaries", currentUserId] });
@@ -318,6 +407,16 @@ export function useChatSendMessage(
         queryClient.setQueryData(["chat-summaries", currentUserId], context.previousSummaries);
       }
 
+      const isChatBlocked = String(error?.message ?? "").includes("CHAT_BLOCKED");
+      if (isChatBlocked) {
+        Alert.alert(
+          "Cannot send message",
+          "This conversation is unavailable because one of you has blocked the other.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
       const isRateLimit =
         String(error?.message ?? "").includes("RATE_LIMIT_EXCEEDED") ||
         String(error?.message ?? "").includes("too quickly");
@@ -349,6 +448,25 @@ export function useChatSendMessage(
     async (params: SendParams) => {
       if (isSendingRef.current || isSending) return;
       if (!chatId || !currentUserId) return;
+
+      const cachedBlocks =
+        queryClient.getQueryData<BlockRecord[]>(["blocks", currentUserId]) || [];
+      if (cachedBlocks.length > 0) {
+        const otherUserId = getOtherUserIdFromCache(
+          queryClient,
+          currentUserId,
+          chatId
+        );
+        if (otherUserId && isBlockedDirectMessage(cachedBlocks, otherUserId)) {
+          Alert.alert(
+            "Cannot send message",
+            "This conversation is unavailable because one of you has blocked the other.",
+            [{ text: "OK" }]
+          );
+          return;
+        }
+      }
+
       const { text: messageText, localImageUri, replyToId } = params;
       if (!messageText?.trim() && !localImageUri) return;
 
