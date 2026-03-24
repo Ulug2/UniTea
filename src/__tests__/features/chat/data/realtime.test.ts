@@ -50,12 +50,12 @@ describe('subscribeToChatMessages', () => {
   const chatId = 'chat-xyz';
 
   it('creates a channel with the correct name', () => {
-    subscribeToChatMessages(chatId, jest.fn());
+    subscribeToChatMessages(chatId, { onRawInsert: jest.fn() });
     expect(supabase.channel).toHaveBeenCalledWith(`chat-${chatId}`);
   });
 
   it('subscribes to postgres_changes INSERT on chat_messages with correct filter', () => {
-    subscribeToChatMessages(chatId, jest.fn());
+    subscribeToChatMessages(chatId, { onRawInsert: jest.fn() });
     const ch = getChannelMock();
     expect(ch.on).toHaveBeenCalledWith(
       'postgres_changes',
@@ -70,7 +70,7 @@ describe('subscribeToChatMessages', () => {
 
   it('calls the callback with the new message payload on INSERT', () => {
     const cb = jest.fn();
-    subscribeToChatMessages(chatId, cb);
+    subscribeToChatMessages(chatId, { onRawInsert: cb });
     const ch = getChannelMock();
 
     // Extract the callback passed to .on()
@@ -82,7 +82,7 @@ describe('subscribeToChatMessages', () => {
   });
 
   it('returns a cleanup function that calls unsubscribe and removeChannel', () => {
-    const cleanup = subscribeToChatMessages(chatId, jest.fn());
+    const cleanup = subscribeToChatMessages(chatId, { onRawInsert: jest.fn() });
     const ch = getChannelMock();
     cleanup();
     expect(ch.unsubscribe).toHaveBeenCalled();

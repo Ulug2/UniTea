@@ -7,6 +7,7 @@ jest.mock('../../../../features/chat/data/realtime', () => ({
 }));
 jest.mock('../../../../features/chat/data/cache', () => ({
   prependIncomingMessage: jest.fn(),
+  upsertIncomingMessage: jest.fn(),
 }));
 
 import React from 'react';
@@ -72,7 +73,12 @@ describe('useChatMessagesRealtime', () => {
     renderHook(() => useChatMessagesRealtime('chat-1', 'u1', makeOpts()), {
       wrapper: createWrapper(),
     });
-    expect(mockSubscribe).toHaveBeenCalledWith('chat-1', expect.any(Function));
+    expect(mockSubscribe).toHaveBeenCalledWith(
+      'chat-1',
+      expect.objectContaining({
+        onRawInsert: expect.any(Function),
+      }),
+    );
   });
 
   it('calls cleanup function on unmount', () => {
@@ -99,9 +105,12 @@ describe('useChatMessagesRealtime', () => {
       wrapper: createWrapper(),
     });
 
-    const cb = mockSubscribe.mock.calls[0][1] as (msg: any) => void;
+    const onRawInsert = (mockSubscribe.mock.calls[0][1] as any)
+      .onRawInsert as (msg: any) => void;
     const msg = { id: 'new-m', user_id: 'u2', chat_id: 'chat-1' };
-    act(() => { cb(msg); });
+    act(() => {
+      onRawInsert(msg);
+    });
 
     expect(mockPrepend).toHaveBeenCalledWith(queryClient, 'chat-1', msg);
   });
@@ -112,9 +121,12 @@ describe('useChatMessagesRealtime', () => {
       wrapper: createWrapper(),
     });
 
-    const cb = mockSubscribe.mock.calls[0][1] as (msg: any) => void;
+    const onRawInsert = (mockSubscribe.mock.calls[0][1] as any)
+      .onRawInsert as (msg: any) => void;
     const msg = { id: 'own-m', user_id: 'u1', chat_id: 'chat-1' };
-    act(() => { cb(msg); });
+    act(() => {
+      onRawInsert(msg);
+    });
 
     expect(mockPrepend).not.toHaveBeenCalled();
   });
@@ -125,9 +137,12 @@ describe('useChatMessagesRealtime', () => {
       wrapper: createWrapper(),
     });
 
-    const cb = mockSubscribe.mock.calls[0][1] as (msg: any) => void;
+    const onRawInsert = (mockSubscribe.mock.calls[0][1] as any)
+      .onRawInsert as (msg: any) => void;
     const msg = { id: 'other-m', user_id: 'u2', chat_id: 'other-chat' };
-    act(() => { cb(msg); });
+    act(() => {
+      onRawInsert(msg);
+    });
 
     expect(mockPrepend).not.toHaveBeenCalled();
   });
@@ -139,11 +154,39 @@ describe('useChatMessagesRealtime', () => {
       wrapper: createWrapper(),
     });
 
-    const cb = mockSubscribe.mock.calls[0][1] as (msg: any) => void;
+    const onRawInsert = (mockSubscribe.mock.calls[0][1] as any)
+      .onRawInsert as (msg: any) => void;
     const msg = { id: 'dup-id', user_id: 'u2', chat_id: 'chat-1' };
-    act(() => { cb(msg); });
+    act(() => {
+      onRawInsert(msg);
+    });
 
     expect(mockPrepend).not.toHaveBeenCalled();
+  });
+
+  it('does NOT prepend or invalidate unread for blocked sender', () => {
+    const opts = makeOpts();
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+    queryClient.setQueryData(['blocks', 'u1'], [
+      { userId: 'u2', scope: 'profile_only' },
+    ]);
+
+    renderHook(() => useChatMessagesRealtime('chat-1', 'u1', opts), {
+      wrapper: createWrapper(),
+    });
+
+    const onRawInsert = (mockSubscribe.mock.calls[0][1] as any)
+      .onRawInsert as (msg: any) => void;
+    const msg = { id: 'blocked-msg', user_id: 'u2', chat_id: 'chat-1' };
+
+    act(() => {
+      onRawInsert(msg);
+    });
+
+    expect(mockPrepend).not.toHaveBeenCalled();
+    expect(invalidateSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['global-unread-count', 'u1'] })
+    );
   });
 
   it('invalidates chat-messages queries when AppState becomes active', () => {

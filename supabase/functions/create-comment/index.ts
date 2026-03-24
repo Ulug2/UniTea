@@ -10,6 +10,8 @@ const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
 });
 
+const SEXUAL_TEXT_BLOCK_THRESHOLD = 0.65;
+
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
 function getCorsHeaders(req: Request) {
@@ -73,36 +75,41 @@ serve(async (req: Request) => {
       throw new Error("Post ID is required");
     }
 
-    // 4. Text Moderation: OpenAI Moderation + curse-word check (EN/RU/KZ)
+    // 4. Text Moderation: sexual content + likely NU student name-drop checks
     const moderation = await openai.moderations.create({
       input: content.trim(),
     });
 
-    if (moderation.results[0].flagged) {
-      throw new Error("Comment violates community guidelines");
+    const sexualScore = Number(moderation.results?.[0]?.category_scores?.sexual ?? 0);
+    if (sexualScore >= SEXUAL_TEXT_BLOCK_THRESHOLD) {
+      throw new Error("Comment contains sexually explicit content");
     }
 
-    // Curse-word check: EN/RU/KZ in any alphabet (incl. Latin transliteration) and obfuscated spellings; allow general complaints without names
-    const curseCheckPrompt = `Does this text contain curse words, swear words, offensive language, or hate directed at a specifically named person in English, Russian, or Kazakh?
+    const studentNameCheckPrompt = `You are a moderation AI for an anonymous social app for students at Nazarbayev University.
 
-You MUST flag (reply YES):
-- Curse words, swear words, obscenities in ANY alphabet (Cyrillic, Latin, mixed), including Kazakh/Russian in Latin (e.g. Kotakbas, Qotaqbas) and obfuscated spellings (e.g. pid@ras, p1daras).
-- Hate or harassment directed at a specifically named person (real name).
+Your ONLY job is to detect if a specific, everyday student is being namedropped.
 
-Do NOT flag (reply NO):
-- General complaints, venting, or "spilling tea" when no specific person is named (e.g. complaining about "the professor", "the director", "administration", "our dean" without naming them). Students may complain about situations or roles; only flag if someone is named and attacked.
+DO NOT FLAG curse words, swear words, hate speech, offensive language, or general complaints (e.g., "the dean", "my professor", "admin"). These are explicitly ALLOWED.
 
-Reply only YES or NO.
+DO NOT FLAG the names of famous people, celebrities, politicians, or global public figures.
+
+ONLY flag (reply YES) if the text mentions the specific first and/or last name of what appears to be a regular university student.
+
+Otherwise, reply NO.
+
+Reply ONLY with YES or NO.
 
 Text: "${content.trim().slice(0, 2000)}"`;
-    const curseCheck = await openai.chat.completions.create({
+    const studentNameCheck = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: curseCheckPrompt }],
+      messages: [{ role: "user", content: studentNameCheckPrompt }],
       max_tokens: 10,
     });
-    const curseAnswer = curseCheck.choices[0]?.message?.content?.trim().toUpperCase();
-    if (curseAnswer?.includes("YES")) {
-      throw new Error("Comment contains language that is not allowed");
+    const studentNameAnswer = studentNameCheck.choices[0]?.message?.content
+      ?.trim()
+      .toUpperCase();
+    if (studentNameAnswer?.includes("YES")) {
+      throw new Error("Comment mentions a likely private student name");
     }
 
     // 5. Prepare comment data for database insertion
@@ -176,6 +183,41 @@ Text: "${content.trim().slice(0, 2000)}"`;
     if (dbError) {
       console.error("Database error:", dbError);
       throw dbError;
+    }
+
+    // 6a. Create notification for post author (gracefully fail if notification insert fails)
+    try {
+      // Query the posts table to get the post author's user_id
+      const { data: postData, error: postError } = await supabase
+        .from("posts")
+        .select("user_id")
+        .eq("id", post_id)
+        .maybeSingle();
+
+      if (postError) {
+        console.error("Error fetching post author:", postError);
+        // Don't throw; fail gracefully so comment creation isn't prevented
+      } else if (postData && postData.user_id !== user.id) {
+        // Only notify if comment author is NOT the post author
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert({
+            user_id: postData.user_id,
+            type: "comment_reply",
+            related_post_id: post_id,
+            related_comment_id: data?.id, // Optional, for future use
+            message: "Your post received a new comment.",
+            is_read: false,
+          });
+
+        if (notificationError) {
+          console.error("Error creating comment notification:", notificationError);
+          // Don't throw; fail gracefully so comment creation isn't prevented
+        }
+      }
+    } catch (notificationError: any) {
+      // Catch all errors from notification logic and log but don't break comment creation
+      console.error("Unexpected error in notification logic:", notificationError);
     }
 
     // 7. Return success response

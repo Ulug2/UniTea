@@ -85,6 +85,32 @@ export default function ChatDetailScreen() {
   const isAdmin = currentUser?.is_admin === true;
   const queryClient = useQueryClient();
 
+  // Subscribe to chat list unread counters so we can mark messages as read
+  // without scanning the full `messages` array on every realtime update.
+  const { data: chatSummaries } = useQuery<any[]>({
+    queryKey: ["chat-summaries", currentUserId],
+    queryFn: async () => {
+      if (!currentUserId) return [];
+      const { data, error } = await supabase
+        .from("user_chats_summary")
+        .select("*")
+        .or(
+          `participant_1_id.eq.${currentUserId},participant_2_id.eq.${currentUserId}`
+        )
+        .order("last_message_at", {
+          ascending: false,
+          nullsFirst: false,
+        });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    enabled: Boolean(currentUserId),
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 30,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
   // Track pending message IDs to prevent duplicate processing from real-time
   const pendingMessageIds = useRef<Set<string>>(new Set());
   // Track local image URIs for optimistic messages (tempId -> localUri)
@@ -231,6 +257,14 @@ export default function ChatDetailScreen() {
     [messagesData, blocks],
   );
 
+  const unreadCountInThisChat = useMemo(() => {
+    if (!id || !currentUserId || !chatSummaries) return 0;
+    const summary = chatSummaries.find((s: any) => s.chat_id === id);
+    if (!summary) return 0;
+    const isP1 = summary.participant_1_id === currentUserId;
+    return isP1 ? summary.unread_count_p1 || 0 : summary.unread_count_p2 || 0;
+  }, [chatSummaries, id, currentUserId]);
+
   // Whenever the messages data changes (e.g. refetch on focus), recompute the
   // per-viewer last message and patch the chat-summaries cache for this user.
   useEffect(() => {
@@ -246,13 +280,31 @@ export default function ChatDetailScreen() {
   // Persist the first page of messages so the detail screen never shows the
   // skeleton on cold start and chat images can be served from expo-image's
   // disk cache without a network round-trip.
+  const lastPersistedFirstPageSignatureRef = useRef<string | null>(null);
+  const firstPageMessageIdSignature = useMemo(() => {
+    const firstPage = messagesData?.pages?.[0];
+    if (!Array.isArray(firstPage) || firstPage.length === 0) return null;
+    return firstPage.map((m) => (m as any).id).join("|");
+  }, [messagesData]);
+
   useEffect(() => {
-    if (!id || !messagesData?.pages?.[0]?.length) return;
-    saveChatMessagesToStorage(
-      id,
-      messagesData.pages[0] as Record<string, unknown>[],
-    );
-  }, [id, messagesData]);
+    if (!id || !firstPageMessageIdSignature) return;
+    if (lastPersistedFirstPageSignatureRef.current === firstPageMessageIdSignature)
+      return;
+
+    // Debounce writes because realtime inserts can cause rapid successive
+    // cache updates.
+    const timer = setTimeout(() => {
+      lastPersistedFirstPageSignatureRef.current = firstPageMessageIdSignature;
+      const firstPage = messagesData?.pages?.[0] ?? [];
+      saveChatMessagesToStorage(
+        id,
+        firstPage as Record<string, unknown>[],
+      );
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [id, firstPageMessageIdSignature, messagesData]);
 
   const handleReply = useCallback(
     (msg: ChatMessageVM) => {
@@ -282,65 +334,97 @@ export default function ChatDetailScreen() {
   });
 
   // Mark messages as read when opening chat - optimized with immediate optimistic updates
+  const hasMarkedInitialUnreadRef = useRef(false);
+  const lastHandledUnreadCountRef = useRef<number>(0);
+
   useEffect(() => {
-    if (!id || !currentUserId || messages.length === 0) return;
+    if (!id || !currentUserId) return;
+    if (unreadCountInThisChat <= 0) return;
+    if (unreadCountInThisChat === lastHandledUnreadCountRef.current) return;
 
-    const markAsRead = async () => {
-      // Check if there are any unread messages from other user
-      const hasUnread = messages.some(
-        (msg) => !msg.is_read && msg.user_id !== currentUserId,
-      );
+    // Ensure we have the messages cache populated before updating read
+    // state + badges; otherwise we'd desync UI vs badges.
+    const cachedMessages = queryClient.getQueryData<any>(["chat-messages", id]);
+    if (!cachedMessages) return;
 
-      if (!hasUnread) return;
+    const markAsRead = () => {
+      lastHandledUnreadCountRef.current = unreadCountInThisChat;
 
-      // 1. Optimistically update chat-summaries cache immediately (set unread_count to 0)
+      // Update chat-summaries unread counters (for badge derivation).
       queryClient.setQueryData<any[]>(
         ["chat-summaries", currentUserId],
         (oldSummaries: any[] | undefined) => {
           if (!oldSummaries) return oldSummaries;
 
           return oldSummaries.map((summary: any) => {
-            if (summary.chat_id === id) {
-              // Update unread count based on which participant is current user
-              const isP1 = summary.participant_1_id === currentUserId;
-              return {
-                ...summary,
-                unread_count_p1: isP1 ? 0 : summary.unread_count_p1,
-                unread_count_p2: !isP1 ? 0 : summary.unread_count_p2,
-              };
-            }
-            return summary;
+            if (summary.chat_id !== id) return summary;
+
+            const isP1 = summary.participant_1_id === currentUserId;
+            return {
+              ...summary,
+              unread_count_p1: isP1 ? 0 : summary.unread_count_p1,
+              unread_count_p2: !isP1 ? 0 : summary.unread_count_p2,
+            };
           });
         },
       );
 
-      // 2. Optimistically update global unread count (immediate, no delay)
-      // Note: Query key may include blocks, so we invalidate all variants to ensure update
+      // Recompute global unread count from the updated chat-summaries cache.
+      const cachedBlocks =
+        queryClient.getQueryData<any[]>(["blocks", currentUserId]) || [];
+
       queryClient.setQueriesData<number>(
         { queryKey: ["global-unread-count", currentUserId], exact: false },
-        (oldCount: number | undefined) => {
-          if (oldCount === undefined) return oldCount;
+        () => {
+          const updatedSummaries = queryClient.getQueryData<any[]>([
+            "chat-summaries",
+            currentUserId,
+          ]);
+          if (!updatedSummaries || !Array.isArray(updatedSummaries)) {
+            return undefined;
+          }
 
-          // Count unread messages in this chat before marking as read
-          const unreadInThisChat = messages.filter(
-            (msg) => !msg.is_read && msg.user_id !== currentUserId,
-          ).length;
+          const total = updatedSummaries.reduce((sum: number, chat: any) => {
+            const otherUserId =
+              chat.participant_1_id === currentUserId
+                ? chat.participant_2_id
+                : chat.participant_1_id;
 
-          return Math.max(0, oldCount - unreadInThisChat);
+            if (cachedBlocks.some((b) => b.userId === otherUserId)) return sum;
+
+            const isP1 = chat.participant_1_id === currentUserId;
+            const unread = isP1
+              ? chat.unread_count_p1 || 0
+              : chat.unread_count_p2 || 0;
+            return sum + unread;
+          }, 0);
+
+          return total;
         },
       );
 
-      // 3. Optimistically update messages cache
+      // Optimistically update the messages cache:
+      // - On first read, scan all loaded pages.
+      // - After that, new unread messages arrive via INSERT into page[0].
+      let updatedMessageCache = false;
+      const shouldMarkAllPages = !hasMarkedInitialUnreadRef.current;
+
       queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
         if (!oldData) return oldData;
+        updatedMessageCache = true;
 
-        const newPages = oldData.pages.map((page: ChatMessageVM[]) =>
-          page.map((msg) => {
-            if (msg.user_id !== currentUserId && !msg.is_read) {
-              return { ...msg, is_read: true };
-            }
-            return msg;
-          }),
+        const newPages = (oldData.pages ?? []).map(
+          (page: ChatMessageVM[], pageIndex: number) => {
+            if (!Array.isArray(page)) return page;
+            if (!shouldMarkAllPages && pageIndex !== 0) return page;
+
+            return page.map((msg) => {
+              if (msg.user_id !== currentUserId && !msg.is_read) {
+                return { ...msg, is_read: true };
+              }
+              return msg;
+            });
+          },
         );
 
         return {
@@ -349,7 +433,11 @@ export default function ChatDetailScreen() {
         };
       });
 
-      // 4. Send server request (fire and forget - UI already updated)
+      if (!hasMarkedInitialUnreadRef.current && updatedMessageCache) {
+        hasMarkedInitialUnreadRef.current = true;
+      }
+
+      // Send server request (fire and forget - UI already updated).
       supabase
         .from("chat_messages")
         .update({ is_read: true })
@@ -364,7 +452,6 @@ export default function ChatDetailScreen() {
               component: "ChatDetailScreen",
               operation: "markAsRead",
             });
-            // On error, invalidate to refetch correct state
             queryClient.invalidateQueries({
               queryKey: ["chat-summaries", currentUserId],
             });
@@ -373,54 +460,11 @@ export default function ChatDetailScreen() {
             });
           }
         });
-
-      // 5. Update global unread count optimistically from updated chat-summaries cache
-      // CRITICAL: Calculate from cache instead of invalidating to ensure immediate sync
-      // The queryFn in _layout.tsx will now use cached chat-summaries, so we just need to trigger recalculation
-      queryClient.setQueriesData<number>(
-        { queryKey: ["global-unread-count", currentUserId], exact: false },
-        () => {
-          // Get updated chat summaries from cache
-          const updatedSummaries = queryClient.getQueryData<any[]>([
-            "chat-summaries",
-            currentUserId,
-          ]);
-          if (!updatedSummaries || !Array.isArray(updatedSummaries)) {
-            return undefined; // Let queryFn handle it
-          }
-
-          // Get blocks from cache (needed for calculation)
-          const cachedBlocks =
-            queryClient.getQueryData<string[]>(["blocks", currentUserId]) || [];
-
-          // Calculate total unread count from cached summaries
-          const total = updatedSummaries.reduce((sum: number, chat: any) => {
-            const otherUserId =
-              chat.participant_1_id === currentUserId
-                ? chat.participant_2_id
-                : chat.participant_1_id;
-
-            // Skip chats with blocked users
-            if (cachedBlocks.includes(otherUserId)) {
-              return sum;
-            }
-
-            const isP1 = chat.participant_1_id === currentUserId;
-            const unread = isP1
-              ? chat.unread_count_p1 || 0
-              : chat.unread_count_p2 || 0;
-            return sum + unread;
-          }, 0);
-
-          return total;
-        },
-      );
     };
 
-    // Debounce to avoid marking as read too quickly
     const timer = setTimeout(markAsRead, 800);
     return () => clearTimeout(timer);
-  }, [id, currentUserId, messages, queryClient]);
+  }, [id, currentUserId, unreadCountInThisChat, queryClient]);
 
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -914,6 +958,42 @@ export default function ChatDetailScreen() {
     deleteChatMutation,
   ]);
 
+  const hasVisibleSiblingSameDayByIndex = useMemo(() => {
+    if (!currentUserId) {
+      return messages.map(() => false);
+    }
+
+    const dateKey = (d: Date) =>
+      `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+
+    const visibleDateKeys = new Set<string>();
+
+    // Mark all dates where at least one message is visible for the viewer.
+    for (const msg of messages) {
+      if (!msg.created_at) continue;
+
+      const tombstone = isDeletedForEveryone(msg);
+      const visibleForViewer = tombstone || !isDeletedForViewer(msg, currentUserId);
+
+      if (visibleForViewer) {
+        visibleDateKeys.add(dateKey(new Date(msg.created_at)));
+      }
+    }
+
+    // For each (hidden) message, check whether there is any other visible
+    // message on the same day.
+    return messages.map((item) => {
+      if (!item.created_at) return false;
+      const showTombstone = isDeletedForEveryone(item);
+      const isHiddenForCurrentUser = !showTombstone
+        ? isDeletedForViewer(item, currentUserId)
+        : false;
+
+      if (!isHiddenForCurrentUser) return false;
+      return visibleDateKeys.has(dateKey(new Date(item.created_at)));
+    });
+  }, [messages, currentUserId]);
+
   const renderMessage = useCallback(
     ({ item, index }: { item: ChatMessageVM; index: number }) => {
       const showTombstone = isDeletedForEveryone(item);
@@ -922,29 +1002,8 @@ export default function ChatDetailScreen() {
           ? isDeletedForViewer(item, currentUserId)
           : false;
 
-      let hasVisibleSiblingSameDay = false;
-      if (isHiddenForCurrentUser && item.created_at) {
-        const currentDate = new Date(item.created_at);
-        for (let i = 0; i < messages.length; i++) {
-          if (i === index) continue;
-          const candidate = messages[i];
-          if (!candidate?.created_at) continue;
-          const candidateTombstone = isDeletedForEveryone(candidate);
-          const candidateHiddenForViewer =
-            currentUserId && !candidateTombstone
-              ? isDeletedForViewer(candidate, currentUserId)
-              : false;
-          const isVisibleForViewer =
-            !candidateHiddenForViewer || candidateTombstone;
-          if (!isVisibleForViewer) continue;
-
-          const candidateDate = new Date(candidate.created_at);
-          if (isSameDay(currentDate, candidateDate)) {
-            hasVisibleSiblingSameDay = true;
-            break;
-          }
-        }
-      }
+      const hasVisibleSiblingSameDay =
+        hasVisibleSiblingSameDayByIndex[index] ?? false;
 
       const nextMsg = index < messages.length - 1 ? messages[index + 1] : null;
 
@@ -969,6 +1028,7 @@ export default function ChatDetailScreen() {
     },
     [
       messages,
+      hasVisibleSiblingSameDayByIndex,
       currentUserId,
       theme,
       isDark,

@@ -11,7 +11,15 @@ import type { ReplyPreview } from "../types";
  */
 export function subscribeToChatMessages(
   chatId: string,
-  onInsert: (message: ChatMessageVM) => void
+  callbacks: {
+    /** Raw insert payload is emitted immediately so the UI updates without delay. */
+    onRawInsert: (message: ChatMessageVM) => void;
+    /**
+     * Optional enrichment update for rows that have `reply_to_id`.
+     * Used to fill `replyToMessage` without blocking the initial message render.
+     */
+    onEnrichedInsert?: (message: ChatMessageVM) => void;
+  }
 ): () => void {
   const channelName = `chat-${chatId}`;
   const channel = supabase
@@ -26,6 +34,10 @@ export function subscribeToChatMessages(
       },
       (payload) => {
         const rawMsg = payload.new as any;
+
+        // Always emit the raw insert immediately; this removes visible lag when
+        // the row requires follow-up enrichment (e.g. reply preview).
+        callbacks.onRawInsert(rawMsg as ChatMessageVM);
 
         if (rawMsg.reply_to_id) {
           // The postgres_changes payload has no JOIN data. Do a follow-up
@@ -45,14 +57,12 @@ export function subscribeToChatMessages(
                     ? ((data as any).reply_message as ReplyPreview)
                     : null,
                 };
-                onInsert(enriched);
+                callbacks.onEnrichedInsert?.(enriched);
               } else {
                 // Fallback: pass the raw row without reply context
-                onInsert(rawMsg as ChatMessageVM);
+                callbacks.onEnrichedInsert?.(rawMsg as ChatMessageVM);
               }
             });
-        } else {
-          onInsert(rawMsg as ChatMessageVM);
         }
       }
     )

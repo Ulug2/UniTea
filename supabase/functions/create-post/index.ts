@@ -12,6 +12,7 @@ const openai = new OpenAI({
 
 const MAX_POLL_OPTIONS = 11;
 const MAX_POST_IMAGES = 5;
+const SEXUAL_TEXT_BLOCK_THRESHOLD = 0.65;
 
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
@@ -76,7 +77,7 @@ serve(async (req: Request) => {
       poll_allow_multiple,
     } = await req.json();
 
-    // 3. Text Moderation (if content exists): OpenAI Moderation + curse-word check (EN/RU/KZ)
+    // 3. Text Moderation (if content exists): sexual content + likely NU student name-drop checks
     // Combine title + content for a single moderation pass when both are present
     const textToModerate = [title?.trim(), content?.trim()].filter(Boolean).join(" ");
     if (textToModerate) {
@@ -84,31 +85,36 @@ serve(async (req: Request) => {
         input: textToModerate,
       });
 
-      if (moderation.results[0].flagged) {
-        throw new Error("Post violates community guidelines");
+      const sexualScore = Number(moderation.results?.[0]?.category_scores?.sexual ?? 0);
+      if (sexualScore >= SEXUAL_TEXT_BLOCK_THRESHOLD) {
+        throw new Error("Post contains sexually explicit content");
       }
 
-      // Curse-word check: EN/RU/KZ in any alphabet (incl. Latin transliteration) and obfuscated spellings; allow general complaints without names
-      const curseCheckPrompt = `Does this text contain curse words, swear words, offensive language, or hate directed at a specifically named person in English, Russian, or Kazakh?
+      const studentNameCheckPrompt = `You are a moderation AI for an anonymous social app for students at Nazarbayev University.
 
-You MUST flag (reply YES):
-- Curse words, swear words, obscenities in ANY alphabet (Cyrillic, Latin, mixed), including Kazakh/Russian in Latin (e.g. Kotakbas, Qotaqbas) and obfuscated spellings (e.g. pid@ras, p1daras).
-- Hate or harassment directed at a specifically named person (real name).
+Your ONLY job is to detect if a specific, everyday student is being namedropped.
 
-Do NOT flag (reply NO):
-- General complaints, venting, or "spilling tea" when no specific person is named (e.g. complaining about "the professor", "the director", "administration", "our dean" without naming them). Students may complain about situations or roles; only flag if someone is named and attacked.
+DO NOT FLAG curse words, swear words, hate speech, offensive language, or general complaints (e.g., "the dean", "my professor", "admin"). These are explicitly ALLOWED.
 
-Reply only YES or NO.
+DO NOT FLAG the names of famous people, celebrities, politicians, or global public figures.
+
+ONLY flag (reply YES) if the text mentions the specific first and/or last name of what appears to be a regular university student.
+
+Otherwise, reply NO.
+
+Reply ONLY with YES or NO.
 
 Text: "${textToModerate.slice(0, 2000)}"`;
-      const curseCheck = await openai.chat.completions.create({
+      const studentNameCheck = await openai.chat.completions.create({
         model: "gpt-4o-mini",
-        messages: [{ role: "user", content: curseCheckPrompt }],
+        messages: [{ role: "user", content: studentNameCheckPrompt }],
         max_tokens: 10,
       });
-      const curseAnswer = curseCheck.choices[0]?.message?.content?.trim().toUpperCase();
-      if (curseAnswer?.includes("YES")) {
-        throw new Error("Post contains language that is not allowed");
+      const studentNameAnswer = studentNameCheck.choices[0]?.message?.content
+        ?.trim()
+        .toUpperCase();
+      if (studentNameAnswer?.includes("YES")) {
+        throw new Error("Post mentions a likely private student name");
       }
     }
 
@@ -146,7 +152,7 @@ Text: "${textToModerate.slice(0, 2000)}"`;
             throw new Error("Failed to process image");
           }
 
-          // Use GPT-4o-mini for image moderation (content + visible text/curse words)
+          // Use GPT-4o-mini for image moderation (sexual content only)
           const imageModerationResponse = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
@@ -156,7 +162,7 @@ Text: "${textToModerate.slice(0, 2000)}"`;
                   {
                     type: "text",
                     text:
-                      "Is this image appropriate for a safe community app? Does it contain any visible curse words, offensive text (in any alphabet; include Kazakh/Russian in Latin e.g. Kotakbas, Qotaqbas, or obfuscated like pid@ras), nudity, violence, hate symbols, or inappropriate content in any language? If yes to any, reply only NO. Otherwise reply only YES.",
+                      "Does this image contain pornographic or sexually explicit visual content (including explicit nudity or sexual acts)? Ignore any visible text, profanity, offensive language, violence, hate symbols, or general edginess. Reply only NO if it is pornographic/sexually explicit. Otherwise reply only YES.",
                   },
                   {
                     type: "image_url",

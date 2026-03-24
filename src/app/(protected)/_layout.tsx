@@ -5,14 +5,17 @@ import { useAuth } from "../../context/AuthContext";
 import { View } from "react-native";
 import { useEffect } from "react";
 import * as Linking from "expo-linking";
+import * as Notifications from "expo-notifications";
 import { useMyProfile } from "../../features/profile/hooks/useMyProfile";
 import BannedScreen from "../../components/BannedScreen";
 import { FilterProvider } from "../../context/FilterContext";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
+import { useGlobalUnreadCount } from "../../hooks/useGlobalUnreadCount";
 
 export default function AppLayout() {
   const { theme } = useTheme();
   const { session, loading } = useAuth();
+  const globalUnreadCount = useGlobalUnreadCount();
   const { data: profile, isLoading: profileLoading } = useMyProfile(
     session?.user?.id,
   );
@@ -25,6 +28,15 @@ export default function AppLayout() {
   // Ensure notification permission + Expo push token registration + handler
   // setup runs whenever the user is authenticated.
   usePushNotifications();
+
+  // Keep OS/app icon badge in sync with unread chat count.
+  useEffect(() => {
+    const count = typeof globalUnreadCount === "number" ? globalUnreadCount : 0;
+    // Only set badge when authenticated; when logged out we don't want to
+    // leave a stale badge behind.
+    if (!session) return;
+    Notifications.setBadgeCountAsync(count).catch(() => {});
+  }, [globalUnreadCount, session]);
 
   useEffect(() => {
     if (!loading && !session) {

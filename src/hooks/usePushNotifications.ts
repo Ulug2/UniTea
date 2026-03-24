@@ -6,6 +6,7 @@ import Constants from "expo-constants";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { logger } from "../utils/logger";
+import { router } from "expo-router";
 
 // Track app state to suppress notifications when app is in foreground
 // Using module-level variable so notification handler can access it
@@ -25,13 +26,14 @@ const appStateSubscription = AppState.addEventListener("change", (nextAppState: 
     currentAppState = nextAppState;
 });
 
-function getNotificationData(notification: Notifications.Notification): { type?: string; relatedUserId?: string } {
+function getNotificationData(notification: Notifications.Notification): { type?: string; relatedUserId?: string; relatedPostId?: string } {
     const contentData = notification.request.content.data as Record<string, unknown> | undefined;
     const trigger = notification.request.trigger as { remoteMessage?: { data?: Record<string, string> } } | undefined;
     const remoteData = trigger?.remoteMessage?.data;
     return {
         type: (contentData?.type as string) ?? remoteData?.type,
         relatedUserId: (contentData?.relatedUserId as string) ?? remoteData?.relatedUserId,
+        relatedPostId: (contentData?.relatedPostId as string) ?? remoteData?.relatedPostId,
     };
 }
 
@@ -81,7 +83,10 @@ Notifications.setNotificationHandler({
             return {
                 shouldShowAlert: false,
                 shouldPlaySound: false,
-                shouldSetBadge: true,
+                // Do not overwrite the OS badge while the user is already
+                // viewing the corresponding chat; unread state should be
+                // driven by the in-app mark-as-read / realtime logic.
+                shouldSetBadge: false,
                 shouldShowBanner: false,
                 shouldShowList: false,
             };
@@ -263,6 +268,70 @@ export function usePushNotifications() {
         return () => {
             isMounted = false;
         };
+    }, [userId]);
+
+    // Handle notification taps so the user lands directly in the correct
+    // chat and the read-state / badge decrements can happen immediately.
+    useEffect(() => {
+        if (!userId) return;
+
+        const subscription =
+            Notifications.addNotificationResponseReceivedListener(
+                async (response) => {
+                    const { type, relatedUserId, relatedPostId } = getNotificationData(
+                        response.notification,
+                    );
+
+                    try {
+                        // Handle chat message notifications
+                        if (type === "chat_message" && relatedUserId) {
+                            // Mark the currently viewed chat partner so
+                            // foreground notification handling stays suppressed.
+                            setCurrentViewedChatPartnerId(relatedUserId);
+
+                            // Resolve chat id between the two participants.
+                            // (We query the cached `user_chats_summary` view.)
+                            const { data: summary1 } = await supabase
+                                .from("user_chats_summary")
+                                .select("chat_id")
+                                .eq("participant_1_id", userId)
+                                .eq("participant_2_id", relatedUserId)
+                                .maybeSingle();
+
+                            const chatId =
+                                summary1?.chat_id ??
+                                (
+                                    await supabase
+                                        .from("user_chats_summary")
+                                        .select("chat_id")
+                                        .eq("participant_1_id", relatedUserId)
+                                        .eq("participant_2_id", userId)
+                                        .maybeSingle()
+                                )?.data?.chat_id;
+
+                            if (chatId) {
+                                router.push(`/chat/${chatId}`);
+                            }
+                        }
+                        // Handle upvote and comment reply notifications (route to post detail)
+                        else if ((type === "upvote" || type === "comment_reply") && relatedPostId) {
+                            router.push(`/post/${relatedPostId}`);
+                        }
+                    } catch (error: any) {
+                        logger.error(
+                            "Error handling notification tap",
+                            error as Error,
+                            {
+                                userId,
+                                notificationType: type,
+                                component: "usePushNotifications",
+                            },
+                        );
+                    }
+                },
+            );
+
+        return () => subscription.remove();
     }, [userId]);
 }
 
