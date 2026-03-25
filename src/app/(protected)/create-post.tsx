@@ -146,7 +146,9 @@ export default function CreatePostScreen() {
       return;
     }
     // Fallback (should be rare): return to the likely originating tab.
-    router.replace(isLostFound ? "/(protected)/(tabs)/lostfound" : "/(protected)/(tabs)");
+    router.replace(
+      isLostFound ? "/(protected)/(tabs)/lostfound" : "/(protected)/(tabs)",
+    );
   };
 
   const pickImage = async () => {
@@ -313,7 +315,8 @@ export default function CreatePostScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "android" ? "height" : "padding"}
+        keyboardVerticalOffset={Platform.OS === "android" ? 0 : 0}
         enabled
       >
         <View style={{ flex: 1 }}>
@@ -328,442 +331,442 @@ export default function CreatePostScreen() {
               paddingBottom: Math.min(insets.bottom, 18) + 24,
             }}
           >
-          {/* LOST & FOUND CATEGORY SELECTOR */}
-          {isLostFound && (
-            <View style={styles.categorySection}>
-              <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                Category *
-              </Text>
-              <View style={styles.categoryButtons}>
-                <Pressable
-                  onPress={() => setCategory("lost")}
-                  style={[
-                    styles.categoryButton,
-                    {
-                      backgroundColor:
-                        category === "lost" ? "#FF6B6B" : theme.background,
-                      borderColor:
-                        category === "lost" ? "#FF6B6B" : theme.border,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name="alert-circle"
-                    size={20}
-                    color={category === "lost" ? "#FFF" : theme.text}
-                  />
-                  <Text
-                    style={[
-                      styles.categoryButtonText,
-                      { color: category === "lost" ? "#FFF" : theme.text },
-                    ]}
-                  >
-                    Lost
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setCategory("found")}
-                  style={[
-                    styles.categoryButton,
-                    {
-                      backgroundColor:
-                        category === "found" ? "#51CF66" : theme.background,
-                      borderColor:
-                        category === "found" ? "#51CF66" : theme.border,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={20}
-                    color={category === "found" ? "#FFF" : theme.text}
-                  />
-                  <Text
-                    style={[
-                      styles.categoryButtonText,
-                      { color: category === "found" ? "#FFF" : theme.text },
-                    ]}
-                  >
-                    Found
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          )}
-
-          {/* ITEM NAME INPUT (Lost & Found only) */}
-          {isLostFound && (
-            <View style={styles.locationSection}>
-              <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                Item Name *
-              </Text>
-              <View
-                style={[
-                  styles.locationInputContainer,
-                  {
-                    backgroundColor: theme.background,
-                    borderColor: theme.border,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name="pricetag-outline"
-                  size={20}
-                  color={theme.secondaryText}
-                />
-                <TextInput
-                  placeholder="e.g., Student ID Card, Water Bottle, Laptop"
-                  placeholderTextColor={theme.secondaryText}
-                  style={[styles.locationInput, { color: theme.text }]}
-                  keyboardAppearance={isDark ? "dark" : "light"}
-                  onChangeText={setTitle}
-                  value={title}
-                  autoFocus={isLostFound}
-                />
-              </View>
-            </View>
-          )}
-
-          {/* LOCATION INPUT (Lost & Found only) */}
-          {isLostFound && (
-            <View style={styles.locationSection}>
-              <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                Location *
-              </Text>
-              <View
-                style={[
-                  styles.locationInputContainer,
-                  {
-                    backgroundColor: theme.background,
-                    borderColor: theme.border,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name="location-outline"
-                  size={20}
-                  color={theme.secondaryText}
-                />
-                <TextInput
-                  placeholder="e.g., Library, Block 10, Dining Hall"
-                  placeholderTextColor={theme.secondaryText}
-                  style={[styles.locationInput, { color: theme.text }]}
-                  keyboardAppearance={isDark ? "dark" : "light"}
-                  onChangeText={setLocation}
-                  value={location}
-                />
-              </View>
-            </View>
-          )}
-
-          {/* CONTENT INPUT */}
-          <View style={styles.contentSection}>
+            {/* LOST & FOUND CATEGORY SELECTOR */}
             {isLostFound && (
-              <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                Description *
-              </Text>
-            )}
-            {isRepost && (
-              <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                Add your thoughts (optional)
-              </Text>
-            )}
-            <TextInput
-              placeholder={
-                isRepost
-                  ? "Say something about this..."
-                  : isLostFound
-                    ? "Describe the item..."
-                    : "What's on your mind?"
-              }
-              placeholderTextColor={theme.secondaryText}
-              style={[styles.contentInput, { color: theme.text }]}
-              keyboardAppearance={isDark ? "dark" : "light"}
-              onChangeText={setContent}
-              value={content}
-              multiline
-              autoFocus={!isLostFound && !isRepost}
-              scrollEnabled
-              textAlignVertical="top"
-            />
-          </View>
-
-          {/* POLL BUILDER (feed posts only, shown only when enabled) */}
-          {!isLostFound && isPoll && (
-            <View style={styles.pollSection}>
-              <View style={styles.pollHeaderRow}>
+              <View style={styles.categorySection}>
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                  Poll
+                  Category *
                 </Text>
-                <Pressable
-                  onPress={handleTogglePoll}
-                  style={styles.pollRemoveButton}
-                >
-                  <AntDesign
-                    name="close"
-                    size={18}
-                    color={theme.secondaryText}
-                  />
-                </Pressable>
-              </View>
-
-              <View style={styles.pollOptionsContainer}>
-                {pollOptions.map((option, index) => (
-                  <View key={index} style={styles.pollOptionRow}>
-                    <View
-                      style={[
-                        styles.pollOptionIndex,
-                        {
-                          borderColor: theme.border,
-                          backgroundColor: theme.background,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.pollOptionIndexText,
-                          { color: theme.secondaryText },
-                        ]}
-                      >
-                        {index + 1}
-                      </Text>
-                    </View>
-                    <TextInput
-                      style={[
-                        styles.pollOptionInput,
-                        {
-                          borderColor: theme.border,
-                          backgroundColor: theme.background,
-                          color: theme.text,
-                        },
-                      ]}
-                      placeholder={`Option ${index + 1}`}
-                      placeholderTextColor={theme.secondaryText}
-                      keyboardAppearance={isDark ? "dark" : "light"}
-                      value={option}
-                      onChangeText={(text) => {
-                        const next = [...pollOptions];
-                        next[index] = text;
-                        setPollOptions(next);
-                      }}
-                    />
-                    {pollOptions.length > 2 && (
-                      <Pressable
-                        onPress={() => {
-                          const next = pollOptions.filter(
-                            (_, i) => i !== index,
-                          );
-                          setPollOptions(next.length >= 2 ? next : ["", ""]);
-                        }}
-                        style={styles.pollOptionRemoveButton}
-                      >
-                        <AntDesign
-                          name="close"
-                          size={16}
-                          color={theme.secondaryText}
-                        />
-                      </Pressable>
-                    )}
-                  </View>
-                ))}
-
-                {pollOptions.length < MAX_POLL_OPTIONS && (
+                <View style={styles.categoryButtons}>
                   <Pressable
-                    onPress={() => setPollOptions([...pollOptions, ""])}
+                    onPress={() => setCategory("lost")}
                     style={[
-                      styles.pollAddOptionButton,
-                      { borderColor: theme.border },
+                      styles.categoryButton,
+                      {
+                        backgroundColor:
+                          category === "lost" ? "#FF6B6B" : theme.background,
+                        borderColor:
+                          category === "lost" ? "#FF6B6B" : theme.border,
+                      },
                     ]}
                   >
-                    <Feather
-                      name="plus-circle"
-                      size={18}
-                      color={theme.primary}
+                    <Ionicons
+                      name="alert-circle"
+                      size={20}
+                      color={category === "lost" ? "#FFF" : theme.text}
                     />
                     <Text
                       style={[
-                        styles.pollAddOptionText,
-                        { color: theme.primary },
+                        styles.categoryButtonText,
+                        { color: category === "lost" ? "#FFF" : theme.text },
                       ]}
                     >
-                      Add option
+                      Lost
                     </Text>
                   </Pressable>
-                )}
+                  <Pressable
+                    onPress={() => setCategory("found")}
+                    style={[
+                      styles.categoryButton,
+                      {
+                        backgroundColor:
+                          category === "found" ? "#51CF66" : theme.background,
+                        borderColor:
+                          category === "found" ? "#51CF66" : theme.border,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={20}
+                      color={category === "found" ? "#FFF" : theme.text}
+                    />
+                    <Text
+                      style={[
+                        styles.categoryButtonText,
+                        { color: category === "found" ? "#FFF" : theme.text },
+                      ]}
+                    >
+                      Found
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
-            </View>
-          )}
+            )}
 
-          {/* IMAGE PREVIEW */}
-          {images.length > 0 && (
-            <View style={styles.imageGalleryContainer}>
-              <View style={styles.imageGalleryHeader}>
-                <Text
+            {/* ITEM NAME INPUT (Lost & Found only) */}
+            {isLostFound && (
+              <View style={styles.locationSection}>
+                <Text style={[styles.sectionLabel, { color: theme.text }]}>
+                  Item Name *
+                </Text>
+                <View
                   style={[
-                    styles.sectionLabel,
-                    { color: theme.text, marginBottom: 0 },
+                    styles.locationInputContainer,
+                    {
+                      backgroundColor: theme.background,
+                      borderColor: theme.border,
+                    },
                   ]}
                 >
-                  Images
+                  <Ionicons
+                    name="pricetag-outline"
+                    size={20}
+                    color={theme.secondaryText}
+                  />
+                  <TextInput
+                    placeholder="e.g., Student ID Card, Water Bottle, Laptop"
+                    placeholderTextColor={theme.secondaryText}
+                    style={[styles.locationInput, { color: theme.text }]}
+                    keyboardAppearance={isDark ? "dark" : "light"}
+                    onChangeText={setTitle}
+                    value={title}
+                    autoFocus={isLostFound}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* LOCATION INPUT (Lost & Found only) */}
+            {isLostFound && (
+              <View style={styles.locationSection}>
+                <Text style={[styles.sectionLabel, { color: theme.text }]}>
+                  Location *
                 </Text>
-                <Text
+                <View
                   style={[
-                    styles.galleryCountText,
-                    { color: theme.secondaryText },
+                    styles.locationInputContainer,
+                    {
+                      backgroundColor: theme.background,
+                      borderColor: theme.border,
+                    },
                   ]}
                 >
-                  {images.length}/{MAX_POST_IMAGES}
-                </Text>
+                  <Ionicons
+                    name="location-outline"
+                    size={20}
+                    color={theme.secondaryText}
+                  />
+                  <TextInput
+                    placeholder="e.g., Library, Block 10, Dining Hall"
+                    placeholderTextColor={theme.secondaryText}
+                    style={[styles.locationInput, { color: theme.text }]}
+                    keyboardAppearance={isDark ? "dark" : "light"}
+                    onChangeText={setLocation}
+                    value={location}
+                  />
+                </View>
               </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                nestedScrollEnabled
-                style={styles.imageGalleryFlatList}
-                contentContainerStyle={styles.imageGalleryGrid}
-              >
-                {images.map((uri, index) => (
-                  <SelectedImagePreview
-                    key={`${uri}-${index}`}
-                    uri={uri}
-                    isLast={index === images.length - 1}
-                    onOpen={() =>
-                      setExpandedImageUri(resolvePostImageUri(uri))
-                    }
-                    onRemove={() =>
-                      setImages((current) =>
-                        current.filter((u) => u !== uri),
-                      )
-                    }
-                  />
-                ))}
-              </ScrollView>
-            </View>
-          )}
+            )}
 
-          {/* ORIGINAL POST PREVIEW (for reposts) */}
-          {isRepost && originalPost && (
-            <View
-              style={[
-                styles.originalPostPreview,
-                {
-                  backgroundColor: theme.background,
-                  borderColor: theme.border,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.originalPostLabel,
-                  { color: theme.secondaryText },
-                ]}
-              >
-                Original post
-              </Text>
-              <View style={styles.originalPostHeader}>
-                {originalPost.is_anonymous ? (
-                  <Image source={nuLogo} style={styles.originalAvatar} />
-                ) : originalPost.avatar_url ? (
-                  originalPost.avatar_url.startsWith("http") ? (
-                    <Image
-                      source={{ uri: originalPost.avatar_url }}
-                      style={styles.originalAvatar}
+            {/* CONTENT INPUT */}
+            <View style={styles.contentSection}>
+              {isLostFound && (
+                <Text style={[styles.sectionLabel, { color: theme.text }]}>
+                  Description *
+                </Text>
+              )}
+              {isRepost && (
+                <Text style={[styles.sectionLabel, { color: theme.text }]}>
+                  Add your thoughts (optional)
+                </Text>
+              )}
+              <TextInput
+                placeholder={
+                  isRepost
+                    ? "Say something about this..."
+                    : isLostFound
+                      ? "Describe the item..."
+                      : "What's on your mind?"
+                }
+                placeholderTextColor={theme.secondaryText}
+                style={[styles.contentInput, { color: theme.text }]}
+                keyboardAppearance={isDark ? "dark" : "light"}
+                onChangeText={setContent}
+                value={content}
+                multiline
+                autoFocus={!isLostFound && !isRepost}
+                scrollEnabled
+                textAlignVertical="top"
+              />
+            </View>
+
+            {/* POLL BUILDER (feed posts only, shown only when enabled) */}
+            {!isLostFound && isPoll && (
+              <View style={styles.pollSection}>
+                <View style={styles.pollHeaderRow}>
+                  <Text style={[styles.sectionLabel, { color: theme.text }]}>
+                    Poll
+                  </Text>
+                  <Pressable
+                    onPress={handleTogglePoll}
+                    style={styles.pollRemoveButton}
+                  >
+                    <AntDesign
+                      name="close"
+                      size={18}
+                      color={theme.secondaryText}
                     />
-                  ) : (
-                    <SupabaseImage
-                      path={originalPost.avatar_url}
-                      bucket="avatars"
-                      style={styles.originalAvatar}
-                    />
-                  )
-                ) : (
-                  <Image
-                    source={DEFAULT_AVATAR}
-                    style={styles.originalAvatar}
-                  />
-                )}
-                <View style={styles.originalPostHeaderText}>
-                  <Text style={[styles.originalAuthor, { color: theme.text }]}>
-                    {originalPost.is_anonymous
-                      ? originalPost.user_id === session?.user?.id
-                        ? "You"
-                        : "Anonymous"
-                      : originalPost.username}
+                  </Pressable>
+                </View>
+
+                <View style={styles.pollOptionsContainer}>
+                  {pollOptions.map((option, index) => (
+                    <View key={index} style={styles.pollOptionRow}>
+                      <View
+                        style={[
+                          styles.pollOptionIndex,
+                          {
+                            borderColor: theme.border,
+                            backgroundColor: theme.background,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.pollOptionIndexText,
+                            { color: theme.secondaryText },
+                          ]}
+                        >
+                          {index + 1}
+                        </Text>
+                      </View>
+                      <TextInput
+                        style={[
+                          styles.pollOptionInput,
+                          {
+                            borderColor: theme.border,
+                            backgroundColor: theme.background,
+                            color: theme.text,
+                          },
+                        ]}
+                        placeholder={`Option ${index + 1}`}
+                        placeholderTextColor={theme.secondaryText}
+                        keyboardAppearance={isDark ? "dark" : "light"}
+                        value={option}
+                        onChangeText={(text) => {
+                          const next = [...pollOptions];
+                          next[index] = text;
+                          setPollOptions(next);
+                        }}
+                      />
+                      {pollOptions.length > 2 && (
+                        <Pressable
+                          onPress={() => {
+                            const next = pollOptions.filter(
+                              (_, i) => i !== index,
+                            );
+                            setPollOptions(next.length >= 2 ? next : ["", ""]);
+                          }}
+                          style={styles.pollOptionRemoveButton}
+                        >
+                          <AntDesign
+                            name="close"
+                            size={16}
+                            color={theme.secondaryText}
+                          />
+                        </Pressable>
+                      )}
+                    </View>
+                  ))}
+
+                  {pollOptions.length < MAX_POLL_OPTIONS && (
+                    <Pressable
+                      onPress={() => setPollOptions([...pollOptions, ""])}
+                      style={[
+                        styles.pollAddOptionButton,
+                        { borderColor: theme.border },
+                      ]}
+                    >
+                      <Feather
+                        name="plus-circle"
+                        size={18}
+                        color={theme.primary}
+                      />
+                      <Text
+                        style={[
+                          styles.pollAddOptionText,
+                          { color: theme.primary },
+                        ]}
+                      >
+                        Add option
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* IMAGE PREVIEW */}
+            {images.length > 0 && (
+              <View style={styles.imageGalleryContainer}>
+                <View style={styles.imageGalleryHeader}>
+                  <Text
+                    style={[
+                      styles.sectionLabel,
+                      { color: theme.text, marginBottom: 0 },
+                    ]}
+                  >
+                    Images
                   </Text>
                   <Text
                     style={[
-                      styles.originalTime,
+                      styles.galleryCountText,
                       { color: theme.secondaryText },
                     ]}
                   >
-                    {formatDistanceToNowStrict(
-                      new Date(originalPost.created_at!),
-                    )}{" "}
-                    ago
+                    {images.length}/{MAX_POST_IMAGES}
                   </Text>
                 </View>
-              </View>
-              <Text
-                style={[styles.originalContent, { color: theme.text }]}
-                numberOfLines={6}
-              >
-                {originalPost.content}
-              </Text>
-            </View>
-          )}
-        </ScrollView>
-
-        {/* FOOTER */}
-        <View
-          style={[
-            styles.footer,
-            {
-              backgroundColor: theme.card,
-              borderTopColor: theme.border,
-              paddingBottom: Math.max(insets.bottom, 20),
-            },
-          ]}
-        >
-          {/* ANONYMOUS TOGGLE (Feed posts only) */}
-          {!isLostFound && (
-            <>
-              <View style={styles.anonymousFooterRow}>
-                <Text style={[styles.anonymousLabel, { color: theme.text }]}>
-                  Anonymous
-                </Text>
-                <Switch
-                  value={isAnonymous}
-                  onValueChange={setIsAnonymous}
-                  trackColor={{ false: theme.border, true: theme.primary }}
-                  thumbColor={isAnonymous ? "#fff" : "#f4f3f4"}
-                />
-              </View>
-              <View style={styles.footerActionsRow}>
-                <Pressable
-                  onPress={handleTogglePoll}
-                  style={styles.footerButton}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  nestedScrollEnabled
+                  style={styles.imageGalleryFlatList}
+                  contentContainerStyle={styles.imageGalleryGrid}
                 >
-                  <MaterialCommunityIcons
-                    name="poll"
-                    size={24}
-                    color={theme.text}
+                  {images.map((uri, index) => (
+                    <SelectedImagePreview
+                      key={`${uri}-${index}`}
+                      uri={uri}
+                      isLast={index === images.length - 1}
+                      onOpen={() =>
+                        setExpandedImageUri(resolvePostImageUri(uri))
+                      }
+                      onRemove={() =>
+                        setImages((current) => current.filter((u) => u !== uri))
+                      }
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* ORIGINAL POST PREVIEW (for reposts) */}
+            {isRepost && originalPost && (
+              <View
+                style={[
+                  styles.originalPostPreview,
+                  {
+                    backgroundColor: theme.background,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.originalPostLabel,
+                    { color: theme.secondaryText },
+                  ]}
+                >
+                  Original post
+                </Text>
+                <View style={styles.originalPostHeader}>
+                  {originalPost.is_anonymous ? (
+                    <Image source={nuLogo} style={styles.originalAvatar} />
+                  ) : originalPost.avatar_url ? (
+                    originalPost.avatar_url.startsWith("http") ? (
+                      <Image
+                        source={{ uri: originalPost.avatar_url }}
+                        style={styles.originalAvatar}
+                      />
+                    ) : (
+                      <SupabaseImage
+                        path={originalPost.avatar_url}
+                        bucket="avatars"
+                        style={styles.originalAvatar}
+                      />
+                    )
+                  ) : (
+                    <Image
+                      source={DEFAULT_AVATAR}
+                      style={styles.originalAvatar}
+                    />
+                  )}
+                  <View style={styles.originalPostHeaderText}>
+                    <Text
+                      style={[styles.originalAuthor, { color: theme.text }]}
+                    >
+                      {originalPost.is_anonymous
+                        ? originalPost.user_id === session?.user?.id
+                          ? "You"
+                          : "Anonymous"
+                        : originalPost.username}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.originalTime,
+                        { color: theme.secondaryText },
+                      ]}
+                    >
+                      {formatDistanceToNowStrict(
+                        new Date(originalPost.created_at!),
+                      )}{" "}
+                      ago
+                    </Text>
+                  </View>
+                </View>
+                <Text
+                  style={[styles.originalContent, { color: theme.text }]}
+                  numberOfLines={6}
+                >
+                  {originalPost.content}
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+
+          {/* FOOTER */}
+          <View
+            style={[
+              styles.footer,
+              {
+                backgroundColor: theme.card,
+                borderTopColor: theme.border,
+                paddingBottom: Math.max(insets.bottom, 20),
+              },
+            ]}
+          >
+            {/* ANONYMOUS TOGGLE (Feed posts only) */}
+            {!isLostFound && (
+              <>
+                <View style={styles.anonymousFooterRow}>
+                  <Text style={[styles.anonymousLabel, { color: theme.text }]}>
+                    Anonymous
+                  </Text>
+                  <Switch
+                    value={isAnonymous}
+                    onValueChange={setIsAnonymous}
+                    trackColor={{ false: theme.border, true: theme.primary }}
+                    thumbColor={isAnonymous ? "#fff" : "#f4f3f4"}
                   />
-                </Pressable>
+                </View>
+                <View style={styles.footerActionsRow}>
+                  <Pressable
+                    onPress={handleTogglePoll}
+                    style={styles.footerButton}
+                  >
+                    <MaterialCommunityIcons
+                      name="poll"
+                      size={24}
+                      color={theme.text}
+                    />
+                  </Pressable>
+                  <Pressable onPress={pickImage} style={styles.footerButton}>
+                    <Feather name="image" size={24} color={theme.text} />
+                  </Pressable>
+                </View>
+              </>
+            )}
+            {isLostFound && (
+              <>
+                <View />
                 <Pressable onPress={pickImage} style={styles.footerButton}>
                   <Feather name="image" size={24} color={theme.text} />
                 </Pressable>
-              </View>
-            </>
-          )}
-          {isLostFound && (
-            <>
-              <View />
-              <Pressable onPress={pickImage} style={styles.footerButton}>
-                <Feather name="image" size={24} color={theme.text} />
-              </Pressable>
-            </>
-          )}
-        </View>
+              </>
+            )}
+          </View>
         </View>
       </KeyboardAvoidingView>
 

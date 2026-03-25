@@ -23,7 +23,11 @@ import { Database } from "../../../types/database.types";
 import { supabase } from "../../../lib/supabase";
 import { ErrorBoundary } from "react-error-boundary";
 import { logger } from "../../../utils/logger";
-import { useBlocks, isBlockedPost, hasBlockForScope } from "../../../hooks/useBlocks";
+import {
+  useBlocks,
+  isBlockedPost,
+  hasBlockForScope,
+} from "../../../hooks/useBlocks";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import { usePostComments } from "../../../features/comments/hooks/usePostComments";
 import type { CommentNode } from "../../../features/comments/utils/tree";
@@ -343,10 +347,18 @@ export default function PostDetailed() {
   }
 
   // Check if post author is blocked (scope-aware)
-  const isPostAuthorBlocked = isBlockedPost(blocks, detailedPost.user_id, detailedPost.is_anonymous ?? false);
+  const isPostAuthorBlocked = isBlockedPost(
+    blocks,
+    detailedPost.user_id,
+    detailedPost.is_anonymous ?? false,
+  );
   // Check if reposted post's original author is blocked (scope-aware)
   const isRepostAuthorBlocked = detailedPost.original_user_id
-    ? isBlockedPost(blocks, detailedPost.original_user_id, detailedPost.original_is_anonymous ?? false)
+    ? isBlockedPost(
+        blocks,
+        detailedPost.original_user_id,
+        detailedPost.original_is_anonymous ?? false,
+      )
     : false;
 
   // Hide post if author or repost author is blocked
@@ -371,8 +383,13 @@ export default function PostDetailed() {
   const canDeletePost = isPostOwner || isAdmin;
 
   // Determine whether the block option for this post's scope is already applied
-  const postScope = (detailedPost?.is_anonymous ?? false) ? "anonymous_only" : "profile_only";
-  const alreadyBlockedInScope = hasBlockForScope(blocks, detailedPost?.user_id, postScope);
+  const postScope =
+    (detailedPost?.is_anonymous ?? false) ? "anonymous_only" : "profile_only";
+  const alreadyBlockedInScope = hasBlockForScope(
+    blocks,
+    detailedPost?.user_id,
+    postScope,
+  );
 
   const content = (
     <>
@@ -490,7 +507,9 @@ export default function PostDetailed() {
                   color={theme.text}
                 />
                 <Text style={[styles.menuText, { color: theme.text }]}>
-                  {detailedPost?.is_anonymous ? "Block Anonymous User" : "Block User"}
+                  {detailedPost?.is_anonymous
+                    ? "Block Anonymous User"
+                    : "Block User"}
                 </Text>
               </Pressable>
             ) : null}
@@ -513,13 +532,10 @@ export default function PostDetailed() {
         onClose={() => setFullscreenUri(null)}
       />
 
-
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1, backgroundColor: theme.background }}
-        keyboardVerticalOffset={
-          Platform.OS === "ios" ? insets.top + 44 : insets.top
-        }
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 30 : 0}
       >
         <View style={{ flex: 1 }}>
           {(createCommentMutation.isPending || deletingCommentId) && (

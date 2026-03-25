@@ -2,7 +2,7 @@ import { AntDesign, Entypo, MaterialIcons } from "@expo/vector-icons";
 import { Stack, router, usePathname, useSegments } from "expo-router";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { useEffect } from "react";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
@@ -151,7 +151,8 @@ export default function AppLayout() {
           options={{
             headerShown: false,
             animation: "slide_from_bottom",
-            presentation: "fullScreenModal",
+            presentation:
+              Platform.OS === "android" ? "modal" : "fullScreenModal",
           }}
         />
         <Stack.Screen
