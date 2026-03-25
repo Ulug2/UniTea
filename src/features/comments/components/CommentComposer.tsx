@@ -45,8 +45,12 @@ export function CommentComposer({
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? insetsTop + 44 : insetsTop}
+      behavior={Platform.select({
+        ios: "padding",
+        android: "padding",
+        default: "padding",
+      })}
+      keyboardVerticalOffset={Platform.OS === "ios" ? insetsTop + 30 : 0}
     >
       <View
         style={[
@@ -83,10 +87,7 @@ export function CommentComposer({
         {replyingToUsername && (
           <View style={styles.replyingToContainer}>
             <Text
-              style={[
-                styles.replyingToText,
-                { color: theme.secondaryText },
-              ]}
+              style={[styles.replyingToText, { color: theme.secondaryText }]}
             >
               Replying to{" "}
               <Text style={{ fontWeight: "600" }}>{replyingToUsername}</Text>
@@ -229,4 +230,3 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
 });
-
