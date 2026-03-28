@@ -1,12 +1,15 @@
-import React, { ReactElement, useCallback, RefObject } from "react";
+import React, { ReactElement, useCallback, useMemo, RefObject } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   RefreshControl,
   StyleSheet,
+  View,
   ViewStyle,
 } from "react-native";
 import CommentListItem from "../../../components/CommentListItem";
 import type { CommentNode } from "../utils/tree";
+import { useTheme } from "../../../context/ThemeContext";
 
 type CommentsTreeListProps = {
   data: CommentNode[];
@@ -19,9 +22,11 @@ type CommentsTreeListProps = {
   style?: ViewStyle;
   headerComponent?: ReactElement | null;
   isAdmin?: boolean;
+  /** Shows an inline spinner when there are no cached comments yet. */
+  isLoading?: boolean;
 };
 
-export function CommentsTreeList({
+function CommentsTreeListBase({
   data,
   onReply,
   onDeleteStart,
@@ -32,7 +37,10 @@ export function CommentsTreeList({
   style,
   headerComponent,
   isAdmin = false,
+  isLoading = false,
 }: CommentsTreeListProps) {
+  const { theme } = useTheme();
+
   const renderCommentItem = useCallback(
     ({ item }: { item: CommentNode }) => (
       <CommentListItem
@@ -44,10 +52,20 @@ export function CommentsTreeList({
         isAdmin={isAdmin}
       />
     ),
-    [onReply, onDeleteStart, onDeleteEnd, isAdmin]
+    [onReply, onDeleteStart, onDeleteEnd, isAdmin],
   );
 
   const keyExtractor = useCallback((item: CommentNode) => item.id, []);
+
+  const emptyComponent = useMemo(
+    () =>
+      isLoading ? (
+        <View style={styles.emptyLoading}>
+          <ActivityIndicator size="small" color={theme.primary} />
+        </View>
+      ) : null,
+    [isLoading, theme.primary],
+  );
 
   return (
     <FlatList
@@ -56,8 +74,10 @@ export function CommentsTreeList({
       renderItem={renderCommentItem}
       keyExtractor={keyExtractor}
       ListHeaderComponent={headerComponent ?? null}
+      ListEmptyComponent={emptyComponent}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       style={style}
       initialNumToRender={10}
       maxToRenderPerBatch={10}
@@ -71,9 +91,15 @@ export function CommentsTreeList({
   );
 }
 
+export const CommentsTreeList = React.memo(CommentsTreeListBase);
+
 const styles = StyleSheet.create({
   content: {
     paddingBottom: 20,
+  },
+  emptyLoading: {
+    paddingTop: 32,
+    alignItems: "center",
   },
 });
 

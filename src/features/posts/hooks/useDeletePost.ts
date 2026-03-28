@@ -5,6 +5,8 @@ import { supabase } from "../../../lib/supabase";
 
 type Options = {
   onSuccess?: () => void;
+  /** If set, called instead of `router.back()` after delete (e.g. custom Android exit animation). */
+  onNavigateBack?: () => void;
 };
 
 export function useDeletePost(postId: string | null | undefined, options?: Options) {
@@ -45,7 +47,13 @@ export function useDeletePost(postId: string | null | undefined, options?: Optio
         queryClient.invalidateQueries({ queryKey: ["user-posts"] });
         queryClient.invalidateQueries({ queryKey: ["bookmarked-posts"] });
       }
-      if (postId && !overridePostId) router.back();
+      if (postId && !overridePostId) {
+        if (options?.onNavigateBack) {
+          options.onNavigateBack();
+        } else {
+          router.back();
+        }
+      }
       options?.onSuccess?.();
     },
     onError: (error: unknown) => {

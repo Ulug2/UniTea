@@ -83,7 +83,7 @@ export function usePostComments(
       if (!postId) return [];
       return fetchCommentsWithMeta(postId);
     },
-    staleTime: 0,
+    staleTime: 1000 * 30, // show cached comments immediately; silently refresh after 30 s
     gcTime: 1000 * 60 * 15,
     retry: 2,
   });

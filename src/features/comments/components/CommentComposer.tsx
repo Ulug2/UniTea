@@ -1,8 +1,6 @@
-import React from "react";
+import React, { forwardRef } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -16,7 +14,8 @@ import type { Theme } from "../../../context/ThemeContext";
 
 type CommentComposerProps = {
   theme: Theme;
-  insetsTop: number;
+  /** Bottom safe area inset (e.g. home indicator / gesture nav) for edge-to-edge layouts */
+  insetsBottom: number;
   commentText: string;
   onChangeText: (value: string) => void;
   onSubmit: () => void;
@@ -28,36 +27,35 @@ type CommentComposerProps = {
   currentUserLabel: string;
 };
 
-export function CommentComposer({
-  theme,
-  insetsTop,
-  commentText,
-  onChangeText,
-  onSubmit,
-  onCancelReply,
-  isAnonymousMode,
-  onToggleAnonymous,
-  replyingToUsername,
-  isSubmitting,
-  currentUserLabel,
-}: CommentComposerProps) {
-  const disabled = !commentText.trim() || isSubmitting;
+const COMPOSER_PADDING_BOTTOM = 22;
 
-  return (
-    <KeyboardAvoidingView
-      behavior={Platform.select({
-        ios: "padding",
-        android: "padding",
-        default: "padding",
-      })}
-      keyboardVerticalOffset={Platform.OS === "ios" ? insetsTop + 30 : 0}
-    >
+export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
+  function CommentComposer(
+    {
+      theme,
+      insetsBottom,
+      commentText,
+      onChangeText,
+      onSubmit,
+      onCancelReply,
+      isAnonymousMode,
+      onToggleAnonymous,
+      replyingToUsername,
+      isSubmitting,
+      currentUserLabel,
+    },
+    ref,
+  ) {
+    const disabled = !commentText.trim() || isSubmitting;
+
+    return (
       <View
         style={[
           styles.commentInputContainer,
           {
             borderTopColor: theme.border,
             backgroundColor: theme.card,
+            paddingBottom: COMPOSER_PADDING_BOTTOM + insetsBottom,
           },
         ]}
       >
@@ -103,6 +101,7 @@ export function CommentComposer({
         )}
         <View style={styles.inputRow}>
           <TextInput
+            ref={ref}
             style={[
               styles.commentInput,
               {
@@ -138,16 +137,17 @@ export function CommentComposer({
           </Pressable>
         </View>
       </View>
-    </KeyboardAvoidingView>
-  );
-}
+    );
+  },
+);
+
+CommentComposer.displayName = "CommentComposer";
 
 const styles = StyleSheet.create({
   commentInputContainer: {
     borderTopWidth: 1,
     paddingHorizontal: 10,
     paddingTop: 10,
-    paddingBottom: 22,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     shadowOffset: {
