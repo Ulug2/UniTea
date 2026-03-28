@@ -1,6 +1,7 @@
 import React from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import {
+  Animated,
   ScrollView,
   Text,
   TextInput,
@@ -12,7 +13,10 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
+  BackHandler,
+  useWindowDimensions,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import {
@@ -137,8 +141,53 @@ export default function CreatePostScreen() {
     selectionLimit: MAX_POST_IMAGES,
   });
 
-  const goBack = () => {
+  const { height: screenHeight } = useWindowDimensions();
+  const slideAnim = React.useRef(
+    new Animated.Value(Platform.OS === "android" ? screenHeight : 0),
+  ).current;
+  const isExiting = React.useRef(false);
+
+  const closeScreen = React.useCallback(() => {
+    if (Platform.OS !== "android") {
+      router.back();
+      return;
+    }
+    if (isExiting.current) return;
+    isExiting.current = true;
+    Keyboard.dismiss();
+    Animated.timing(slideAnim, {
+      toValue: screenHeight,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      router.back();
+    });
+  }, [screenHeight, slideAnim]);
+
+  React.useEffect(() => {
+    if (Platform.OS !== "android") return;
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 350,
+      useNativeDriver: true,
+    }).start();
+  }, [slideAnim]);
+
+  React.useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeScreen();
+      return true;
+    });
+    return () => sub.remove();
+  }, [closeScreen]);
+
+  const goBack = React.useCallback(() => {
     reset();
+    if (Platform.OS === "android") {
+      closeScreen();
+      return;
+    }
     // Use `back` so the previous feed screen stays mounted,
     // preserving its FlatList scroll position.
     if (typeof (router as any).back === "function") {
@@ -149,7 +198,7 @@ export default function CreatePostScreen() {
     router.replace(
       isLostFound ? "/(protected)/(tabs)/lostfound" : "/(protected)/(tabs)",
     );
-  };
+  }, [reset, closeScreen, isLostFound]);
 
   const pickImage = async () => {
     const selectedUris = await pickAndPrepareImages();
@@ -267,7 +316,7 @@ export default function CreatePostScreen() {
 
   const isLoading = createPostMutation.isPending || isSubmitting;
 
-  return (
+  const main = (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
       edges={[]}
@@ -776,6 +825,16 @@ export default function CreatePostScreen() {
         onClose={() => setExpandedImageUri(null)}
       />
     </SafeAreaView>
+  );
+
+  return Platform.OS === "android" ? (
+    <Animated.View
+      style={[{ flex: 1 }, { transform: [{ translateY: slideAnim }] }]}
+    >
+      {main}
+    </Animated.View>
+  ) : (
+    main
   );
 }
 

@@ -35,7 +35,7 @@ export default function AppLayout() {
     // Only set badge when authenticated; when logged out we don't want to
     // leave a stale badge behind.
     if (!session) return;
-    Notifications.setBadgeCountAsync(count).catch(() => {});
+    Notifications.setBadgeCountAsync(count).catch(() => { });
   }, [globalUnreadCount, session]);
 
   useEffect(() => {
@@ -150,14 +150,19 @@ export default function AppLayout() {
           name="create-post"
           options={{
             headerShown: false,
-            animation: "slide_from_bottom",
+            animation:
+              Platform.OS === "android" ? "none" : "slide_from_bottom",
+            // transparentModal keeps the underlying screen rendered so the
+            // feed is visible behind the JS-driven slide on Android.
+            // fullScreenModal on iOS is the correct native modal presentation.
             presentation:
-              Platform.OS === "android" ? "modal" : "fullScreenModal",
+              Platform.OS === "android" ? "transparentModal" : "fullScreenModal",
           }}
         />
         <Stack.Screen
           name="post/[id]"
           options={{
+            headerShown: Platform.OS !== "android",
             headerTitle: "",
             headerStyle: { backgroundColor: theme.primary },
             headerLeft: () => (
@@ -173,7 +178,10 @@ export default function AppLayout() {
                 <Entypo name="dots-three-horizontal" size={24} color="white" />
               </View>
             ),
-            animation: "slide_from_bottom",
+            animation:
+              Platform.OS === "android" ? "none" : "slide_from_bottom",
+            presentation:
+              Platform.OS === "android" ? "transparentModal" : "fullScreenModal",
           }}
         />
         <Stack.Screen

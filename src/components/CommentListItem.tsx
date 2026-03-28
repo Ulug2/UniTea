@@ -56,6 +56,21 @@ type CommentListItemProps = {
   isAdmin?: boolean;
 };
 
+// Enable LayoutAnimation once per module load on Android.
+// Must NOT run inside the component body because that fires on every re-render
+// and interferes with navigation transition animations.
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  const _isBridgeless =
+    typeof globalThis !== "undefined" &&
+    (globalThis as { RN$Bridgeless?: boolean }).RN$Bridgeless === true;
+  if (!_isBridgeless) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
+
 const CommentListItem = ({
   comment,
   depth,
@@ -87,14 +102,6 @@ const CommentListItem = ({
   const [showAllReplies, setShowAllReplies] = useState(false);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-
-  // Enable layout animation for Android
-  if (
-    Platform.OS === "android" &&
-    UIManager.setLayoutAnimationEnabledExperimental
-  ) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-  }
 
   // Fix state synchronization: Auto-show replies when new replies are added
   useEffect(() => {
@@ -681,4 +688,36 @@ const styles = StyleSheet.create({
   },
 });
 
-export default memo(CommentListItem);
+// Custom equality check: skips re-render when a refetch delivers new object
+// references but the content hasn't actually changed.
+function arePropsEqual(
+  prev: CommentListItemProps,
+  next: CommentListItemProps,
+): boolean {
+  // Short-circuit: if the comment object reference is identical, nothing changed.
+  if (
+    prev.comment === next.comment &&
+    prev.handleReplyPress === next.handleReplyPress &&
+    prev.onDeleteStart === next.onDeleteStart &&
+    prev.onDeleteEnd === next.onDeleteEnd &&
+    prev.depth === next.depth &&
+    prev.isAdmin === next.isAdmin
+  ) {
+    return true;
+  }
+  return (
+    prev.comment.id === next.comment.id &&
+    prev.comment.content === next.comment.content &&
+    prev.comment.score === next.comment.score &&
+    prev.comment.is_deleted === next.comment.is_deleted &&
+    prev.comment.is_anonymous === next.comment.is_anonymous &&
+    (prev.comment.replies?.length ?? 0) === (next.comment.replies?.length ?? 0) &&
+    prev.handleReplyPress === next.handleReplyPress &&
+    prev.onDeleteStart === next.onDeleteStart &&
+    prev.onDeleteEnd === next.onDeleteEnd &&
+    prev.depth === next.depth &&
+    prev.isAdmin === next.isAdmin
+  );
+}
+
+export default memo(CommentListItem, arePropsEqual);

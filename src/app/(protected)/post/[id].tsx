@@ -1,17 +1,22 @@
-import { useState, useRef, useMemo, useCallback } from "react";
+import { useState, useRef, useMemo, useCallback, useEffect, type ReactNode } from "react";
 import { useLocalSearchParams, router, Stack } from "expo-router";
+import { useHeaderHeight } from "@react-navigation/elements";
 import {
+  Animated,
   Text,
   View,
   TextInput,
   Pressable,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   FlatList,
   StyleSheet,
   ActivityIndicator,
   Alert,
   Modal,
+  BackHandler,
+  useWindowDimensions,
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import ReportModal from "../../../components/ReportModal";
@@ -52,6 +57,7 @@ export default function PostDetailed() {
   const postId = typeof id === "string" ? id : id?.[0];
   const isFromDeeplink = fromDeeplink === "1";
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
   const { theme, isDark } = useTheme();
   const { session } = useAuth();
   const queryClient = useQueryClient();
@@ -70,6 +76,155 @@ export default function PostDetailed() {
   );
   const inputRef = useRef<TextInput | null>(null);
   const commentsListRef = useRef<FlatList<CommentNode> | null>(null);
+  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
+  // On iOS, insets.bottom must be removed from the composer while the keyboard
+  // is visible — the keyboard already covers the home-indicator zone, and keeping
+  // the inset creates a visible 34-px dead gap above the keyboard.
+  const [iosKeyboardOpen, setIosKeyboardOpen] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      const show = Keyboard.addListener("keyboardDidShow", (e) => {
+        setAndroidKeyboardInset(e.endCoordinates.height);
+      });
+      const hide = Keyboard.addListener("keyboardDidHide", () => {
+        setAndroidKeyboardInset(0);
+      });
+      return () => {
+        show.remove();
+        hide.remove();
+      };
+    }
+
+    // iOS: use *Will* events so the padding change is synchronised with the
+    // keyboard animation rather than snapping after it finishes.
+    const show = Keyboard.addListener("keyboardWillShow", () =>
+      setIosKeyboardOpen(true),
+    );
+    const hide = Keyboard.addListener("keyboardWillHide", () =>
+      setIosKeyboardOpen(false),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
+  const { height: screenHeight } = useWindowDimensions();
+  const slideAnim = useRef(
+    new Animated.Value(Platform.OS === "android" ? screenHeight : 0),
+  ).current;
+  const isExiting = useRef(false);
+
+  const closeScreen = useCallback(() => {
+    if (Platform.OS !== "android") {
+      router.back();
+      return;
+    }
+    if (isExiting.current) return;
+    isExiting.current = true;
+    Keyboard.dismiss();
+    Animated.timing(slideAnim, {
+      toValue: screenHeight,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      router.back();
+    });
+  }, [screenHeight, slideAnim]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 350,
+      useNativeDriver: true,
+    }).start();
+  }, [slideAnim]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeScreen();
+      return true;
+    });
+    return () => sub.remove();
+  }, [closeScreen]);
+
+  const androidWrapperStyle =
+    Platform.OS === "android"
+      ? [{ flex: 1 }, { transform: [{ translateY: slideAnim }] }]
+      : { flex: 1 };
+
+  // Wraps any content in the Android slide-animation container.
+  // Available before all early returns so every render path is animated.
+  const wrapScreen = (inner: ReactNode) =>
+    Platform.OS === "android" ? (
+      <Animated.View style={androidWrapperStyle}>{inner}</Animated.View>
+    ) : (
+      <View style={{ flex: 1 }}>{inner}</View>
+    );
+
+  // Screen chrome: Stack.Screen config + custom Android header.
+  // Defined before data-dependent early returns so the header always renders
+  // regardless of loading / error state.
+  const screenChrome = (
+    <>
+      <Stack.Screen
+        options={{
+          headerShown: Platform.OS !== "android",
+          headerTitle: "",
+          headerStyle: { backgroundColor: theme.primary },
+          headerLeft: () => (
+            <AntDesign
+              style={{ marginLeft: 5 }}
+              name="close"
+              size={24}
+              color="white"
+              onPress={() => router.back()}
+            />
+          ),
+          headerRight: () => (
+            <Pressable onPress={() => setShowMenu(true)}>
+              <Entypo
+                name="dots-three-horizontal"
+                size={24}
+                color="white"
+                style={{ marginLeft: 5 }}
+              />
+            </Pressable>
+          ),
+        }}
+      />
+      {Platform.OS === "android" && (
+        <View style={{ backgroundColor: theme.primary, paddingTop: insets.top }}>
+          <View
+            style={{
+              height: 56,
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 16,
+              justifyContent: "space-between",
+            }}
+          >
+            <AntDesign
+              name="close"
+              size={24}
+              color="white"
+              onPress={closeScreen}
+            />
+            <Pressable onPress={() => setShowMenu(true)}>
+              <Entypo
+                name="dots-three-horizontal"
+                size={24}
+                color="white"
+              />
+            </Pressable>
+          </View>
+        </View>
+      )}
+    </>
+  );
 
   // Get current user ID
   const currentUserId = session?.user?.id || null;
@@ -126,6 +281,11 @@ export default function PostDetailed() {
 
   const nestedComments: CommentNode[] = treeComments;
 
+  // Keep a fresh ref so handleReplyPress can be a stable callback ([] deps)
+  // while always reading the latest comment tree.
+  const nestedCommentsRef = useRef(nestedComments);
+  nestedCommentsRef.current = nestedComments;
+
   // Fetch bookmarks for this post
   const { data: postBookmarks = [] } = useQuery<
     Database["public"]["Tables"]["bookmarks"]["Row"][]
@@ -157,7 +317,9 @@ export default function PostDetailed() {
     viewerId: currentUserId,
   });
 
-  const deletePostMutation = useDeletePost(postId);
+  const deletePostMutation = useDeletePost(postId, {
+    onNavigateBack: closeScreen,
+  });
 
   const handleDeletePost = () => {
     setShowMenu(false);
@@ -184,9 +346,9 @@ export default function PostDetailed() {
     viewerId: currentUserId,
   });
 
-  const toggleBookmark = () => {
+  const toggleBookmark = useCallback(() => {
     bookmarkMutation.mutate(!isBookmarked);
-  };
+  }, [bookmarkMutation, isBookmarked]);
 
   const reportPostMutation = useReportPost({
     postId,
@@ -218,20 +380,21 @@ export default function PostDetailed() {
         onPress: () =>
           blockUserMutation.mutate(
             { targetUserId: detailedPost.user_id, scope },
-            { onSuccess: () => router.back() },
+            { onSuccess: () => closeScreen() },
           ),
       },
     ]);
   };
 
-  const handleReplyPress = (commentId: string) => {
-    // Find the comment to get the username
+  // Stable callback: reads nestedComments via ref so it never needs to be
+  // recreated when the comment tree refreshes. This prevents CommentsTreeList
+  // and every CommentListItem from re-rendering on each parent re-render
+  // (e.g. every keystroke in the comment input).
+  const handleReplyPress = useCallback((commentId: string) => {
     const findComment = (comments: CommentNode[]): CommentNode | null => {
       for (const comment of comments) {
-        if (comment.id === commentId) {
-          return comment;
-        }
-        if (comment.replies && comment.replies.length > 0) {
+        if (comment.id === commentId) return comment;
+        if (comment.replies?.length) {
           const found = findComment(comment.replies);
           if (found) return found;
         }
@@ -239,15 +402,13 @@ export default function PostDetailed() {
       return null;
     };
 
-    const targetComment = findComment(nestedComments);
+    const targetComment = findComment(nestedCommentsRef.current);
     if (targetComment) {
       setParentCommentId(commentId);
 
       let label: string;
       if (targetComment.is_anonymous) {
-        const anonId =
-          (targetComment as any).post_specific_anon_id ??
-          (targetComment as any).post_specific_anon_id;
+        const anonId = (targetComment as any).post_specific_anon_id;
         label =
           typeof anonId === "number" && anonId > 0
             ? `User ${anonId}`
@@ -260,7 +421,7 @@ export default function PostDetailed() {
       setReplyingToUsername(label);
       inputRef.current?.focus();
     }
-  };
+  }, []);
 
   const handlePostComment = () => {
     if (!commentText.trim()) return;
@@ -293,13 +454,34 @@ export default function PostDetailed() {
     setDeletingCommentId(null);
   }, []);
 
-  const isLoading = isPostLoading || isUserLoading || isCommentsLoading;
+  // Stable header element — only recreates when post data or bookmark state
+  // changes, NOT on every comment-input keystroke.
+  const postHeaderComponent = useMemo(
+    () => (
+      <PostHeaderCard
+        post={detailedPost!}
+        postUser={postUser ?? null}
+        commentCount={flatComments.length || 0}
+        isBookmarked={isBookmarked}
+        onToggleBookmark={toggleBookmark}
+        onImagePress={setFullscreenUri}
+        isAdmin={isAdmin}
+      />
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [detailedPost, postUser, flatComments.length, isBookmarked, toggleBookmark, isAdmin],
+  );
 
-  if (isLoading) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
-      </View>
+  // Only gate on post/user loading — comments show an inline spinner via
+  // CommentsTreeList so the header is always immediately visible.
+  if (isPostLoading || isUserLoading) {
+    return wrapScreen(
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        {screenChrome}
+        <View style={styles.container}>
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      </View>,
     );
   }
 
@@ -313,36 +495,42 @@ export default function PostDetailed() {
         postId,
       });
 
-    return (
-      <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <Text style={[styles.errorText, { color: theme.text }]}>
-          {isFromDeeplink
-            ? "This post isn't available right now."
-            : "Failed to load content."}
-        </Text>
-        <Pressable
-          style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
-          onPress={() => router.replace("/(protected)/(tabs)")}
-        >
-          <Text style={styles.backToFeedButtonText}>Back to feed</Text>
-        </Pressable>
-      </View>
+    return wrapScreen(
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        {screenChrome}
+        <View style={styles.container}>
+          <Text style={[styles.errorText, { color: theme.text }]}>
+            {isFromDeeplink
+              ? "This post isn't available right now."
+              : "Failed to load content."}
+          </Text>
+          <Pressable
+            style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
+            onPress={() => router.replace("/(protected)/(tabs)")}
+          >
+            <Text style={styles.backToFeedButtonText}>Back to feed</Text>
+          </Pressable>
+        </View>
+      </View>,
     );
   }
 
   if (!detailedPost) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <Text style={[styles.errorText, { color: theme.text }]}>
-          {isFromDeeplink ? "This post isn't available." : "Post Not Found!"}
-        </Text>
-        <Pressable
-          style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
-          onPress={() => router.replace("/(protected)/(tabs)")}
-        >
-          <Text style={styles.backToFeedButtonText}>Back to feed</Text>
-        </Pressable>
-      </View>
+    return wrapScreen(
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        {screenChrome}
+        <View style={styles.container}>
+          <Text style={[styles.errorText, { color: theme.text }]}>
+            {isFromDeeplink ? "This post isn't available." : "Post Not Found!"}
+          </Text>
+          <Pressable
+            style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
+            onPress={() => router.replace("/(protected)/(tabs)")}
+          >
+            <Text style={styles.backToFeedButtonText}>Back to feed</Text>
+          </Pressable>
+        </View>
+      </View>,
     );
   }
 
@@ -355,26 +543,29 @@ export default function PostDetailed() {
   // Check if reposted post's original author is blocked (scope-aware)
   const isRepostAuthorBlocked = detailedPost.original_user_id
     ? isBlockedPost(
-        blocks,
-        detailedPost.original_user_id,
-        detailedPost.original_is_anonymous ?? false,
-      )
+      blocks,
+      detailedPost.original_user_id,
+      detailedPost.original_is_anonymous ?? false,
+    )
     : false;
 
   // Hide post if author or repost author is blocked
   if (isPostAuthorBlocked || isRepostAuthorBlocked) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <Text style={[styles.errorText, { color: theme.text }]}>
-          {isFromDeeplink ? "This post isn't available." : "Post Not Found!"}
-        </Text>
-        <Pressable
-          style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
-          onPress={() => router.replace("/(protected)/(tabs)")}
-        >
-          <Text style={styles.backToFeedButtonText}>Back to feed</Text>
-        </Pressable>
-      </View>
+    return wrapScreen(
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        {screenChrome}
+        <View style={styles.container}>
+          <Text style={[styles.errorText, { color: theme.text }]}>
+            {isFromDeeplink ? "This post isn't available." : "Post Not Found!"}
+          </Text>
+          <Pressable
+            style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
+            onPress={() => router.replace("/(protected)/(tabs)")}
+          >
+            <Text style={styles.backToFeedButtonText}>Back to feed</Text>
+          </Pressable>
+        </View>
+      </View>,
     );
   }
 
@@ -391,34 +582,62 @@ export default function PostDetailed() {
     postScope,
   );
 
-  const content = (
-    <>
-      <Stack.Screen
-        options={{
-          headerTitle: "",
-          headerStyle: { backgroundColor: theme.primary },
-          headerLeft: () => (
-            <AntDesign
-              style={{ marginLeft: 5 }}
-              name="close"
-              size={24}
-              color="white"
-              onPress={() => router.back()}
-            />
-          ),
-          headerRight: () => (
-            <Pressable onPress={() => setShowMenu(true)}>
-              <Entypo
-                name="dots-three-horizontal"
-                size={24}
-                color="white"
-                style={{ marginLeft: 5 }}
-              />
-            </Pressable>
-          ),
-        }}
+  const commentsScreenShellStyle = {
+    flex: 1 as const,
+    backgroundColor: theme.background,
+  };
+
+  const commentsScreenBody = (
+    <View style={{ flex: 1 }}>
+      {(createCommentMutation.isPending || deletingCommentId) && (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: "rgba(255, 255, 255, 0.6)",
+              zIndex: 10,
+              justifyContent: "center",
+              alignItems: "center",
+            },
+          ]}
+          pointerEvents="box-only"
+        >
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      )}
+      <CommentsTreeList
+        data={nestedComments}
+        onReply={handleReplyPress}
+        onDeleteStart={handleCommentDeleteStart}
+        onDeleteEnd={handleCommentDeleteEnd}
+        isRefetching={isRefetchingComments}
+        isLoading={isCommentsLoading}
+        onRefresh={refetchComments}
+        listRef={commentsListRef}
+        style={styles.listFlex}
+        isAdmin={isAdmin}
+        headerComponent={postHeaderComponent}
       />
 
+      <CommentComposer
+        ref={inputRef}
+        theme={theme}
+        insetsBottom={Platform.OS === "ios" && iosKeyboardOpen ? 0 : insets.bottom}
+        commentText={commentText}
+        onChangeText={setCommentText}
+        onSubmit={handlePostComment}
+        onCancelReply={handleCancelReply}
+        isAnonymousMode={isAnonymousMode}
+        onToggleAnonymous={() => setIsAnonymousMode((prev) => !prev)}
+        replyingToUsername={replyingToUsername}
+        isSubmitting={createCommentMutation.isPending}
+        currentUserLabel={session?.user?.user_metadata?.username || "You"}
+      />
+    </View>
+  );
+
+  const content = (
+    <>
       {/* Menu Modal */}
       <Modal
         visible={showMenu}
@@ -458,7 +677,7 @@ export default function PostDetailed() {
                         style: "destructive",
                         onPress: () => {
                           hidePost(postId);
-                          router.back();
+                          closeScreen();
                         },
                       },
                     ],
@@ -532,66 +751,24 @@ export default function PostDetailed() {
         onClose={() => setFullscreenUri(null)}
       />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1, backgroundColor: theme.background }}
-        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 30 : 0}
-      >
-        <View style={{ flex: 1 }}>
-          {(createCommentMutation.isPending || deletingCommentId) && (
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  backgroundColor: "rgba(255, 255, 255, 0.6)",
-                  zIndex: 10,
-                  justifyContent: "center",
-                  alignItems: "center",
-                },
-              ]}
-              pointerEvents="box-only"
-            >
-              <ActivityIndicator size="large" color={theme.primary} />
-            </View>
-          )}
-          <CommentsTreeList
-            data={nestedComments}
-            onReply={handleReplyPress}
-            onDeleteStart={handleCommentDeleteStart}
-            onDeleteEnd={handleCommentDeleteEnd}
-            isRefetching={isRefetchingComments}
-            onRefresh={refetchComments}
-            listRef={commentsListRef}
-            style={{ flex: 1 }}
-            isAdmin={isAdmin}
-            headerComponent={
-              <PostHeaderCard
-                post={detailedPost}
-                postUser={postUser ?? null}
-                commentCount={flatComments.length || 0}
-                isBookmarked={isBookmarked}
-                onToggleBookmark={toggleBookmark}
-                onImagePress={setFullscreenUri}
-                isAdmin={isAdmin}
-              />
-            }
-          />
-
-          <CommentComposer
-            theme={theme}
-            insetsTop={insets.top}
-            commentText={commentText}
-            onChangeText={setCommentText}
-            onSubmit={handlePostComment}
-            onCancelReply={handleCancelReply}
-            isAnonymousMode={isAnonymousMode}
-            onToggleAnonymous={() => setIsAnonymousMode((prev) => !prev)}
-            replyingToUsername={replyingToUsername}
-            isSubmitting={createCommentMutation.isPending}
-            currentUserLabel={session?.user?.user_metadata?.username || "You"}
-          />
+      {Platform.OS === "ios" ? (
+        <KeyboardAvoidingView
+          behavior="padding"
+          style={commentsScreenShellStyle}
+          keyboardVerticalOffset={headerHeight}
+        >
+          {commentsScreenBody}
+        </KeyboardAvoidingView>
+      ) : (
+        <View
+          style={[
+            commentsScreenShellStyle,
+            { paddingBottom: androidKeyboardInset },
+          ]}
+        >
+          {commentsScreenBody}
         </View>
-      </KeyboardAvoidingView>
+      )}
     </>
   );
 
@@ -599,14 +776,18 @@ export default function PostDetailed() {
     <ErrorBoundary
       FallbackComponent={PostErrorFallback}
       onReset={() => {
-        // Retry loading post
         queryClient.invalidateQueries({ queryKey: ["post", postId] });
         queryClient.invalidateQueries({
           queryKey: ["comments", postId, currentUserId],
         });
       }}
     >
-      {content}
+      {wrapScreen(
+        <View style={{ flex: 1, backgroundColor: theme.background }}>
+          {screenChrome}
+          {content}
+        </View>,
+      )}
     </ErrorBoundary>
   );
 }
@@ -634,6 +815,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  listFlex: {
+    flex: 1,
   },
   errorText: {
     fontSize: 16,
