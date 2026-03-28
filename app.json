@@ -4,6 +4,9 @@
     "slug": "unitea",
     "scheme": "myunitea",
     "version": "1.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -58,9 +61,13 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ]
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
     },
     "web": {
       "favicon": "./assets/icon.png"
@@ -73,6 +80,12 @@
         {
           "photosPermission": "The app accesses your photos to let you share them and set your profile picture.",
           "cameraPermission": "The app accesses your camera to let you take photos for your profile picture."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2FC9C1"
         }
       ]
     ],
