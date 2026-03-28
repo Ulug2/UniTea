@@ -3,10 +3,19 @@ import {
   useFonts,
   Poppins_400Regular,
   Poppins_500Medium,
+  Poppins_600SemiBold,
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
-import { Animated, View, Text, Pressable, StyleSheet } from "react-native";
+import {
+  Animated,
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  Platform,
+} from "react-native";
 import { Image } from "expo-image";
+import { StatusBar } from "expo-status-bar";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import {
@@ -17,6 +26,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import * as SplashScreen from "expo-splash-screen";
+import * as SystemUI from "expo-system-ui";
 import { hideSplashSafe } from "../utils/splash";
 import { initSentry } from "../utils/sentry";
 import { logger } from "../utils/logger";
@@ -69,7 +79,7 @@ async function prefetchInitialData(userId: string, queryClient: any) {
         queryClient.setQueryData(
           ["posts", "feed", "hot"],
           { pages: [feedData], pageParams: [0] },
-          { updatedAt: 0 },
+          { updatedAt: 0 }
         );
       }
     }
@@ -110,11 +120,21 @@ function RootLayoutContent() {
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
     Poppins_500Medium,
+    Poppins_600SemiBold,
     Poppins_700Bold,
   });
   const { loading: authLoading, session, persistProfile } = useAuth();
   const queryClient = useQueryClient();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
+
+  // Keep Android system areas (including gesture/nav region) aligned with the
+  // tab surface color so the bottom inset blends with the tab bar.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    SystemUI.setBackgroundColorAsync(theme.card).catch(() => {
+      // Non-fatal: UI still renders even if the platform ignores this call.
+    });
+  }, [theme.card]);
 
   // Gates <Slot /> from rendering until the AsyncStorage seed has been written
   // into the RQ cache. Without this, useEffect fires AFTER the first render,
@@ -157,7 +177,10 @@ function RootLayoutContent() {
 
         // 3. Fetch fresh data in the background. prefetchInitialData overwrites
         //    the "new" feed slot with the latest posts from the network.
-        const profileData = await prefetchInitialData(session.user.id, queryClient);
+        const profileData = await prefetchInitialData(
+          session.user.id,
+          queryClient
+        );
 
         if (profileData) {
           // Persist the profile for the next cold start.
@@ -200,7 +223,14 @@ function RootLayoutContent() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.background }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor:
+          Platform.OS === "android" ? theme.card : theme.background,
+      }}
+    >
+      <StatusBar style={isDark ? "light" : "dark"} />
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
         <Slot />
       </Animated.View>

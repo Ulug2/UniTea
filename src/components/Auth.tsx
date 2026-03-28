@@ -122,12 +122,7 @@ export default function Auth() {
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: theme.card, shadowColor: theme.border },
-          ]}
-        >
+        <View style={[styles.card, { backgroundColor: theme.card }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>
             {headline}
           </Text>
@@ -274,8 +269,8 @@ export default function Auth() {
               mode === "login"
                 ? signInWithEmail
                 : mode === "signup"
-                  ? signUpWithEmail
-                  : resetPassword
+                ? signUpWithEmail
+                : resetPassword
             }
           >
             {(mode === "login" && loadingState.login) ||
@@ -287,10 +282,10 @@ export default function Auth() {
                 {isPrimaryEmailRequestMode && isEmailRequestCooldownActive
                   ? `Wait ${emailRequestCooldownSecondsRemaining}s`
                   : mode === "login"
-                    ? "Log In"
-                    : mode === "signup"
-                      ? "Create account"
-                      : "Send Reset Link"}
+                  ? "Log In"
+                  : mode === "signup"
+                  ? "Create account"
+                  : "Send Reset Link"}
               </Text>
             )}
           </Pressable>
@@ -393,6 +388,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.xxl,
     padding: SPACING.lg,
     gap: SPACING.md,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: SPACING.lg + 2 },
     shadowOpacity: 0.08,
     shadowRadius: BORDER_RADIUS.xxl,

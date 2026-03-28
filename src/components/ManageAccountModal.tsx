@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Modal,
   View,
@@ -10,9 +10,9 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-} from 'react-native';
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../context/ThemeContext';
+} from "react-native";
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../context/ThemeContext";
 
 interface ManageAccountModalProps {
   visible: boolean;
@@ -29,7 +29,7 @@ interface ManageAccountModalProps {
   currentUsername?: string;
 }
 
-type ViewType = 'menu' | 'username' | 'password';
+type ViewType = "menu" | "username" | "password";
 
 export default function ManageAccountModal({
   visible,
@@ -43,21 +43,23 @@ export default function ManageAccountModal({
   isDeleting = false,
   isUnblocking = false,
   isUpdating = false,
-  currentUsername = '',
+  currentUsername = "",
 }: ManageAccountModalProps) {
   const { theme, isDark } = useTheme();
-  const [currentView, setCurrentView] = useState<ViewType>('menu');
+  const keyboardAppearance =
+    Platform.OS === "ios" ? (isDark ? "dark" : "light") : undefined;
+  const [currentView, setCurrentView] = useState<ViewType>("menu");
   const [username, setUsername] = useState(currentUsername);
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   // Reset form when modal closes
   React.useEffect(() => {
     if (!visible) {
-      setCurrentView('menu');
+      setCurrentView("menu");
       setUsername(currentUsername);
-      setPassword('');
-      setConfirmPassword('');
+      setPassword("");
+      setConfirmPassword("");
     } else {
       setUsername(currentUsername);
     }
@@ -68,7 +70,7 @@ export default function ManageAccountModal({
       return;
     }
     onUpdateUsername(username.trim());
-    setCurrentView('menu');
+    setCurrentView("menu");
   };
 
   const handlePasswordSave = () => {
@@ -76,9 +78,9 @@ export default function ManageAccountModal({
       return;
     }
     onUpdatePassword(password, confirmPassword);
-    setPassword('');
-    setConfirmPassword('');
-    setCurrentView('menu');
+    setPassword("");
+    setConfirmPassword("");
+    setCurrentView("menu");
   };
 
   const renderMenu = () => (
@@ -87,7 +89,10 @@ export default function ManageAccountModal({
         Manage Account
       </Text>
 
-      <ScrollView style={styles.optionsContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.optionsContainer}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Change Avatar */}
         <Pressable
           style={[styles.option, { borderBottomColor: theme.border }]}
@@ -118,7 +123,7 @@ export default function ManageAccountModal({
         {/* Change Username */}
         <Pressable
           style={[styles.option, { borderBottomColor: theme.border }]}
-          onPress={() => setCurrentView('username')}
+          onPress={() => setCurrentView("username")}
           disabled={isUpdating}
         >
           <View style={styles.optionLeft}>
@@ -141,7 +146,7 @@ export default function ManageAccountModal({
         {/* Change Password */}
         <Pressable
           style={[styles.option, { borderBottomColor: theme.border }]}
-          onPress={() => setCurrentView('password')}
+          onPress={() => setCurrentView("password")}
           disabled={isUpdating}
         >
           <View style={styles.optionLeft}>
@@ -239,7 +244,7 @@ export default function ManageAccountModal({
     <>
       <View style={styles.headerRow}>
         <Pressable
-          onPress={() => setCurrentView('menu')}
+          onPress={() => setCurrentView("menu")}
           style={styles.backButton}
         >
           <Ionicons name="chevron-back" size={24} color={theme.text} />
@@ -250,7 +255,10 @@ export default function ManageAccountModal({
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.formContainer}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={[styles.label, { color: theme.secondaryText }]}>
           Username
         </Text>
@@ -265,7 +273,7 @@ export default function ManageAccountModal({
           ]}
           placeholder="Enter new username"
           placeholderTextColor={theme.secondaryText}
-          keyboardAppearance={isDark ? "dark" : "light"}
+          keyboardAppearance={keyboardAppearance}
           value={username}
           onChangeText={setUsername}
           autoCapitalize="none"
@@ -277,7 +285,8 @@ export default function ManageAccountModal({
           style={[
             styles.saveButton,
             {
-              backgroundColor: username.trim() && !isUpdating ? theme.primary : theme.border,
+              backgroundColor:
+                username.trim() && !isUpdating ? theme.primary : theme.border,
             },
           ]}
           onPress={handleUsernameSave}
@@ -297,7 +306,7 @@ export default function ManageAccountModal({
     <>
       <View style={styles.headerRow}>
         <Pressable
-          onPress={() => setCurrentView('menu')}
+          onPress={() => setCurrentView("menu")}
           style={styles.backButton}
         >
           <Ionicons name="chevron-back" size={24} color={theme.text} />
@@ -308,7 +317,10 @@ export default function ManageAccountModal({
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.formContainer}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={[styles.label, { color: theme.secondaryText }]}>
           New Password
         </Text>
@@ -323,7 +335,7 @@ export default function ManageAccountModal({
           ]}
           placeholder="Enter new password"
           placeholderTextColor={theme.secondaryText}
-          keyboardAppearance={isDark ? "dark" : "light"}
+          keyboardAppearance={keyboardAppearance}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -331,7 +343,9 @@ export default function ManageAccountModal({
           autoCorrect={false}
         />
 
-        <Text style={[styles.label, { color: theme.secondaryText, marginTop: 16 }]}>
+        <Text
+          style={[styles.label, { color: theme.secondaryText, marginTop: 16 }]}
+        >
           Confirm Password
         </Text>
         <TextInput
@@ -345,7 +359,7 @@ export default function ManageAccountModal({
           ]}
           placeholder="Confirm new password"
           placeholderTextColor={theme.secondaryText}
-          keyboardAppearance={isDark ? "dark" : "light"}
+          keyboardAppearance={keyboardAppearance}
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           secureTextEntry
@@ -358,7 +372,9 @@ export default function ManageAccountModal({
             styles.saveButton,
             {
               backgroundColor:
-                password && confirmPassword && !isUpdating ? theme.primary : theme.border,
+                password && confirmPassword && !isUpdating
+                  ? theme.primary
+                  : theme.border,
             },
           ]}
           onPress={handlePasswordSave}
@@ -379,28 +395,28 @@ export default function ManageAccountModal({
       visible={visible}
       transparent
       animationType="slide"
+      statusBarTranslucent
+      navigationBarTranslucent
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
-    >
-      <Pressable
-        style={styles.modalOverlay}
-        onPress={onClose}
+        enabled={Platform.OS === "ios"}
       >
-        <View
-          style={[styles.modalContent, { backgroundColor: theme.card }]}
-          onStartShouldSetResponder={() => true}
-        >
+        <Pressable style={styles.modalOverlay} onPress={onClose}>
           <View
-            style={[styles.modalHandle, { backgroundColor: theme.border }]}
-          />
-          {currentView === 'menu' && renderMenu()}
-          {currentView === 'username' && renderUsernameForm()}
-          {currentView === 'password' && renderPasswordForm()}
-        </View>
-      </Pressable>
+            style={[styles.modalContent, { backgroundColor: theme.card }]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View
+              style={[styles.modalHandle, { backgroundColor: theme.border }]}
+            />
+            {currentView === "menu" && renderMenu()}
+            {currentView === "username" && renderUsernameForm()}
+            {currentView === "password" && renderPasswordForm()}
+          </View>
+        </Pressable>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -409,32 +425,32 @@ export default function ManageAccountModal({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
   },
   modalContent: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 12,
     paddingBottom: 32,
-    maxHeight: '60%',
+    maxHeight: "60%",
   },
   modalHandle: {
     width: 40,
     height: 4,
     borderRadius: 2,
-    alignSelf: 'center',
+    alignSelf: "center",
     marginBottom: 16,
   },
   modalTitle: {
     fontSize: 20,
-    fontFamily: 'Poppins_700Bold',
-    textAlign: 'center',
+    fontFamily: "Poppins_700Bold",
+    textAlign: "center",
     marginBottom: 16,
   },
   headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 16,
     paddingHorizontal: 20,
   },
@@ -446,27 +462,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   option: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 16,
     borderBottomWidth: 1,
   },
   optionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   optionLabel: {
     fontSize: 16,
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: "Poppins_500Medium",
   },
   formContainer: {
     paddingHorizontal: 20,
   },
   label: {
     fontSize: 14,
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: "Poppins_500Medium",
     marginBottom: 8,
   },
   input: {
@@ -474,19 +490,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     fontSize: 16,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: "Poppins_400Regular",
     marginBottom: 16,
   },
   saveButton: {
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: 8,
   },
   saveButtonText: {
     fontSize: 16,
-    fontFamily: 'Poppins_600SemiBold',
-    color: '#FFFFFF',
+    fontFamily: "Poppins_600SemiBold",
+    color: "#FFFFFF",
   },
 });
