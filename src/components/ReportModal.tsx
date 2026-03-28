@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Modal,
   View,
@@ -11,18 +11,18 @@ import {
   ActivityIndicator,
   ScrollView,
   Dimensions,
-} from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useTheme } from '../context/ThemeContext';
+} from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useTheme } from "../context/ThemeContext";
 
-const screenWidth = Dimensions.get('window').width;
+const screenWidth = Dimensions.get("window").width;
 
 interface ReportModalProps {
   visible: boolean;
   onClose: () => void;
   onSubmit: (reason: string) => void;
   isLoading?: boolean;
-  reportType: 'post' | 'comment';
+  reportType: "post" | "comment";
 }
 
 export default function ReportModal({
@@ -33,17 +33,19 @@ export default function ReportModal({
   reportType,
 }: ReportModalProps) {
   const { theme, isDark } = useTheme();
-  const [reason, setReason] = useState('');
+  const keyboardAppearance =
+    Platform.OS === "ios" ? (isDark ? "dark" : "light") : undefined;
+  const [reason, setReason] = useState("");
 
   const handleSubmit = () => {
     if (reason.trim()) {
       onSubmit(reason.trim());
-      setReason('');
+      setReason("");
     }
   };
 
   const handleClose = () => {
-    setReason('');
+    setReason("");
     onClose();
   };
 
@@ -55,11 +57,15 @@ export default function ReportModal({
       onRequestClose={handleClose}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.overlay}
+        enabled={Platform.OS === "ios"}
       >
         <Pressable style={styles.overlay} onPress={handleClose}>
-          <Pressable style={[styles.modalContent, { backgroundColor: theme.card }]} onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: theme.card }]}
+            onPress={(e) => e.stopPropagation()}
+          >
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Header */}
               <View style={styles.header}>
@@ -69,7 +75,7 @@ export default function ReportModal({
                   color={theme.primary}
                 />
                 <Text style={[styles.title, { color: theme.text }]}>
-                  Report {reportType === 'post' ? 'Post' : 'Comment'}
+                  Report {reportType === "post" ? "Post" : "Comment"}
                 </Text>
                 <Pressable onPress={handleClose} style={styles.closeButton}>
                   <MaterialCommunityIcons
@@ -81,7 +87,9 @@ export default function ReportModal({
               </View>
 
               {/* Description */}
-              <Text style={[styles.description, { color: theme.secondaryText }]}>
+              <Text
+                style={[styles.description, { color: theme.secondaryText }]}
+              >
                 What's wrong with this {reportType}?
               </Text>
 
@@ -97,7 +105,7 @@ export default function ReportModal({
                 ]}
                 placeholder="Describe the issue..."
                 placeholderTextColor={theme.secondaryText}
-                keyboardAppearance={isDark ? 'dark' : 'light'}
+                keyboardAppearance={keyboardAppearance}
                 multiline
                 numberOfLines={4}
                 value={reason}
@@ -112,7 +120,11 @@ export default function ReportModal({
               {/* Action Buttons */}
               <View style={styles.actions}>
                 <Pressable
-                  style={[styles.button, styles.cancelButton, { borderColor: theme.border }]}
+                  style={[
+                    styles.button,
+                    styles.cancelButton,
+                    { borderColor: theme.border },
+                  ]}
                   onPress={handleClose}
                   disabled={isLoading}
                 >
@@ -125,7 +137,8 @@ export default function ReportModal({
                     styles.button,
                     styles.submitButton,
                     {
-                      backgroundColor: !reason.trim() || isLoading ? theme.border : '#EF4444',
+                      backgroundColor:
+                        !reason.trim() || isLoading ? theme.border : "#EF4444",
                     },
                   ]}
                   onPress={handleSubmit}
@@ -149,17 +162,17 @@ export default function ReportModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "transparent",
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
   },
   modalContent: {
     width: screenWidth - 60, // 30px padding on each side
-    maxHeight: '75%',
+    maxHeight: "75%",
     borderRadius: 16,
     padding: 18,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 2,
@@ -169,22 +182,22 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 14,
     gap: 10,
   },
   title: {
     flex: 1,
     fontSize: 18,
-    fontFamily: 'Poppins_600SemiBold',
+    fontFamily: "Poppins_600SemiBold",
   },
   closeButton: {
     padding: 4,
   },
   description: {
     fontSize: 14,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: "Poppins_400Regular",
     marginBottom: 14,
     lineHeight: 20,
   },
@@ -193,27 +206,27 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     fontSize: 15,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: "Poppins_400Regular",
     minHeight: 100,
     maxHeight: 140,
   },
   charCount: {
     fontSize: 12,
-    fontFamily: 'Poppins_400Regular',
-    textAlign: 'right',
+    fontFamily: "Poppins_400Regular",
+    textAlign: "right",
     marginTop: 4,
     marginBottom: 14,
   },
   actions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
   },
   button: {
     flex: 1,
     paddingVertical: 13,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   cancelButton: {
     borderWidth: 1,
@@ -223,11 +236,11 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontSize: 15,
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: "Poppins_500Medium",
   },
   submitButtonText: {
     fontSize: 15,
-    fontFamily: 'Poppins_500Medium',
-    color: '#FFFFFF',
+    fontFamily: "Poppins_500Medium",
+    color: "#FFFFFF",
   },
 });

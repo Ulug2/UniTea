@@ -1,4 +1,11 @@
-import { useState, useRef, useMemo, useCallback, useEffect, type ReactNode } from "react";
+import {
+  useState,
+  useRef,
+  useMemo,
+  useCallback,
+  useEffect,
+  type ReactNode,
+} from "react";
 import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useHeaderHeight } from "@react-navigation/elements";
 import {
@@ -65,44 +72,31 @@ export default function PostDetailed() {
   const [commentText, setCommentText] = useState<string>("");
   const [parentCommentId, setParentCommentId] = useState<string | null>(null);
   const [replyingToUsername, setReplyingToUsername] = useState<string | null>(
-    null,
+    null
   );
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [isAnonymousMode, setIsAnonymousMode] = useState(true);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
-    null,
+    null
   );
   const inputRef = useRef<TextInput | null>(null);
   const commentsListRef = useRef<FlatList<CommentNode> | null>(null);
-  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
   // On iOS, insets.bottom must be removed from the composer while the keyboard
   // is visible — the keyboard already covers the home-indicator zone, and keeping
   // the inset creates a visible 34-px dead gap above the keyboard.
   const [iosKeyboardOpen, setIosKeyboardOpen] = useState(false);
 
   useEffect(() => {
-    if (Platform.OS === "android") {
-      const show = Keyboard.addListener("keyboardDidShow", (e) => {
-        setAndroidKeyboardInset(e.endCoordinates.height);
-      });
-      const hide = Keyboard.addListener("keyboardDidHide", () => {
-        setAndroidKeyboardInset(0);
-      });
-      return () => {
-        show.remove();
-        hide.remove();
-      };
-    }
-
     // iOS: use *Will* events so the padding change is synchronised with the
     // keyboard animation rather than snapping after it finishes.
+    if (Platform.OS !== "ios") return;
     const show = Keyboard.addListener("keyboardWillShow", () =>
-      setIosKeyboardOpen(true),
+      setIosKeyboardOpen(true)
     );
     const hide = Keyboard.addListener("keyboardWillHide", () =>
-      setIosKeyboardOpen(false),
+      setIosKeyboardOpen(false)
     );
     return () => {
       show.remove();
@@ -112,7 +106,7 @@ export default function PostDetailed() {
 
   const { height: screenHeight } = useWindowDimensions();
   const slideAnim = useRef(
-    new Animated.Value(Platform.OS === "android" ? screenHeight : 0),
+    new Animated.Value(Platform.OS === "android" ? screenHeight : 0)
   ).current;
   const isExiting = useRef(false);
 
@@ -197,7 +191,9 @@ export default function PostDetailed() {
         }}
       />
       {Platform.OS === "android" && (
-        <View style={{ backgroundColor: theme.primary, paddingTop: insets.top }}>
+        <View
+          style={{ backgroundColor: theme.primary, paddingTop: insets.top }}
+        >
           <View
             style={{
               height: 56,
@@ -214,11 +210,7 @@ export default function PostDetailed() {
               onPress={closeScreen}
             />
             <Pressable onPress={() => setShowMenu(true)}>
-              <Entypo
-                name="dots-three-horizontal"
-                size={24}
-                color="white"
-              />
+              <Entypo name="dots-three-horizontal" size={24} color="white" />
             </Pressable>
           </View>
         </View>
@@ -337,7 +329,7 @@ export default function PostDetailed() {
           style: "destructive",
           onPress: () => deletePostMutation.mutate(undefined),
         },
-      ],
+      ]
     );
   };
 
@@ -380,7 +372,7 @@ export default function PostDetailed() {
         onPress: () =>
           blockUserMutation.mutate(
             { targetUserId: detailedPost.user_id, scope },
-            { onSuccess: () => closeScreen() },
+            { onSuccess: () => closeScreen() }
           ),
       },
     ]);
@@ -469,7 +461,14 @@ export default function PostDetailed() {
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [detailedPost, postUser, flatComments.length, isBookmarked, toggleBookmark, isAdmin],
+    [
+      detailedPost,
+      postUser,
+      flatComments.length,
+      isBookmarked,
+      toggleBookmark,
+      isAdmin,
+    ]
   );
 
   // Only gate on post/user loading — comments show an inline spinner via
@@ -481,7 +480,7 @@ export default function PostDetailed() {
         <View style={styles.container}>
           <ActivityIndicator size="large" color={theme.primary} />
         </View>
-      </View>,
+      </View>
     );
   }
 
@@ -505,13 +504,16 @@ export default function PostDetailed() {
               : "Failed to load content."}
           </Text>
           <Pressable
-            style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
+            style={[
+              styles.backToFeedButton,
+              { backgroundColor: theme.primary },
+            ]}
             onPress={() => router.replace("/(protected)/(tabs)")}
           >
             <Text style={styles.backToFeedButtonText}>Back to feed</Text>
           </Pressable>
         </View>
-      </View>,
+      </View>
     );
   }
 
@@ -524,13 +526,16 @@ export default function PostDetailed() {
             {isFromDeeplink ? "This post isn't available." : "Post Not Found!"}
           </Text>
           <Pressable
-            style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
+            style={[
+              styles.backToFeedButton,
+              { backgroundColor: theme.primary },
+            ]}
             onPress={() => router.replace("/(protected)/(tabs)")}
           >
             <Text style={styles.backToFeedButtonText}>Back to feed</Text>
           </Pressable>
         </View>
-      </View>,
+      </View>
     );
   }
 
@@ -538,15 +543,15 @@ export default function PostDetailed() {
   const isPostAuthorBlocked = isBlockedPost(
     blocks,
     detailedPost.user_id,
-    detailedPost.is_anonymous ?? false,
+    detailedPost.is_anonymous ?? false
   );
   // Check if reposted post's original author is blocked (scope-aware)
   const isRepostAuthorBlocked = detailedPost.original_user_id
     ? isBlockedPost(
-      blocks,
-      detailedPost.original_user_id,
-      detailedPost.original_is_anonymous ?? false,
-    )
+        blocks,
+        detailedPost.original_user_id,
+        detailedPost.original_is_anonymous ?? false
+      )
     : false;
 
   // Hide post if author or repost author is blocked
@@ -559,13 +564,16 @@ export default function PostDetailed() {
             {isFromDeeplink ? "This post isn't available." : "Post Not Found!"}
           </Text>
           <Pressable
-            style={[styles.backToFeedButton, { backgroundColor: theme.primary }]}
+            style={[
+              styles.backToFeedButton,
+              { backgroundColor: theme.primary },
+            ]}
             onPress={() => router.replace("/(protected)/(tabs)")}
           >
             <Text style={styles.backToFeedButtonText}>Back to feed</Text>
           </Pressable>
         </View>
-      </View>,
+      </View>
     );
   }
 
@@ -575,11 +583,11 @@ export default function PostDetailed() {
 
   // Determine whether the block option for this post's scope is already applied
   const postScope =
-    (detailedPost?.is_anonymous ?? false) ? "anonymous_only" : "profile_only";
+    detailedPost?.is_anonymous ?? false ? "anonymous_only" : "profile_only";
   const alreadyBlockedInScope = hasBlockForScope(
     blocks,
     detailedPost?.user_id,
-    postScope,
+    postScope
   );
 
   const commentsScreenShellStyle = {
@@ -622,7 +630,9 @@ export default function PostDetailed() {
       <CommentComposer
         ref={inputRef}
         theme={theme}
-        insetsBottom={Platform.OS === "ios" && iosKeyboardOpen ? 0 : insets.bottom}
+        insetsBottom={
+          Platform.OS === "ios" && iosKeyboardOpen ? 0 : insets.bottom
+        }
         commentText={commentText}
         onChangeText={setCommentText}
         onSubmit={handlePostComment}
@@ -680,7 +690,7 @@ export default function PostDetailed() {
                           closeScreen();
                         },
                       },
-                    ],
+                    ]
                   );
                 }}
               >
@@ -760,14 +770,7 @@ export default function PostDetailed() {
           {commentsScreenBody}
         </KeyboardAvoidingView>
       ) : (
-        <View
-          style={[
-            commentsScreenShellStyle,
-            { paddingBottom: androidKeyboardInset },
-          ]}
-        >
-          {commentsScreenBody}
-        </View>
+        <View style={commentsScreenShellStyle}>{commentsScreenBody}</View>
       )}
     </>
   );
@@ -786,7 +789,7 @@ export default function PostDetailed() {
         <View style={{ flex: 1, backgroundColor: theme.background }}>
           {screenChrome}
           {content}
-        </View>,
+        </View>
       )}
     </ErrorBoundary>
   );

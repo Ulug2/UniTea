@@ -2,11 +2,9 @@ import { Tabs } from "expo-router";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import { useTheme } from "../../../context/ThemeContext";
 import React from "react";
-import { View, Pressable, StyleSheet } from "react-native";
-import {
-  FilterProvider,
-  useFilterContext,
-} from "../../../context/FilterContext";
+import { View, Pressable, StyleSheet, Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFilterContext } from "../../../context/FilterContext";
 import { useGlobalUnreadCount } from "../../../hooks/useGlobalUnreadCount";
 
 function FilterButtons() {
@@ -61,6 +59,9 @@ function FilterButtons() {
 export default function TabLayout() {
   const { theme } = useTheme();
   const globalUnreadCount = useGlobalUnreadCount();
+  const insets = useSafeAreaInsets();
+  const isAndroid = Platform.OS === "android";
+  const baseTabHeight = 56;
 
   return (
     <>
@@ -68,11 +69,16 @@ export default function TabLayout() {
         screenOptions={{
           tabBarActiveTintColor: theme.primary,
           tabBarInactiveTintColor: theme.secondaryText,
+          tabBarBackground: () => (
+            <View style={{ flex: 1, backgroundColor: theme.card }} />
+          ),
           tabBarStyle: {
             backgroundColor: theme.card,
             borderTopColor: theme.border,
             borderTopWidth: 1,
-            height: 80,
+            height: isAndroid ? baseTabHeight + insets.bottom : 80,
+            paddingTop: isAndroid ? 6 : 0,
+            paddingBottom: isAndroid ? insets.bottom : 0,
           },
           headerStyle: {
             backgroundColor: theme.background,
@@ -129,6 +135,7 @@ export default function TabLayout() {
           name="lostfound"
           options={{
             title: "Lost & Found",
+            tabBarHideOnKeyboard: true,
             headerTitleAlign: "center",
             headerTitleStyle: {
               fontSize: 24,

@@ -99,6 +99,8 @@ const SelectedImagePreview = React.memo(function SelectedImagePreview({
 
 export default function CreatePostScreen() {
   const { theme, isDark } = useTheme();
+  const keyboardAppearance =
+    Platform.OS === "ios" ? (isDark ? "dark" : "light") : undefined;
   const insets = useSafeAreaInsets();
   const { type, repostId } = useLocalSearchParams<{
     type?: string;
@@ -106,7 +108,7 @@ export default function CreatePostScreen() {
   }>();
   const { session } = useAuth();
   const [expandedImageUri, setExpandedImageUri] = React.useState<string | null>(
-    null,
+    null
   );
   const { originalPost, isLoadingOriginal } =
     useOriginalPostForRepost(repostId);
@@ -143,7 +145,7 @@ export default function CreatePostScreen() {
 
   const { height: screenHeight } = useWindowDimensions();
   const slideAnim = React.useRef(
-    new Animated.Value(Platform.OS === "android" ? screenHeight : 0),
+    new Animated.Value(Platform.OS === "android" ? screenHeight : 0)
   ).current;
   const isExiting = React.useRef(false);
 
@@ -196,7 +198,7 @@ export default function CreatePostScreen() {
     }
     // Fallback (should be rare): return to the likely originating tab.
     router.replace(
-      isLostFound ? "/(protected)/(tabs)/lostfound" : "/(protected)/(tabs)",
+      isLostFound ? "/(protected)/(tabs)/lostfound" : "/(protected)/(tabs)"
     );
   }, [reset, closeScreen, isLostFound]);
 
@@ -234,13 +236,13 @@ export default function CreatePostScreen() {
       let cleanedPollOptions: string[] | undefined = undefined;
       if (!isLostFound && isPoll) {
         const normalized = Array.from(
-          new Set(pollOptions.map((o) => o.trim()).filter((o) => o.length > 0)),
+          new Set(pollOptions.map((o) => o.trim()).filter((o) => o.length > 0))
         );
 
         if (normalized.length < 2) {
           Alert.alert(
             "Poll options required",
-            "Please provide at least two distinct poll options.",
+            "Please provide at least two distinct poll options."
           );
           return;
         }
@@ -248,7 +250,7 @@ export default function CreatePostScreen() {
         if (normalized.length > MAX_POLL_OPTIONS) {
           Alert.alert(
             "Too many poll options",
-            `You can add up to ${MAX_POLL_OPTIONS} options.`,
+            `You can add up to ${MAX_POLL_OPTIONS} options.`
           );
           return;
         }
@@ -263,14 +265,14 @@ export default function CreatePostScreen() {
           imagePaths = await mapWithConcurrency(
             images,
             MAX_CONCURRENT_UPLOADS,
-            (localUri) => uploadImage(localUri, supabase),
+            (localUri) => uploadImage(localUri, supabase)
           );
           imagePath = imagePaths[0];
         } catch (error: any) {
           logger.error("Image upload error", error as Error);
           Alert.alert(
             "Error",
-            error.message || "Failed to upload image. Please try again.",
+            error.message || "Failed to upload image. Please try again."
           );
           return;
         }
@@ -338,8 +340,8 @@ export default function CreatePostScreen() {
           {isRepost
             ? "Repost"
             : isLostFound
-              ? "Post Lost/Found Item"
-              : "Create Post"}
+            ? "Post Lost/Found Item"
+            : "Create Post"}
         </Text>
         <Pressable
           disabled={isPostButtonDisabled || isLoading}
@@ -364,9 +366,9 @@ export default function CreatePostScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "android" ? "height" : "padding"}
-        keyboardVerticalOffset={Platform.OS === "android" ? 0 : 0}
-        enabled
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={0}
+        enabled={Platform.OS === "ios"}
       >
         <View style={{ flex: 1 }}>
           <ScrollView
@@ -467,7 +469,7 @@ export default function CreatePostScreen() {
                     placeholder="e.g., Student ID Card, Water Bottle, Laptop"
                     placeholderTextColor={theme.secondaryText}
                     style={[styles.locationInput, { color: theme.text }]}
-                    keyboardAppearance={isDark ? "dark" : "light"}
+                    keyboardAppearance={keyboardAppearance}
                     onChangeText={setTitle}
                     value={title}
                     autoFocus={isLostFound}
@@ -500,7 +502,7 @@ export default function CreatePostScreen() {
                     placeholder="e.g., Library, Block 10, Dining Hall"
                     placeholderTextColor={theme.secondaryText}
                     style={[styles.locationInput, { color: theme.text }]}
-                    keyboardAppearance={isDark ? "dark" : "light"}
+                    keyboardAppearance={keyboardAppearance}
                     onChangeText={setLocation}
                     value={location}
                   />
@@ -525,12 +527,12 @@ export default function CreatePostScreen() {
                   isRepost
                     ? "Say something about this..."
                     : isLostFound
-                      ? "Describe the item..."
-                      : "What's on your mind?"
+                    ? "Describe the item..."
+                    : "What's on your mind?"
                 }
                 placeholderTextColor={theme.secondaryText}
                 style={[styles.contentInput, { color: theme.text }]}
-                keyboardAppearance={isDark ? "dark" : "light"}
+                keyboardAppearance={keyboardAppearance}
                 onChangeText={setContent}
                 value={content}
                 multiline
@@ -591,7 +593,7 @@ export default function CreatePostScreen() {
                         ]}
                         placeholder={`Option ${index + 1}`}
                         placeholderTextColor={theme.secondaryText}
-                        keyboardAppearance={isDark ? "dark" : "light"}
+                        keyboardAppearance={keyboardAppearance}
                         value={option}
                         onChangeText={(text) => {
                           const next = [...pollOptions];
@@ -603,7 +605,7 @@ export default function CreatePostScreen() {
                         <Pressable
                           onPress={() => {
                             const next = pollOptions.filter(
-                              (_, i) => i !== index,
+                              (_, i) => i !== index
                             );
                             setPollOptions(next.length >= 2 ? next : ["", ""]);
                           }}
@@ -749,7 +751,7 @@ export default function CreatePostScreen() {
                       ]}
                     >
                       {formatDistanceToNowStrict(
-                        new Date(originalPost.created_at!),
+                        new Date(originalPost.created_at!)
                       )}{" "}
                       ago
                     </Text>
