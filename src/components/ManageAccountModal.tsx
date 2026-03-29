@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Modal,
   View,
@@ -9,6 +9,7 @@ import {
   TextInput,
   ScrollView,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from "react-native";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
@@ -53,6 +54,23 @@ export default function ManageAccountModal({
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  // Android: lift the bottom sheet above the keyboard manually since
+  // adjustResize is broken with edgeToEdgeEnabled:true on API 30+.
+  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const show = Keyboard.addListener("keyboardDidShow", (e) =>
+      setAndroidKeyboardInset(e.endCoordinates.height)
+    );
+    const hide = Keyboard.addListener("keyboardDidHide", () =>
+      setAndroidKeyboardInset(0)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   // Reset form when modal closes
   React.useEffect(() => {
     if (!visible) {
@@ -60,6 +78,7 @@ export default function ManageAccountModal({
       setUsername(currentUsername);
       setPassword("");
       setConfirmPassword("");
+      setAndroidKeyboardInset(0);
     } else {
       setUsername(currentUsername);
     }
@@ -404,7 +423,13 @@ export default function ManageAccountModal({
         style={{ flex: 1 }}
         enabled={Platform.OS === "ios"}
       >
-        <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable
+          style={[
+            styles.modalOverlay,
+            Platform.OS === "android" && { paddingBottom: androidKeyboardInset },
+          ]}
+          onPress={onClose}
+        >
           <View
             style={[styles.modalContent, { backgroundColor: theme.card }]}
             onStartShouldSetResponder={() => true}
