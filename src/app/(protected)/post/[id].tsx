@@ -10,6 +10,7 @@ import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useHeaderHeight } from "@react-navigation/elements";
 import {
   Animated,
+  Easing,
   Text,
   View,
   TextInput,
@@ -88,15 +89,35 @@ export default function PostDetailed() {
   // the inset creates a visible 34-px dead gap above the keyboard.
   const [iosKeyboardOpen, setIosKeyboardOpen] = useState(false);
 
+  // On Android, KeyboardAvoidingView + adjustResize are unreliable when
+  // edgeToEdgeEnabled:true is set in app.json (adjustResize is effectively
+  // ignored on API 30+ in edge-to-edge mode). We therefore lift the footer
+  // manually using Keyboard events: track the IME height and apply it as
+  // paddingBottom on the wrapper View so the composer stays above the keyboard.
+  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
+
   useEffect(() => {
-    // iOS: use *Will* events so the padding change is synchronised with the
-    // keyboard animation rather than snapping after it finishes.
-    if (Platform.OS !== "ios") return;
-    const show = Keyboard.addListener("keyboardWillShow", () =>
-      setIosKeyboardOpen(true)
+    if (Platform.OS === "ios") {
+      // Use *Will* events so the padding change is synchronised with the
+      // keyboard animation rather than snapping after it finishes.
+      const show = Keyboard.addListener("keyboardWillShow", () =>
+        setIosKeyboardOpen(true)
+      );
+      const hide = Keyboard.addListener("keyboardWillHide", () =>
+        setIosKeyboardOpen(false)
+      );
+      return () => {
+        show.remove();
+        hide.remove();
+      };
+    }
+
+    // Android — Did* events are the reliable ones on this platform.
+    const show = Keyboard.addListener("keyboardDidShow", (e) =>
+      setAndroidKeyboardInset(e.endCoordinates.height)
     );
-    const hide = Keyboard.addListener("keyboardWillHide", () =>
-      setIosKeyboardOpen(false)
+    const hide = Keyboard.addListener("keyboardDidHide", () =>
+      setAndroidKeyboardInset(0)
     );
     return () => {
       show.remove();
@@ -108,6 +129,7 @@ export default function PostDetailed() {
   const slideAnim = useRef(
     new Animated.Value(Platform.OS === "android" ? screenHeight : 0)
   ).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
   const isExiting = useRef(false);
 
   const closeScreen = useCallback(() => {
@@ -118,14 +140,28 @@ export default function PostDetailed() {
     if (isExiting.current) return;
     isExiting.current = true;
     Keyboard.dismiss();
-    Animated.timing(slideAnim, {
-      toValue: screenHeight,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: screenHeight,
+        duration: 280,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+      // Delay the fade so it only fires in the last ~60ms once the content
+      // is almost off-screen. This avoids the "disappears too early" effect
+      // while still eliminating the freeze-at-bottom-edge issue.
+      Animated.sequence([
+        Animated.delay(220),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 60,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start(() => {
       router.back();
     });
-  }, [screenHeight, slideAnim]);
+  }, [screenHeight, slideAnim, fadeAnim]);
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -147,7 +183,7 @@ export default function PostDetailed() {
 
   const androidWrapperStyle =
     Platform.OS === "android"
-      ? [{ flex: 1 }, { transform: [{ translateY: slideAnim }] }]
+      ? [{ flex: 1 }, { transform: [{ translateY: slideAnim }], opacity: fadeAnim }]
       : { flex: 1 };
 
   // Wraps any content in the Android slide-animation container.
@@ -770,7 +806,11 @@ export default function PostDetailed() {
           {commentsScreenBody}
         </KeyboardAvoidingView>
       ) : (
-        <View style={commentsScreenShellStyle}>{commentsScreenBody}</View>
+        <View
+          style={[commentsScreenShellStyle, { paddingBottom: androidKeyboardInset }]}
+        >
+          {commentsScreenBody}
+        </View>
       )}
     </>
   );

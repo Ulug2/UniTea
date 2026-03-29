@@ -34,7 +34,7 @@ It separates:
 - Verify final production asset dimensions/quality for Play listing and launcher rendering
 - Create/complete Play Console app for package `com.unitea.app`
 - Configure signing flow (`eas credentials` + Play App Signing)
-- Host `https://unitea.app/.well-known/assetlinks.json`
+- Deploy `unitea-well-known/.well-known/assetlinks.json` so `https://unitea.app/.well-known/assetlinks.json` is live (includes EAS upload-key SHA-256; add Play **app signing** SHA-256 to the same array after the first Play release is processed)
 - Add required EAS secrets for production
 - Complete Play listing and policy forms (Data safety, content rating, etc.)
 - Run internal testing and validate behavior on physical Android devices
@@ -95,6 +95,21 @@ eas build --platform android --profile production
 
 Expected artifact: `.aab`
 
+### How to get the `.aab` file after the build
+
+1. Wait for the EAS build to finish (CLI shows a URL, or you get an email).
+2. Open the build page: [expo.dev](https://expo.dev) → your account → **unitea** project → **Builds** → open the finished Android build.
+3. Click **Download** on the artifact (Android App Bundle, `.aab`).
+4. Upload that file to Play Console (**Testing** → **Internal testing** → create release → upload).
+
+CLI alternative (if you have the build ID):
+
+```bash
+eas build:list --platform android --limit 5
+```
+
+Then open the build URL from the list and download the `.aab`.
+
 ## 3) Google Play Console setup
 
 - Create app with package `com.unitea.app`
@@ -137,6 +152,8 @@ Keep Data safety answers, privacy policy, and runtime behavior consistent.
 
 ## Android QA checklist
 
+For a **screen-by-screen smoke test**, severity-ranked UX backlog, and sign-off table, see [`android-smoke-test-checklist.md`](android-smoke-test-checklist.md).
+
 - Login/logout/session restore work correctly
 - Feed browsing and post details work
 - Create post + image upload works
@@ -147,6 +164,8 @@ Keep Data safety answers, privacy policy, and runtime behavior consistent.
 - Notification permission flow works as expected
 - Push token registration and notification tap routing work
 - No crash loops on cold start/background resume
+
+**Keyboard vs tab bar (Expo Go vs dev/release APK):** behavior can differ because the native shell differs. See [`android-keyboard-expo-go-vs-dev-client.md`](android-keyboard-expo-go-vs-dev-client.md).
 
 ---
 
@@ -161,4 +180,5 @@ Keep Data safety answers, privacy policy, and runtime behavior consistent.
 - `src/app/(protected)/_layout.tsx`
 - `src/utils/sharePost.ts`
 - `src/lib/supabase.ts`
+- `docs/android-keyboard-expo-go-vs-dev-client.md` (keyboard / footer on Android vs Expo Go)
 

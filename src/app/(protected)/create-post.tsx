@@ -2,6 +2,7 @@ import React from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   Animated,
+  Easing,
   ScrollView,
   Text,
   TextInput,
@@ -147,6 +148,7 @@ export default function CreatePostScreen() {
   const slideAnim = React.useRef(
     new Animated.Value(Platform.OS === "android" ? screenHeight : 0)
   ).current;
+  const fadeAnim = React.useRef(new Animated.Value(1)).current;
   const isExiting = React.useRef(false);
 
   const closeScreen = React.useCallback(() => {
@@ -157,14 +159,25 @@ export default function CreatePostScreen() {
     if (isExiting.current) return;
     isExiting.current = true;
     Keyboard.dismiss();
-    Animated.timing(slideAnim, {
-      toValue: screenHeight,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: screenHeight,
+        duration: 280,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.delay(220),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 60,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start(() => {
       router.back();
     });
-  }, [screenHeight, slideAnim]);
+  }, [screenHeight, slideAnim, fadeAnim]);
 
   React.useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -183,6 +196,24 @@ export default function CreatePostScreen() {
     });
     return () => sub.remove();
   }, [closeScreen]);
+
+  // Android: adjustResize is broken with edgeToEdgeEnabled:true on API 30+.
+  // Manually track the IME height and pad the content wrapper so the footer
+  // (action bar) is always visible above the keyboard.
+  const [androidKeyboardInset, setAndroidKeyboardInset] = React.useState(0);
+  React.useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const show = Keyboard.addListener("keyboardDidShow", (e) =>
+      setAndroidKeyboardInset(e.endCoordinates.height)
+    );
+    const hide = Keyboard.addListener("keyboardDidHide", () =>
+      setAndroidKeyboardInset(0)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   const goBack = React.useCallback(() => {
     reset();
@@ -340,8 +371,8 @@ export default function CreatePostScreen() {
           {isRepost
             ? "Repost"
             : isLostFound
-            ? "Post Lost/Found Item"
-            : "Create Post"}
+              ? "Post Lost/Found Item"
+              : "Create Post"}
         </Text>
         <Pressable
           disabled={isPostButtonDisabled || isLoading}
@@ -370,7 +401,7 @@ export default function CreatePostScreen() {
         keyboardVerticalOffset={0}
         enabled={Platform.OS === "ios"}
       >
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, paddingBottom: androidKeyboardInset }}>
           <ScrollView
             style={styles.scrollView}
             showsVerticalScrollIndicator={false}
@@ -527,8 +558,8 @@ export default function CreatePostScreen() {
                   isRepost
                     ? "Say something about this..."
                     : isLostFound
-                    ? "Describe the item..."
-                    : "What's on your mind?"
+                      ? "Describe the item..."
+                      : "What's on your mind?"
                 }
                 placeholderTextColor={theme.secondaryText}
                 style={[styles.contentInput, { color: theme.text }]}
@@ -774,7 +805,7 @@ export default function CreatePostScreen() {
               {
                 backgroundColor: theme.card,
                 borderTopColor: theme.border,
-                paddingBottom: Math.max(insets.bottom, 20),
+                paddingBottom: Math.max(insets.bottom, 44),
               },
             ]}
           >
@@ -831,7 +862,7 @@ export default function CreatePostScreen() {
 
   return Platform.OS === "android" ? (
     <Animated.View
-      style={[{ flex: 1 }, { transform: [{ translateY: slideAnim }] }]}
+      style={[{ flex: 1 }, { transform: [{ translateY: slideAnim }], opacity: fadeAnim }]}
     >
       {main}
     </Animated.View>
