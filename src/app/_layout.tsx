@@ -13,8 +13,10 @@ import {
   Pressable,
   StyleSheet,
   Platform,
+  Image,
 } from "react-native";
-import { Image } from "expo-image";
+import { Image as ExpoImage } from "expo-image";
+import { Asset } from "expo-asset";
 import { StatusBar } from "expo-status-bar";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import { AuthProvider, useAuth } from "../context/AuthContext";
@@ -117,6 +119,7 @@ async function prefetchInitialData(userId: string, queryClient: any) {
 }
 
 function RootLayoutContent() {
+  const isAndroid = Platform.OS === "android";
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
     Poppins_500Medium,
@@ -126,6 +129,12 @@ function RootLayoutContent() {
   const { loading: authLoading, session, persistProfile } = useAuth();
   const queryClient = useQueryClient();
   const { theme, isDark } = useTheme();
+
+  // Controls the JS splash replica overlay that bridges native->RN handoff.
+  const [splashVisible, setSplashVisible] = useState(isAndroid);
+  const [splashAssetReady, setSplashAssetReady] = useState(!isAndroid);
+  const [startupReadyToHideSplash, setStartupReadyToHideSplash] = useState(false);
+  const didStartSplashHide = useRef(false);
 
   // Keep Android system areas (including gesture/nav region) aligned with the
   // tab surface color so the bottom inset blends with the tab bar.
@@ -142,11 +151,25 @@ function RootLayoutContent() {
   // skeleton) before seedQueryCacheFromStorage has a chance to run.
   const [cacheReady, setCacheReady] = useState(false);
 
-  // Animated opacity for the fade-in transition after splash screen hides
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  // Android replica starts fully visible, then fades out once native splash is hidden.
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  // Smoothly reveal app content on both iOS and Android.
+  const appFadeAnim = useRef(new Animated.Value(0)).current;
 
-  const fadeInAfterSplash = () => {
+  const fadeOutSplashReplica = () => {
     Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 400,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setSplashVisible(false);
+      }
+    });
+  };
+
+  const fadeInApp = () => {
+    Animated.timing(appFadeAnim, {
       toValue: 1,
       duration: 400,
       useNativeDriver: true,
@@ -160,6 +183,18 @@ function RootLayoutContent() {
   useEffect(() => {
     if (fontsLoaded && !authLoading && session?.user?.id) {
       (async () => {
+        if (isAndroid) {
+          try {
+            await Asset.loadAsync(require("../../assets/splash-icon.png"));
+          } catch (error) {
+            logger.error(
+              "[Splash] Failed to preload splash replica asset",
+              error as Error
+            );
+          }
+          setSplashAssetReady(true);
+        }
+
         // 1. Seed the RQ cache from AsyncStorage first (fast, ~5-50ms).
         //    This must complete BEFORE setCacheReady(true) so that when <Slot />
         //    renders, useInfiniteQuery/useQuery already finds data in cache (isPending=false).
@@ -195,32 +230,58 @@ function RootLayoutContent() {
             const avatarUrl = profileData.avatar_url.startsWith("http")
               ? profileData.avatar_url
               : `${SUPABASE_URL}/storage/v1/object/public/avatars/${profileData.avatar_url}`;
-            Image.prefetch(avatarUrl);
+            ExpoImage.prefetch(avatarUrl);
           }
         }
 
-        await hideSplashSafe();
-        fadeInAfterSplash();
+        setStartupReadyToHideSplash(true);
       })();
     } else if (fontsLoaded && !authLoading && !session) {
-      // No user session — nothing to seed; ungate <Slot /> immediately so the
-      // login screen can render, then hide the splash.
-      setCacheReady(true);
       (async () => {
-        await hideSplashSafe();
-        fadeInAfterSplash();
-      })().catch(() => {
-        // Error already handled in hideSplashSafe, just prevent unhandled rejection
-      });
-    }
-  }, [fontsLoaded, authLoading, session, queryClient, persistProfile]);
+        if (isAndroid) {
+          try {
+            await Asset.loadAsync(require("../../assets/splash-icon.png"));
+          } catch (error) {
+            logger.error(
+              "[Splash] Failed to preload splash replica asset",
+              error as Error
+            );
+          }
+          setSplashAssetReady(true);
+        }
 
-  // Don't render anything until fonts, auth, and the AsyncStorage cache seed
-  // are all ready. cacheReady ensures <Slot /> never mounts before the RQ cache
-  // is pre-populated, eliminating the skeleton flash on cold starts.
-  if (!fontsLoaded || authLoading || !cacheReady) {
-    return null;
-  }
+        // No user session — nothing to seed; ungate <Slot /> immediately so the
+        // login screen can render, then hide the splash.
+        setCacheReady(true);
+        setStartupReadyToHideSplash(true);
+      })();
+    }
+  }, [fontsLoaded, authLoading, session, queryClient, persistProfile, isAndroid]);
+
+  // Hide native splash only after startup work is done AND the Android JS
+  // splash image is confirmed drawable. This removes the brief teal-only gap
+  // between native phase 2 and JS phase 3.
+  useEffect(() => {
+    if (!startupReadyToHideSplash || !splashAssetReady) return;
+    if (didStartSplashHide.current) return;
+    didStartSplashHide.current = true;
+
+    (async () => {
+      await hideSplashSafe();
+      if (isAndroid) {
+        fadeOutSplashReplica();
+      }
+      fadeInApp();
+    })().catch(() => {
+      // Error already handled in hideSplashSafe, just prevent unhandled rejection
+    });
+  }, [startupReadyToHideSplash, splashAssetReady, isAndroid]);
+
+  // <Slot /> must not mount before fonts, auth, and the AsyncStorage cache
+  // seed are all ready — this prevents skeleton flashes on cold starts.
+  // The SplashOverlay covers the screen until the very last moment, so we
+  // no longer need an early null-return; instead we gate only the Slot.
+  const appReady = fontsLoaded && !authLoading && cacheReady;
 
   return (
     <View
@@ -231,9 +292,24 @@ function RootLayoutContent() {
       }}
     >
       <StatusBar style={isDark ? "light" : "dark"} />
-      <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-        <Slot />
-      </Animated.View>
+      {appReady && <Animated.View style={{ flex: 1, opacity: appFadeAnim }}><Slot /></Animated.View>}
+      {isAndroid && splashVisible && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.splashReplicaOverlay,
+            {
+              opacity: fadeAnim,
+            },
+          ]}
+        >
+          <Image
+            source={require("../../assets/splash-icon.png")}
+            style={styles.splashReplicaIcon}
+            resizeMode="contain"
+          />
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -276,6 +352,20 @@ const recoveryStyles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+});
+
+const styles = StyleSheet.create({
+  splashReplicaOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#2FC9C1",
+  },
+  splashReplicaIcon: {
+    width: 200,
+    height: 200,
   },
 });
 
