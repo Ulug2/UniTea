@@ -926,6 +926,7 @@ export type Database = {
           original_image_urls: string[] | null
           original_is_anonymous: boolean | null
           original_post_id: string | null
+          original_title: string | null
           original_user_id: string | null
           post_id: string | null
           post_type: string | null

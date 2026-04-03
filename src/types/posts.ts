@@ -31,6 +31,7 @@ export type PostsSummaryViewRow = {
   repost_count: number;
   hot_score: number;
   original_post_id?: string | null;
+  original_title?: string | null;
   original_content?: string | null;
   original_user_id?: string | null;
   original_author_username?: string | null;

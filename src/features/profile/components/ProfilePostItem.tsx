@@ -24,10 +24,13 @@ const ProfilePostItem = memo(
     const postId = "post_id" in item ? item.post_id : item.id;
     const isLostFound = item.post_type === "lost_found";
 
-    // For L&F posts show "Lost/Found: {title}" if a title exists, else fall back to content.
+    // Keep Lost & Found preview semantics. For feed posts, prefer title when available.
     const displayContent = useMemo(() => {
-      if (!isLostFound) return item.content;
-      const title = (item as PostSummary).title;
+      const title = item.title?.trim();
+      if (!isLostFound) {
+        if (title) return title;
+        return item.content;
+      }
       const category = (item as PostSummary).category;
       if (title) {
         const prefix = category === "found" ? "Found" : "Lost";

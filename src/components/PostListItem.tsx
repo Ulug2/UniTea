@@ -78,6 +78,12 @@ function _buildStyles(theme: Theme) {
       fontFamily: "Poppins_400Regular",
       marginBottom: 6,
     },
+    originalTitleText: {
+      fontSize: 17,
+      color: theme.text,
+      fontFamily: "Poppins_700Bold",
+      marginBottom: 8,
+    },
     originalDate: { fontSize: 12, color: theme.secondaryText, marginTop: 8 },
     header: { flexDirection: "row", alignItems: "center" },
     userInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -97,6 +103,12 @@ function _buildStyles(theme: Theme) {
       fontSize: 16,
       marginTop: 6,
       fontFamily: "Poppins_400Regular",
+      color: theme.text,
+    },
+    titleText: {
+      fontSize: 19,
+      marginTop: 8,
+      fontFamily: "Poppins_700Bold",
       color: theme.text,
     },
     footer: { flexDirection: "row", marginTop: 10, alignItems: "center" },
@@ -157,6 +169,7 @@ type PostListItemProps = {
   postId: string;
   userId: string;
   content: string;
+  title?: string | null;
   imageUrl: string | null;
   imageUrls?: string[] | null;
   category: string | null;
@@ -183,6 +196,7 @@ type PostListItemProps = {
   repostedFromPostId?: string | null;
   repostComment?: string | null;
   originalContent?: string | null;
+  originalTitle?: string | null;
   originalImageUrl?: string | null;
   originalImageUrls?: string[] | null;
   originalUserId?: string | null;
@@ -348,6 +362,7 @@ const arePropsEqual = (
     prevProps.postId === nextProps.postId &&
     prevProps.userId === nextProps.userId &&
     prevProps.content === nextProps.content &&
+    prevProps.title === nextProps.title &&
     prevProps.imageUrl === nextProps.imageUrl &&
     JSON.stringify(prevProps.imageUrls ?? []) ===
     JSON.stringify(nextProps.imageUrls ?? []) &&
@@ -369,6 +384,7 @@ const arePropsEqual = (
     prevProps.repostedFromPostId === nextProps.repostedFromPostId &&
     prevProps.repostComment === nextProps.repostComment &&
     prevProps.originalContent === nextProps.originalContent &&
+    prevProps.originalTitle === nextProps.originalTitle &&
     prevProps.originalImageUrl === nextProps.originalImageUrl &&
     JSON.stringify(prevProps.originalImageUrls ?? []) ===
     JSON.stringify(nextProps.originalImageUrls ?? []) &&
@@ -389,6 +405,7 @@ const PostListItem = React.memo(function PostListItem({
   postId,
   userId,
   content,
+  title,
   imageUrl,
   imageUrls,
   isAnonymous,
@@ -403,6 +420,7 @@ const PostListItem = React.memo(function PostListItem({
   repostedFromPostId,
   repostComment,
   originalContent,
+  originalTitle,
   originalImageUrl,
   originalImageUrls,
   originalUserId,
@@ -461,7 +479,7 @@ const PostListItem = React.memo(function PostListItem({
     setIsContentTruncated(false);
     setIsRepostCommentTruncated(false);
     setIsOriginalContentTruncated(false);
-  }, [postId, content, originalContent]);
+  }, [postId, title, content, originalTitle, originalContent]);
 
   // Notify parent when all media has loaded (for feed skeleton)
   useEffect(() => {
@@ -542,6 +560,10 @@ const PostListItem = React.memo(function PostListItem({
   const repostCommentKey = content
     ? createTextCacheKey(postId, "repost_comment", content)
     : null;
+  const hasPostTitle = Boolean(title?.trim());
+  const hasOriginalTitle = Boolean(originalTitle?.trim());
+  const trimmedPostTitle = title?.trim() ?? "";
+  const trimmedOriginalTitle = originalTitle?.trim() ?? "";
   const originalContentKey = originalContent
     ? createTextCacheKey(postId, "original_content", originalContent)
     : null;
@@ -786,6 +808,14 @@ const PostListItem = React.memo(function PostListItem({
                   }
                 }}
               >
+                {hasOriginalTitle && (
+                  <Text
+                    numberOfLines={isDetailedPost ? undefined : 3}
+                    style={[styles.originalTitleText, { color: theme.text }]}
+                  >
+                    {trimmedOriginalTitle}
+                  </Text>
+                )}
                 <Text
                   numberOfLines={
                     isDetailedPost || originalContentExpanded ? undefined : 4
@@ -888,6 +918,14 @@ const PostListItem = React.memo(function PostListItem({
                       onLoadImage={markImageLoaded}
                     />
                   ))}
+                {hasPostTitle && (
+                  <Text
+                    numberOfLines={isDetailedPost ? undefined : 3}
+                    style={[styles.titleText, { color: theme.text }]}
+                  >
+                    {trimmedPostTitle}
+                  </Text>
+                )}
                 {content && (
                   <View>
                     <Text
