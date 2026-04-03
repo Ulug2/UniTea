@@ -11,7 +11,7 @@ import UserProfileModal from "./UserProfileModal";
 import { DEFAULT_AVATAR } from "../constants/images";
 import { useMyProfile } from "../features/profile/hooks/useMyProfile";
 import { sharePost } from "../utils/sharePost";
-// Note: gallery widths/size are intentionally fixed to avoid reflow flicker.
+import ResponsiveImage from "./ResponsiveImage";
 
 export type LostFoundPostForMenu = {
   postId: string;
@@ -54,8 +54,6 @@ function normalizeImagePaths(
   );
 }
 
-const GALLERY_IMAGE_HEIGHT = 310;
-
 function LostFoundGalleryItem({
   uri,
   isLast,
@@ -67,36 +65,21 @@ function LostFoundGalleryItem({
   onLoadImage?: () => void;
   onPress: () => void;
 }) {
-  // Fixed width prevents layout shifting while images are still resolving.
-  const imageWidth = 330;
-
   return (
     <Pressable
       onPress={onPress}
       style={{
-        width: imageWidth,
-        height: GALLERY_IMAGE_HEIGHT,
         marginRight: isLast ? 0 : 4,
-        borderRadius: 10,
-        overflow: "hidden",
       }}
     >
-      {uri.startsWith("http") ? (
-        <Image
-          source={{ uri }}
-          style={{ width: "100%", height: "100%" }}
-          resizeMode="cover"
-          onLoad={onLoadImage}
-        />
-      ) : (
-        <SupabaseImage
-          path={uri}
-          bucket="post-images"
-          contentFit="cover"
-          style={{ width: "100%", height: "100%" }}
-          onLoad={onLoadImage}
-        />
-      )}
+      <ResponsiveImage
+        source={uri}
+        bucket="post-images"
+        sourceKind={uri.startsWith("http") ? "uri" : "supabasePath"}
+        mode="galleryPreview"
+        backgroundColor="#F3F4F6"
+        onLoad={onLoadImage}
+      />
     </Pressable>
   );
 }
@@ -111,32 +94,16 @@ function LostFoundSingleImage({
   onLoadImage?: () => void;
 }) {
   return (
-    <Pressable
+    <ResponsiveImage
+      source={uri}
+      bucket="post-images"
+      sourceKind={uri.startsWith("http") ? "uri" : "supabasePath"}
+      mode="single"
+      style={{ width: "100%" }}
+      backgroundColor="#F3F4F6"
+      onLoad={onLoadImage}
       onPress={onPress}
-      style={{
-        width: "100%",
-        height: GALLERY_IMAGE_HEIGHT,
-        borderRadius: 10,
-        overflow: "hidden",
-      }}
-    >
-      {uri.startsWith("http") ? (
-        <Image
-          source={{ uri }}
-          style={{ width: "100%", height: "100%" }}
-          resizeMode="cover"
-          onLoad={onLoadImage}
-        />
-      ) : (
-        <SupabaseImage
-          path={uri}
-          bucket="post-images"
-          contentFit="cover"
-          style={{ width: "100%", height: "100%" }}
-          onLoad={onLoadImage}
-        />
-      )}
-    </Pressable>
+    />
   );
 }
 

@@ -25,6 +25,7 @@ import UserProfileModal from "./UserProfileModal";
 import { useAuth } from "../context/AuthContext";
 import { sharePost } from "../utils/sharePost";
 import type { Theme } from "../context/ThemeContext";
+import ResponsiveImage from "./ResponsiveImage";
 // Shared style cache — all PostListItem instances with the same theme object reuse one StyleSheet.
 // This eliminates calling StyleSheet.create N times when the feed has N visible items.
 const _styleCache = new WeakMap<Theme, ReturnType<typeof _buildStyles>>();
@@ -92,18 +93,6 @@ function _buildStyles(theme: Theme) {
       fontFamily: "Poppins_500Medium",
     },
     time: { fontSize: 12, color: theme.secondaryText, marginLeft: 10 },
-    // Keep feed post image height consistent regardless of image aspect ratio.
-    postImage: {
-      width: "100%",
-      borderRadius: 10,
-      marginTop: 14,
-      marginBottom: 6,
-      overflow: "hidden",
-    },
-    /** Fixed height + cover avoids layout jump from async aspect ratio measurement. */
-    postImageFixedHeight: {
-      height: 400,
-    },
     contentText: {
       fontSize: 16,
       marginTop: 6,
@@ -150,9 +139,6 @@ function getStyles(theme: Theme) {
   if (!_styleCache.has(theme)) _styleCache.set(theme, _buildStyles(theme));
   return _styleCache.get(theme)!;
 }
-
-/** Matches create-post preview tiles; fixed width avoids async getSize layout shift. */
-const FEED_GALLERY_TILE_WIDTH = 280;
 
 const READ_MORE_CHAR_THRESHOLD = 180;
 const READ_MORE_NEWLINE_THRESHOLD = 3;
@@ -243,7 +229,6 @@ type HorizontalGalleryProps = {
   imagePaths: string[];
   onImagePress?: (uri: string) => void;
   onLoadImage?: () => void;
-  height?: number;
   topMargin?: number;
 };
 
@@ -251,7 +236,6 @@ function HorizontalImageGallery({
   imagePaths,
   onImagePress,
   onLoadImage,
-  height = 310,
   topMargin = 14,
 }: HorizontalGalleryProps) {
   return (
@@ -264,7 +248,6 @@ function HorizontalImageGallery({
       renderItem={({ item: path, index }) => (
         <HorizontalImageGalleryItem
           path={path}
-          height={height}
           isLast={index === imagePaths.length - 1}
           onPress={onImagePress}
           onLoadImage={onLoadImage}
@@ -281,7 +264,6 @@ function HorizontalImageGallery({
 
 type HorizontalGalleryItemProps = {
   path: string;
-  height: number;
   isLast: boolean;
   onPress?: (uri: string) => void;
   onLoadImage?: () => void;
@@ -289,13 +271,11 @@ type HorizontalGalleryItemProps = {
 
 function HorizontalImageGalleryItem({
   path,
-  height,
   isLast,
   onPress,
   onLoadImage,
 }: HorizontalGalleryItemProps) {
   const resolvedUri = resolvePostImageUri(path);
-  const width = FEED_GALLERY_TILE_WIDTH;
 
   const onTap = (e: any) => {
     e.preventDefault();
@@ -307,32 +287,56 @@ function HorizontalImageGalleryItem({
     <Pressable
       onPress={onTap}
       style={{
-        width,
-        height,
         marginRight: isLast ? 0 : 4,
-        borderRadius: 10,
-        overflow: "hidden",
       }}
     >
-      {path.startsWith("http") ? (
-        <Image
-          source={{ uri: path }}
-          style={{ width: "100%", height: "100%" }}
-          resizeMode="cover"
-          onLoad={onLoadImage}
-        />
-      ) : (
-        <SupabaseImage
-          path={path}
-          bucket="post-images"
-          contentFit="cover"
-          style={{ width: "100%", height: "100%" }}
-          onLoad={onLoadImage}
-        />
-      )}
+      <ResponsiveImage
+        source={path}
+        bucket="post-images"
+        sourceKind={path.startsWith("http") ? "uri" : "supabasePath"}
+        mode="galleryPreview"
+        backgroundColor="#F3F4F6"
+        onLoad={onLoadImage}
+      />
     </Pressable>
   );
 }
+
+function AdaptiveSingleImage({
+  path,
+  onPress,
+  onLoadImage,
+}: {
+  path: string;
+  onPress?: (uri: string) => void;
+  onLoadImage?: () => void;
+}) {
+  const resolvedUri = resolvePostImageUri(path);
+  return (
+    <ResponsiveImage
+      source={path}
+      bucket="post-images"
+      sourceKind={path.startsWith("http") ? "uri" : "supabasePath"}
+      mode="single"
+      style={stylesForAdaptiveSingleImage}
+      backgroundColor="#F3F4F6"
+      onLoad={onLoadImage}
+      onPress={
+        onPress && resolvedUri
+          ? () => {
+              onPress(resolvedUri);
+            }
+          : undefined
+      }
+    />
+  );
+}
+
+const stylesForAdaptiveSingleImage = {
+  width: "100%" as const,
+  marginTop: 14,
+  marginBottom: 6,
+};
 
 // Custom comparison function for better memoization (prevents unnecessary re-renders)
 const arePropsEqual = (
@@ -440,10 +444,6 @@ const PostListItem = React.memo(function PostListItem({
   const hasAvatar =
     !!(isRepost ? originalAuthorAvatar : avatarUrl) || isAnonymous;
   const hasImage = displayImageUrls.length > 0;
-  const resolvedImageUri = resolvePostImageUri(displayImageUrls[0] ?? null);
-  const resolvedOriginalImageUri = resolvePostImageUri(
-    displayOriginalImageUrls[0] ?? null,
-  );
 
   useEffect(() => {
     setLoadedImageCount(0);
@@ -753,26 +753,15 @@ const PostListItem = React.memo(function PostListItem({
             displayImageUrls.length > 0 &&
             (displayImageUrls.length === 1 ? (
               onImagePress ? (
-                <Pressable
-                  onPress={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (resolvedImageUri) onImagePress(resolvedImageUri);
-                  }}
-                >
-                  <SupabaseImage
-                    path={displayImageUrls[0]}
-                    bucket="post-images"
-                    style={[styles.postImage, styles.postImageFixedHeight]}
-                    onLoad={markImageLoaded}
-                  />
-                </Pressable>
-              ) : (
-                <SupabaseImage
+                <AdaptiveSingleImage
                   path={displayImageUrls[0]}
-                  bucket="post-images"
-                  style={[styles.postImage, styles.postImageFixedHeight]}
-                  onLoad={markImageLoaded}
+                  onPress={onImagePress}
+                  onLoadImage={markImageLoaded}
+                />
+              ) : (
+                <AdaptiveSingleImage
+                  path={displayImageUrls[0]}
+                  onLoadImage={markImageLoaded}
                 />
               )
             ) : (
@@ -780,7 +769,6 @@ const PostListItem = React.memo(function PostListItem({
                 imagePaths={displayImageUrls}
                 onImagePress={onImagePress}
                 onLoadImage={markImageLoaded}
-                height={310}
               />
             ))}
 
@@ -851,32 +839,19 @@ const PostListItem = React.memo(function PostListItem({
                 {displayOriginalImageUrls.length > 0 &&
                   (displayOriginalImageUrls.length === 1 ? (
                     onImagePress ? (
-                      <Pressable
-                        onPress={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (resolvedOriginalImageUri)
-                            onImagePress(resolvedOriginalImageUri);
-                        }}
-                      >
-                        <SupabaseImage
-                          path={displayOriginalImageUrls[0]}
-                          bucket="post-images"
-                          style={[styles.postImage, styles.postImageFixedHeight]}
-                        />
-                      </Pressable>
-                    ) : (
-                      <SupabaseImage
+                      <AdaptiveSingleImage
                         path={displayOriginalImageUrls[0]}
-                        bucket="post-images"
-                        style={[styles.postImage, styles.postImageFixedHeight]}
+                        onPress={onImagePress}
+                      />
+                    ) : (
+                      <AdaptiveSingleImage
+                        path={displayOriginalImageUrls[0]}
                       />
                     )
                   ) : (
                     <HorizontalImageGallery
                       imagePaths={displayOriginalImageUrls}
                       onImagePress={onImagePress}
-                      height={310}
                       topMargin={14}
                     />
                   ))}
@@ -895,26 +870,15 @@ const PostListItem = React.memo(function PostListItem({
                 {displayImageUrls.length > 0 &&
                   (displayImageUrls.length === 1 ? (
                     onImagePress ? (
-                      <Pressable
-                        onPress={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (resolvedImageUri) onImagePress(resolvedImageUri);
-                        }}
-                      >
-                        <SupabaseImage
-                          path={displayImageUrls[0]}
-                          bucket="post-images"
-                          style={[styles.postImage, styles.postImageFixedHeight]}
-                          onLoad={markImageLoaded}
-                        />
-                      </Pressable>
-                    ) : (
-                      <SupabaseImage
+                      <AdaptiveSingleImage
                         path={displayImageUrls[0]}
-                        bucket="post-images"
-                        style={[styles.postImage, styles.postImageFixedHeight]}
-                        onLoad={markImageLoaded}
+                        onPress={onImagePress}
+                        onLoadImage={markImageLoaded}
+                      />
+                    ) : (
+                      <AdaptiveSingleImage
+                        path={displayImageUrls[0]}
+                        onLoadImage={markImageLoaded}
                       />
                     )
                   ) : (
@@ -922,7 +886,6 @@ const PostListItem = React.memo(function PostListItem({
                       imagePaths={displayImageUrls}
                       onImagePress={onImagePress}
                       onLoadImage={markImageLoaded}
-                      height={310}
                     />
                   ))}
                 {content && (

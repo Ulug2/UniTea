@@ -89,9 +89,7 @@ export function makeChatDetailStyles(
     },
     imagePreview: {
       width: 200,
-      height: 200,
       borderRadius: 12,
-      resizeMode: "cover" as const,
     },
     removeImageButton: {
       position: "absolute" as const,
@@ -147,20 +145,20 @@ export const chatDetailStyles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 0,
     borderColor: "rgba(0, 0, 0, 0.1)",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F3F4F6",
   },
   messageImageContainerWithText: {
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
   },
-  messageImage: {
-    width: 250,
-    height: 250,
-  },
   messageImageLoading: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F3F4F6",
     justifyContent: "center",
     alignItems: "center",
+  },
+  messageImageLoadingSize: {
+    width: 225,
+    height: 300,
   },
   messageTime: {
     fontSize: 12,

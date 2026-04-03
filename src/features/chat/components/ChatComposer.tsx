@@ -5,13 +5,13 @@ import {
   TextInput,
   Pressable,
   TouchableOpacity,
-  Image,
   StyleSheet,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { ReplyingToState } from "../types";
+import ResponsiveImage from "../../../components/ResponsiveImage";
 
 type ChatComposerProps = {
   value: string;
@@ -119,8 +119,12 @@ export function ChatComposer({
       {/* Attached image preview */}
       {selectedImageUri && (
         <View style={styleSet.imagePreviewContainer}>
-          <Image
-            source={{ uri: selectedImageUri }}
+          <ResponsiveImage
+            source={selectedImageUri}
+            sourceKind="uri"
+            mode="single"
+            borderRadius={12}
+            backgroundColor="#F3F4F6"
             style={styleSet.imagePreview}
           />
           <Pressable style={styleSet.removeImageButton} onPress={onRemoveImage}>

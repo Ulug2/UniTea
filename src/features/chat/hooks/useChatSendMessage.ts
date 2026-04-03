@@ -307,17 +307,17 @@ export function useChatSendMessage(
 
               updatedChat = isP1
                 ? {
-                    ...s,
-                    last_message_content_p1: messageText,
-                    last_message_has_image_p1: hasImage,
-                    last_message_at: now,
-                  }
+                  ...s,
+                  last_message_content_p1: messageText,
+                  last_message_has_image_p1: hasImage,
+                  last_message_at: now,
+                }
                 : {
-                    ...s,
-                    last_message_content_p2: messageText,
-                    last_message_has_image_p2: hasImage,
-                    last_message_at: now,
-                  };
+                  ...s,
+                  last_message_content_p2: messageText,
+                  last_message_has_image_p2: hasImage,
+                  last_message_at: now,
+                };
               return false;
             }
             return true;
