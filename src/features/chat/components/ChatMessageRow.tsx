@@ -14,7 +14,7 @@ import {
   deletedLabel,
 } from "../types";
 import { chatDetailStyles } from "../styles";
-import SupabaseImage from "../../../components/SupabaseImage";
+import ResponsiveImage from "../../../components/ResponsiveImage";
 import type { Theme } from "../../../context/ThemeContext";
 
 type ChatMessageRowProps = {
@@ -242,19 +242,20 @@ function ChatMessageRowInner({
               {item.id.startsWith("temp-") ? (
                 <View
                   style={[
-                    chatDetailStyles.messageImage,
+                    chatDetailStyles.messageImageLoadingSize,
                     chatDetailStyles.messageImageLoading,
                   ]}
                 >
                   <ActivityIndicator size="large" color="#999" />
                 </View>
               ) : (
-                <SupabaseImage
-                  path={item.image_url}
+                <ResponsiveImage
+                  source={item.image_url}
                   bucket="chat-images"
-                  style={chatDetailStyles.messageImage}
-                  loadingBackgroundColor="#FFFFFF"
-                  loadingIndicatorColor="#999"
+                  sourceKind="auto"
+                  mode="single"
+                  borderRadius={0}
+                  backgroundColor="#F3F4F6"
                 />
               )}
               {/* Image-only: float timestamp pill over bottom-right corner */}

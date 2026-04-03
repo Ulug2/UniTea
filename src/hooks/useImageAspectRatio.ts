@@ -15,7 +15,16 @@ function clampAspectRatio(value: number): number {
   return Math.min(MAX_ASPECT_RATIO, Math.max(MIN_ASPECT_RATIO, value));
 }
 
-export function useImageAspectRatio(uri: string | null | undefined): number {
+type UseImageAspectRatioOptions = {
+  clamp?: boolean;
+};
+
+export function useImageAspectRatio(
+  uri: string | null | undefined,
+  options?: UseImageAspectRatioOptions,
+): number {
+  const shouldClamp = options?.clamp ?? false;
+
   const [aspectRatio, setAspectRatio] = useState<number>(() => {
     if (!uri) return DEFAULT_ASPECT_RATIO;
     return aspectRatioCache.get(uri) ?? DEFAULT_ASPECT_RATIO;
@@ -39,7 +48,10 @@ export function useImageAspectRatio(uri: string | null | undefined): number {
       uri,
       (width, height) => {
         if (isCancelled) return;
-        const nextRatio = clampAspectRatio(width / height);
+        const measuredRatio = width / height;
+        const nextRatio = shouldClamp
+          ? clampAspectRatio(measuredRatio)
+          : measuredRatio;
         aspectRatioCache.set(uri, nextRatio);
         setAspectRatio(nextRatio);
       },
@@ -52,7 +64,7 @@ export function useImageAspectRatio(uri: string | null | undefined): number {
     return () => {
       isCancelled = true;
     };
-  }, [uri]);
+  }, [uri, shouldClamp]);
 
   return aspectRatio;
 }

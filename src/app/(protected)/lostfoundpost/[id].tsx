@@ -25,6 +25,7 @@ import {
   resolvePostImageUri,
 } from "../../../components/FullscreenImageModal";
 import type { PostsSummaryViewRow } from "../../../types/posts";
+import ResponsiveImage from "../../../components/ResponsiveImage";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -33,7 +34,6 @@ const LOST_BG = "#FEE2E2";
 const FOUND_COLOR = "#16A34A";
 const FOUND_BG = "#DCFCE7";
 const TEAL = "#5DBEBC";
-const GALLERY_IMAGE_HEIGHT = 310;
 
 const SAFETY_REMINDER =
   "Please meet in public places on campus when exchanging items. " +
@@ -301,36 +301,41 @@ function LostFoundDetailGalleryItem({
   isLast: boolean;
   onPress: () => void;
 }) {
-  // Fixed width prevents layout shifting while the image's intrinsic size
-  // is still being resolved.
-  const width = 330;
-
   return (
     <Pressable
       onPress={onPress}
       style={{
-        width,
-        height: GALLERY_IMAGE_HEIGHT,
         marginRight: isLast ? 0 : 4,
-        borderRadius: 10,
-        overflow: "hidden",
       }}
     >
-      {uri.startsWith("http") ? (
-        <Image
-          source={{ uri }}
-          style={{ width: "100%", height: "100%" }}
-          resizeMode="cover"
-        />
-      ) : (
-        <SupabaseImage
-          path={uri}
-          bucket="post-images"
-          contentFit="cover"
-          style={{ width: "100%", height: "100%" }}
-        />
-      )}
+      <ResponsiveImage
+        source={uri}
+        bucket="post-images"
+        sourceKind={uri.startsWith("http") ? "uri" : "supabasePath"}
+        mode="galleryPreview"
+        backgroundColor="#F3F4F6"
+      />
     </Pressable>
+  );
+}
+
+function LostFoundDetailSingleImage({
+  uri,
+  onPress,
+}: {
+  uri: string;
+  onPress: () => void;
+}) {
+  return (
+    <ResponsiveImage
+      source={uri}
+      bucket="post-images"
+      sourceKind={uri.startsWith("http") ? "uri" : "supabasePath"}
+      mode="single"
+      style={{ width: "100%" }}
+      backgroundColor="#F3F4F6"
+      onPress={onPress}
+    />
   );
 }
 
@@ -658,37 +663,46 @@ export default function LostFoundPostDetailed() {
           {/* Post image(s) — tap to expand */}
           {displayImageUrls.length > 0 ? (
             <View style={styles.imageContainer}>
-              <ScrollView
-                horizontal
-                nestedScrollEnabled
-                showsHorizontalScrollIndicator={false}
-                onStartShouldSetResponderCapture={() => true}
-                // RN typings only expose the event here; returning `true` ensures
-                // the horizontal gallery captures swipe gestures exclusively.
-                onMoveShouldSetResponderCapture={() => true}
-                onResponderGrant={() => setIsGalleryInteracting(true)}
-                onResponderRelease={() => setIsGalleryInteracting(false)}
-                onTouchStart={() => setIsGalleryInteracting(true)}
-                onTouchEnd={() => setIsGalleryInteracting(false)}
-                onScrollBeginDrag={() => setIsGalleryInteracting(true)}
-                onMomentumScrollEnd={() => setIsGalleryInteracting(false)}
-                onScrollEndDrag={() => setIsGalleryInteracting(false)}
-                contentContainerStyle={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                }}
-              >
-                {displayImageUrls.map((uri, index) => (
-                  <LostFoundDetailGalleryItem
-                    key={`${uri}-${index}`}
-                    uri={uri}
-                    isLast={index === displayImageUrls.length - 1}
-                    onPress={() =>
-                      setFullscreenUri(resolvePostImageUri(uri))
-                    }
-                  />
-                ))}
-              </ScrollView>
+              {displayImageUrls.length === 1 ? (
+                <LostFoundDetailSingleImage
+                  uri={displayImageUrls[0]}
+                  onPress={() =>
+                    setFullscreenUri(resolvePostImageUri(displayImageUrls[0]))
+                  }
+                />
+              ) : (
+                <ScrollView
+                  horizontal
+                  nestedScrollEnabled
+                  showsHorizontalScrollIndicator={false}
+                  onStartShouldSetResponderCapture={() => true}
+                  // RN typings only expose the event here; returning `true` ensures
+                  // the horizontal gallery captures swipe gestures exclusively.
+                  onMoveShouldSetResponderCapture={() => true}
+                  onResponderGrant={() => setIsGalleryInteracting(true)}
+                  onResponderRelease={() => setIsGalleryInteracting(false)}
+                  onTouchStart={() => setIsGalleryInteracting(true)}
+                  onTouchEnd={() => setIsGalleryInteracting(false)}
+                  onScrollBeginDrag={() => setIsGalleryInteracting(true)}
+                  onMomentumScrollEnd={() => setIsGalleryInteracting(false)}
+                  onScrollEndDrag={() => setIsGalleryInteracting(false)}
+                  contentContainerStyle={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                >
+                  {displayImageUrls.map((uri, index) => (
+                    <LostFoundDetailGalleryItem
+                      key={`${uri}-${index}`}
+                      uri={uri}
+                      isLast={index === displayImageUrls.length - 1}
+                      onPress={() =>
+                        setFullscreenUri(resolvePostImageUri(uri))
+                      }
+                    />
+                  ))}
+                </ScrollView>
+              )}
             </View>
           ) : null}
 
