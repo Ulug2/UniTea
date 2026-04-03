@@ -29,6 +29,7 @@ export function PostHeaderCard({
       postId={post.post_id}
       userId={post.user_id}
       content={post.content}
+      title={post.title}
       imageUrl={post.image_url}
       imageUrls={post.image_urls ?? null}
       category={post.category}
@@ -49,6 +50,7 @@ export function PostHeaderCard({
       repostedFromPostId={post.reposted_from_post_id}
       repostComment={post.repost_comment}
       originalContent={post.original_content}
+      originalTitle={post.original_title}
       originalImageUrl={post.original_image_url}
       originalImageUrls={post.original_image_urls ?? null}
       originalUserId={post.original_user_id}

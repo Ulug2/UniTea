@@ -485,6 +485,7 @@ export default function CreatePostScreen() {
                 <View
                   style={[
                     styles.locationInputContainer,
+                    Platform.OS === "android" && styles.androidTitleInputContainer,
                     {
                       backgroundColor: theme.background,
                       borderColor: theme.border,
@@ -541,6 +542,44 @@ export default function CreatePostScreen() {
               </View>
             )}
 
+            {/* TITLE INPUT (Feed posts only) */}
+            {!isLostFound && (
+              <View style={styles.locationSection}>
+                <Text style={[styles.sectionLabel, { color: theme.text }]}>
+                  Title (optional)
+                </Text>
+                <View
+                  style={[
+                    styles.locationInputContainer,
+                    {
+                      backgroundColor: theme.background,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="text-outline"
+                    size={20}
+                    color={theme.secondaryText}
+                  />
+                  <TextInput
+                    placeholder="Add a short title"
+                    placeholderTextColor={theme.secondaryText}
+                    style={[
+                      styles.locationInput,
+                      Platform.OS === "android" && styles.androidTitleInput,
+                      { color: theme.text },
+                    ]}
+                    keyboardAppearance={keyboardAppearance}
+                    onChangeText={setTitle}
+                    value={title}
+                    autoFocus={!isLostFound && !isRepost}
+                    maxLength={200}
+                  />
+                </View>
+              </View>
+            )}
+
             {/* CONTENT INPUT */}
             <View style={styles.contentSection}>
               {isLostFound && (
@@ -550,7 +589,7 @@ export default function CreatePostScreen() {
               )}
               {isRepost && (
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                  Add your thoughts (optional)
+                  Add your thoughts
                 </Text>
               )}
               <TextInput
@@ -567,7 +606,7 @@ export default function CreatePostScreen() {
                 onChangeText={setContent}
                 value={content}
                 multiline
-                autoFocus={!isLostFound && !isRepost}
+                autoFocus={isRepost}
                 scrollEnabled
                 textAlignVertical="top"
               />
@@ -953,6 +992,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: "Poppins_400Regular",
+  },
+  androidTitleInputContainer: {
+    paddingVertical: 10,
+  },
+  androidTitleInput: {
+    paddingVertical: 0,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   contentSection: {
     paddingTop: 15,

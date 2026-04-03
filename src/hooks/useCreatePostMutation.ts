@@ -50,6 +50,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         (path): path is string => Boolean(path?.trim()),
       );
       const primaryImagePath = normalizedImagePaths[0] ?? imagePath;
+      const normalizedTitle = postTitle.trim();
 
       if (!resolvedRepostId && !postContent.trim() && !primaryImagePath) {
         throw new Error("Content is required");
@@ -65,8 +66,8 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         image_url: primaryImagePath || null,
         image_urls: normalizedImagePaths.length > 0 ? normalizedImagePaths : null,
         is_anonymous: isLostFound ? false : postIsAnonymous,
+        ...(normalizedTitle.length > 0 && { title: normalizedTitle }),
         ...(isLostFound && {
-          title: postTitle.trim(),
           category: postCategory,
           location: postLocation.trim(),
         }),
@@ -139,6 +140,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
             : variables.imagePath
               ? [variables.imagePath]
               : null,
+        title: variables.postTitle.trim() || null,
         category: null,
         location: null,
         post_type: "feed",
@@ -160,6 +162,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         repost_comment: resolvedRepostId ? variables.postContent.trim() : null,
         repost_count: 0,
         original_post_id: null,
+        original_title: null,
         original_content: null,
         original_user_id: null,
         original_author_username: null,

@@ -213,6 +213,27 @@ describe('useCreatePostMutation', () => {
       expect(fetchBody.image_urls).toEqual(['posts/a.webp', 'posts/b.webp']);
       expect(fetchBody.image_url).toBe('posts/a.webp');
     });
+
+    it('includes title for feed posts when provided', async () => {
+      mockFetchSuccess({ id: 'post-5' });
+
+      const { result } = renderHook(
+        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.mutate({
+          ...defaultVars,
+          postTitle: '  Lost wallet update  ',
+        });
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const fetchBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(fetchBody.title).toBe('Lost wallet update');
+    });
   });
 
   // ── happy path — lost & found post ───────────────────────────────────────────
@@ -325,6 +346,48 @@ describe('useCreatePostMutation', () => {
       const tempPost = firstPage?.[0];
       expect(tempPost?.post_id).toMatch(/^temp-/);
       expect(tempPost?.content).toBe('Optimistic');
+      expect(tempPost?.title).toBeNull();
+    });
+
+    it('stores title in optimistic post when feed title is provided', async () => {
+      const capturedCalls: Array<{ key: unknown; value: unknown }> = [];
+      const originalSetQueryData = queryClient.setQueryData.bind(queryClient);
+      jest.spyOn(queryClient, 'setQueryData').mockImplementation(
+        (key: any, value: any) => {
+          capturedCalls.push({ key, value });
+          return originalSetQueryData(key, value);
+        }
+      );
+
+      mockFetchSuccess({ id: 'post-6' });
+
+      const { result } = renderHook(
+        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.mutate({
+          ...defaultVars,
+          postContent: 'Body text',
+          postTitle: 'Feed heading',
+        });
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const optimisticCall = capturedCalls.find(
+        (c) => JSON.stringify(c.key) === JSON.stringify(['posts', 'feed', 'new'])
+      );
+      expect(optimisticCall).toBeDefined();
+
+      const computedValue: any =
+        typeof optimisticCall!.value === 'function'
+          ? (optimisticCall!.value as Function)(undefined)
+          : optimisticCall!.value;
+
+      const tempPost = computedValue?.pages?.[0]?.[0];
+      expect(tempPost?.title).toBe('Feed heading');
     });
 
     it('does NOT add optimistic post for lost&found (isLostFound=true)', async () => {
