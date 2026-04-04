@@ -9,11 +9,17 @@ import {
   ActivityIndicator,
   Modal,
   Dimensions,
+  Animated,
+  Platform,
+  Keyboard,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from "react-native";
-import { FontAwesome } from "@expo/vector-icons";
+import { Feather, FontAwesome } from "@expo/vector-icons";
 import { router } from "expo-router";
 import PostListItem from "../../../components/PostListItem";
 import PostListSkeleton from "../../../components/PostListSkeleton";
+import CustomInput from "../../../components/CustomInput";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
 import {
@@ -35,6 +41,9 @@ type PostSummary = PostsSummaryViewRow;
 
 const POSTS_PER_PAGE = 10;
 const ENABLE_FEED_DIAGNOSTICS = false;
+const SEARCH_BAR_HEIGHT = 64;
+const SEARCH_HIDE_SCROLL_Y = 30;
+const PULL_REVEAL_THRESHOLD = -40;
 
 const FEED_FILTER_ORDER = ["hot", "new", "top"] as const;
 type FeedFilterType = (typeof FEED_FILTER_ORDER)[number];
@@ -42,12 +51,26 @@ type FeedFilterType = (typeof FEED_FILTER_ORDER)[number];
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // Single feed "page" for one filter – used inside the horizontal pager
-function FeedPageContent({ filter }: { filter: FeedFilterType }) {
+function FeedPageContent({
+  filter,
+  searchQuery,
+  activeSearchQuery,
+  onSearchQueryChange,
+  onSearchSubmit,
+}: {
+  filter: FeedFilterType;
+  searchQuery: string;
+  activeSearchQuery: string;
+  onSearchQueryChange: (nextValue: string) => void;
+  onSearchSubmit: () => void;
+}) {
   const { theme } = useTheme();
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const { hiddenPostIds } = useFilterContext();
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const searchHeightAnim = useRef(new Animated.Value(0)).current;
 
   const { data: blocks = [] } = useBlocks();
   const { data: currentUser } = useMyProfile(currentUserId);
@@ -63,13 +86,25 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
     refetch,
     isRefetching,
   } = useInfiniteQuery({
-    queryKey: ["posts", "feed", filter],
+    queryKey: ["posts", "feed", filter, activeSearchQuery],
     queryFn: async ({ pageParam = 0 }) => {
       let query = (supabase as any)
         .from("posts_summary_view")
         .select("*")
         .eq("post_type", "feed")
-        .or("is_banned.is.null,is_banned.eq.false");
+        .not("is_banned", "is", "true");
+
+      const normalizedSearch = activeSearchQuery
+        .trim()
+        .replace(/[%*]/g, "")
+        .replace(/,/g, " ");
+      if (normalizedSearch.length > 0) {
+        const pattern = `*${normalizedSearch}*`;
+        // Priority: title match first; fallback to content when title is null/empty.
+        query = query.or(
+          `title.ilike.${pattern},and(title.is.null,content.ilike.${pattern}),and(title.eq."",content.ilike.${pattern})`,
+        );
+      }
 
       switch (filter) {
         case "new":
@@ -154,7 +189,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
     return filteredPosts.filter(
       (post) => !hiddenPostIds.includes(post.post_id),
     );
-  }, [postsData, blocks, filter, hiddenPostIds]);
+  }, [postsData, blocks, hiddenPostIds]);
 
   useEffect(() => {
     if (!__DEV__ || !ENABLE_FEED_DIAGNOSTICS) return;
@@ -235,6 +270,34 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
     [onItemReady, isAdmin],
   );
 
+  useEffect(() => {
+    Animated.timing(searchHeightAnim, {
+      toValue: searchVisible ? SEARCH_BAR_HEIGHT : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [searchVisible, searchHeightAnim]);
+
+  const handleSearchSubmit = useCallback(() => {
+    Keyboard.dismiss();
+    onSearchSubmit();
+  }, [onSearchSubmit]);
+
+  const handleListScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      if (!searchVisible && offsetY < PULL_REVEAL_THRESHOLD) {
+        setSearchVisible(true);
+        return;
+      }
+      if (searchVisible && offsetY > SEARCH_HIDE_SCROLL_Y) {
+        Keyboard.dismiss();
+        setSearchVisible(false);
+      }
+    },
+    [searchVisible],
+  );
+
   if (isPending) {
     return (
       <View style={[styles.page, { backgroundColor: theme.background }]}>
@@ -257,7 +320,44 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
           pointerEvents: shouldReveal ? "auto" : "none",
         }}
       >
+        <Animated.View
+          style={[
+            styles.searchHeaderContainer,
+            {
+              height: searchHeightAnim,
+              opacity: searchHeightAnim.interpolate({
+                inputRange: [0, SEARCH_BAR_HEIGHT],
+                outputRange: [0, 1],
+              }),
+              backgroundColor: theme.background,
+            },
+          ]}
+        >
+          <View style={styles.searchHeaderInner}>
+            <CustomInput
+              placeholder="Search posts..."
+              value={searchQuery}
+              onChangeText={onSearchQueryChange}
+              leftIcon={{ type: "font-awesome", name: "search" }}
+              returnKeyType="search"
+              onSubmitEditing={handleSearchSubmit}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.searchInput}
+              rightElement={
+                <Pressable onPress={handleSearchSubmit} hitSlop={8}>
+                  <Feather
+                    name="arrow-right-circle"
+                    size={24}
+                    color={theme.primary}
+                  />
+                </Pressable>
+              }
+            />
+          </View>
+        </Animated.View>
         <FlatList
+          style={{ flex: 1 }}
           data={posts}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
@@ -269,10 +369,18 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
           updateCellsBatchingPeriod={100}
           initialNumToRender={5}
           windowSize={5}
+          onScroll={handleListScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={refetch}
+              refreshing={searchVisible && isRefetching}
+              onRefresh={() => {
+                if (!searchVisible) {
+                  setSearchVisible(true);
+                } else {
+                  refetch();
+                }
+              }}
               tintColor={theme.primary}
             />
           }
@@ -286,7 +394,7 @@ function FeedPageContent({ filter }: { filter: FeedFilterType }) {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
-                No posts yet
+                {activeSearchQuery ? "No results for your search" : "No posts yet"}
               </Text>
             </View>
           }
@@ -330,6 +438,20 @@ export default function FeedScreen() {
     0,
   );
   const [activePageIndex, setActivePageIndex] = useState(resolvedInitialPageIndex);
+  const [searchQueryByFilter, setSearchQueryByFilter] = useState<
+    Record<FeedFilterType, string>
+  >({
+    hot: "",
+    new: "",
+    top: "",
+  });
+  const [activeSearchByFilter, setActiveSearchByFilter] = useState<
+    Record<FeedFilterType, string>
+  >({
+    hot: "",
+    new: "",
+    top: "",
+  });
 
   const isCreatingPost = useIsMutating({ mutationKey: ["create-post"] }) > 0;
 
@@ -411,7 +533,29 @@ export default function FeedScreen() {
           {FEED_FILTER_ORDER.map((filter, index) => (
             <View key={filter} style={styles.pageWrapper}>
               {Math.abs(index - activePageIndex) <= 1 ? (
-                <FeedPageContent filter={filter} />
+                <FeedPageContent
+                  filter={filter}
+                  searchQuery={searchQueryByFilter[filter]}
+                  activeSearchQuery={activeSearchByFilter[filter]}
+                  onSearchQueryChange={(nextValue) => {
+                    setSearchQueryByFilter((previous) => ({
+                      ...previous,
+                      [filter]: nextValue,
+                    }));
+                    if (nextValue.trim() === "") {
+                      setActiveSearchByFilter((prev) => ({
+                        ...prev,
+                        [filter]: "",
+                      }));
+                    }
+                  }}
+                  onSearchSubmit={() => {
+                    setActiveSearchByFilter((prev) => ({
+                      ...prev,
+                      [filter]: searchQueryByFilter[filter].trim().toLowerCase(),
+                    }));
+                  }}
+                />
               ) : (
                 <View style={[styles.page, { backgroundColor: theme.background }]} />
               )}
@@ -430,7 +574,7 @@ export default function FeedScreen() {
         transparent
         animationType="none"
         statusBarTranslucent
-        onRequestClose={() => {}}
+        onRequestClose={() => { }}
       >
         <View
           style={[
@@ -467,6 +611,18 @@ const styles = StyleSheet.create({
   },
   skeletonContent: {
     paddingBottom: 100,
+  },
+  searchHeaderContainer: {
+    overflow: "hidden",
+  },
+  searchHeaderInner: {
+    height: SEARCH_BAR_HEIGHT,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    justifyContent: "center",
+  },
+  searchInput: {
+    marginBottom: 0,
   },
   emptyContainer: {
     flex: 1,
