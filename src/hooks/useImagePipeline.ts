@@ -5,12 +5,19 @@ import { IMAGE_COMPRESS_QUALITY, IMAGE_MAX_WIDTH, IMAGE_SAVE_FORMAT } from "../c
 import { logger } from "../utils/logger";
 import { mapWithConcurrency } from "../utils/asyncConcurrency";
 
+export type PreparedImage = {
+  uri: string;
+  aspectRatio: number;
+};
+
 export type ImagePipelineOptions = {
   allowEditing?: boolean;
   aspect?: [number, number];
   allowsMultipleSelection?: boolean;
   selectionLimit?: number;
 };
+
+const DEFAULT_ASPECT_RATIO = 4 / 3;
 
 export function useImagePipeline(options: ImagePipelineOptions = {}) {
   const IMAGE_PROCESSING_CONCURRENCY = 2;
@@ -34,7 +41,7 @@ export function useImagePipeline(options: ImagePipelineOptions = {}) {
     return manipResult.uri;
   };
 
-  const pickAndPrepareImages = async (): Promise<string[]> => {
+  const pickAndPrepareImages = async (): Promise<PreparedImage[]> => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
@@ -53,17 +60,20 @@ export function useImagePipeline(options: ImagePipelineOptions = {}) {
         return [];
       }
 
-      const imageUris = result.assets
-        .map((asset) => asset.uri)
-        .filter((uri): uri is string => Boolean(uri));
+      const validAssets = result.assets.filter((a) => Boolean(a.uri));
 
-      const preparedImages = await mapWithConcurrency(
-        imageUris,
+      return await mapWithConcurrency(
+        validAssets,
         IMAGE_PROCESSING_CONCURRENCY,
-        (uri) => prepareImage(uri),
+        async (asset) => {
+          const preparedUri = await prepareImage(asset.uri);
+          const aspectRatio =
+            asset.width && asset.height && asset.height > 0
+              ? asset.width / asset.height
+              : DEFAULT_ASPECT_RATIO;
+          return { uri: preparedUri, aspectRatio };
+        },
       );
-
-      return preparedImages;
     } catch (err) {
       logger.error("Error processing image in pipeline", err as Error);
       Alert.alert("Error", "Failed to process image. Please try again.");
@@ -71,9 +81,9 @@ export function useImagePipeline(options: ImagePipelineOptions = {}) {
     }
   };
 
-  const pickAndPrepareImage = async (): Promise<string | null> => {
-    const uris = await pickAndPrepareImages();
-    return uris[0] ?? null;
+  const pickAndPrepareImage = async (): Promise<PreparedImage | null> => {
+    const results = await pickAndPrepareImages();
+    return results[0] ?? null;
   };
 
   return { pickAndPrepareImage, pickAndPrepareImages };

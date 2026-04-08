@@ -44,7 +44,7 @@ function SupabaseImage({
   bucket = "post-images",
   contentFit = "cover",
   transition = 200,
-  loadingBackgroundColor = "gainsboro",
+  loadingBackgroundColor = "#F0F0F0",
   loadingIndicatorColor,
   onLoad,
   ...imageProps
@@ -211,7 +211,7 @@ function SupabaseImage({
       <View
         style={[
           {
-            backgroundColor: "#f0f0f0",
+            backgroundColor: "#F0F0F0",
             alignItems: "center",
             justifyContent: "center",
           },

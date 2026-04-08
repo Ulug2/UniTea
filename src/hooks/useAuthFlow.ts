@@ -118,8 +118,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     if (!isEmailRequestCooldownActive) return true;
     Alert.alert(
       "Please Wait",
-      `You can request another email in ${emailRequestCooldownSecondsRemaining} second${
-        emailRequestCooldownSecondsRemaining === 1 ? "" : "s"
+      `You can request another email in ${emailRequestCooldownSecondsRemaining} second${emailRequestCooldownSecondsRemaining === 1 ? "" : "s"
       }.`
     );
     return false;
@@ -129,8 +128,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     if (!rateLimit.isLimited) return true;
     Alert.alert(
       "Too Many Attempts",
-      `Please wait ${rateLimit.remainingMinutes} minute${
-        rateLimit.remainingMinutes > 1 ? "s" : ""
+      `Please wait ${rateLimit.remainingMinutes} minute${rateLimit.remainingMinutes > 1 ? "s" : ""
       } before trying again.`
     );
     logAuthEvent("rate_limit_hit", { remainingMinutes: rateLimit.remainingMinutes });

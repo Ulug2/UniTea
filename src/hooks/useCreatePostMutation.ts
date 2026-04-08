@@ -6,6 +6,7 @@ import { Alert } from "react-native";
 type CreatePostVariables = {
   imagePath: string | undefined;
   imagePaths?: string[];
+  imageAspectRatio?: number | null;
   postContent: string;
   postTitle: string;
   postLocation: string;
@@ -43,6 +44,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         pollOptions,
         imagePath,
         imagePaths,
+        imageAspectRatio,
       } =
         variables;
 
@@ -65,6 +67,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         post_type: isLostFound ? "lost_found" : "feed",
         image_url: primaryImagePath || null,
         image_urls: normalizedImagePaths.length > 0 ? normalizedImagePaths : null,
+        image_aspect_ratio: imageAspectRatio ?? null,
         is_anonymous: isLostFound ? false : postIsAnonymous,
         ...(normalizedTitle.length > 0 && { title: normalizedTitle }),
         ...(isLostFound && {
@@ -140,6 +143,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
             : variables.imagePath
               ? [variables.imagePath]
               : null,
+        image_aspect_ratio: variables.imageAspectRatio ?? null,
         title: variables.postTitle.trim() || null,
         category: null,
         location: null,

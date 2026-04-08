@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
+  ActivityIndicator,
   ImageStyle,
   Pressable,
   StyleProp,
+  StyleSheet,
   View,
   ViewStyle,
   useWindowDimensions,
@@ -12,7 +14,7 @@ import SupabaseImage from "./SupabaseImage";
 import { useImageAspectRatio } from "../hooks/useImageAspectRatio";
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-const DEFAULT_BACKGROUND = "#F3F4F6";
+const DEFAULT_BACKGROUND = "#F0F0F0";
 const SINGLE_MAX_HEIGHT_RATIO = 0.55;
 const GALLERY_ITEM_WIDTH = 225;
 const GALLERY_ITEM_HEIGHT = 300;
@@ -22,6 +24,8 @@ type ResponsiveImageProps = {
   bucket?: string;
   sourceKind?: "auto" | "uri" | "supabasePath";
   mode?: "single" | "galleryPreview";
+  /** Pre-computed aspect ratio from the DB — bypasses the network Image.getSize call. */
+  knownAspectRatio?: number | null;
   borderRadius?: number;
   backgroundColor?: string;
   onPress?: () => void;
@@ -50,6 +54,7 @@ export default function ResponsiveImage({
   bucket = "post-images",
   sourceKind = "auto",
   mode = "single",
+  knownAspectRatio,
   borderRadius = 10,
   backgroundColor = DEFAULT_BACKGROUND,
   onPress,
@@ -57,11 +62,25 @@ export default function ResponsiveImage({
   style,
 }: ResponsiveImageProps) {
   const { height: screenHeight } = useWindowDimensions();
-  const measureUri = resolveAspectUri(source, bucket, sourceKind);
-  const aspectRatio = useImageAspectRatio(measureUri, { clamp: false });
+  const hasKnownRatio = typeof knownAspectRatio === "number" && knownAspectRatio > 0;
+  const measureUri = hasKnownRatio ? null : resolveAspectUri(source, bucket, sourceKind);
+  const dynamicAspectRatio = useImageAspectRatio(measureUri, { clamp: false });
+  const aspectRatio = hasKnownRatio ? knownAspectRatio : dynamicAspectRatio;
   const isDirectUri = sourceKind === "uri" || (sourceKind === "auto" && isUri(source));
-  const contentPosition = mode === "single" ? "top left" : "center";
-  const contentFit = mode === "single" ? "contain" : "cover";
+
+  const [isImageLoading, setIsImageLoading] = useState(true);
+
+  useEffect(() => {
+    setIsImageLoading(true);
+  }, [source]);
+
+  const handleImageLoad = useCallback(() => {
+    setIsImageLoading(false);
+    onLoad?.();
+  }, [onLoad]);
+
+  const contentFit = "cover";
+  const contentPosition = mode === "single" ? "top center" : "center";
 
   const containerStyle: StyleProp<ViewStyle> =
     mode === "single"
@@ -74,6 +93,7 @@ export default function ResponsiveImage({
             backgroundColor,
             alignSelf: "flex-start",
             borderRadius,
+            overflow: "hidden",
           },
           style,
         ]
@@ -108,7 +128,7 @@ export default function ResponsiveImage({
           contentFit={contentFit}
           contentPosition={contentPosition}
           cachePolicy="disk"
-          onLoad={onLoad}
+          onLoad={handleImageLoad}
         />
       ) : (
         <SupabaseImage
@@ -118,8 +138,13 @@ export default function ResponsiveImage({
           contentFit={contentFit}
           contentPosition={contentPosition}
           loadingBackgroundColor={backgroundColor}
-          onLoad={onLoad}
+          onLoad={handleImageLoad}
         />
+      )}
+      {isImageLoading && (
+        <View style={loadingStyles.overlay}>
+          <ActivityIndicator size="small" color="#999" />
+        </View>
       )}
     </View>
   );
@@ -128,3 +153,11 @@ export default function ResponsiveImage({
 
   return <Pressable onPress={onPress}>{container}</Pressable>;
 }
+
+const loadingStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});

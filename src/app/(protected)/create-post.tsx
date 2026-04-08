@@ -233,11 +233,16 @@ export default function CreatePostScreen() {
     );
   }, [reset, closeScreen, isLostFound]);
 
+  const imageAspectRatiosRef = React.useRef<Record<string, number>>({});
+
   const pickImage = async () => {
-    const selectedUris = await pickAndPrepareImages();
-    if (selectedUris.length > 0) {
+    const selected = await pickAndPrepareImages();
+    if (selected.length > 0) {
+      for (const { uri, aspectRatio } of selected) {
+        imageAspectRatiosRef.current[uri] = aspectRatio;
+      }
       setImages((previous) => {
-        const merged = [...previous, ...selectedUris];
+        const merged = [...previous, ...selected.map((s) => s.uri)];
         const unique = Array.from(new Set(merged));
         return unique.slice(0, MAX_POST_IMAGES);
       });
@@ -309,10 +314,15 @@ export default function CreatePostScreen() {
         }
       }
 
-      // Fire the mutation (optimistic UI will update feed); no need to await here
+      const primaryAspectRatio =
+        images.length > 0
+          ? imageAspectRatiosRef.current[images[0]] ?? null
+          : null;
+
       createPostMutation.mutate({
         imagePath,
         imagePaths,
+        imageAspectRatio: primaryAspectRatio,
         postContent: content,
         postTitle: title,
         postLocation: location,

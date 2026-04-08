@@ -65,6 +65,7 @@ serve(async (req: Request) => {
       title,
       image_url,
       image_urls,
+      image_aspect_ratio,
       post_type,
       is_anonymous,
       location,
@@ -235,6 +236,10 @@ Output JSON ONLY: {"visual_explicit": boolean, "private_name": boolean, "explici
       post_type: post_type || "feed",
       image_url: normalizedImageUrls[0] || null,
       image_urls: normalizedImageUrls.length > 0 ? normalizedImageUrls : null,
+      image_aspect_ratio:
+        typeof image_aspect_ratio === "number" && isFinite(image_aspect_ratio)
+          ? image_aspect_ratio
+          : null,
       is_anonymous: is_anonymous ?? false,
     };
 

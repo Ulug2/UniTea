@@ -269,23 +269,23 @@ export default function Auth() {
               mode === "login"
                 ? signInWithEmail
                 : mode === "signup"
-                ? signUpWithEmail
-                : resetPassword
+                  ? signUpWithEmail
+                  : resetPassword
             }
           >
             {(mode === "login" && loadingState.login) ||
-            (mode === "signup" && loadingState.signup) ||
-            (mode === "forgot" && loadingState.forgot) ? (
+              (mode === "signup" && loadingState.signup) ||
+              (mode === "forgot" && loadingState.forgot) ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
               <Text style={styles.primaryButtonText}>
                 {isPrimaryEmailRequestMode && isEmailRequestCooldownActive
                   ? `Wait ${emailRequestCooldownSecondsRemaining}s`
                   : mode === "login"
-                  ? "Log In"
-                  : mode === "signup"
-                  ? "Create account"
-                  : "Send Reset Link"}
+                    ? "Log In"
+                    : mode === "signup"
+                      ? "Create account"
+                      : "Send Reset Link"}
               </Text>
             )}
           </Pressable>
