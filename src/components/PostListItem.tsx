@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
+  ActivityIndicator,
   Image,
   NativeSyntheticEvent,
   Pressable,
@@ -26,6 +27,7 @@ import { useAuth } from "../context/AuthContext";
 import { sharePost } from "../utils/sharePost";
 import type { Theme } from "../context/ThemeContext";
 import ResponsiveImage from "./ResponsiveImage";
+import { useInitiateAnonymousChat } from "../features/chat/hooks/useInitiateAnonymousChat";
 // Shared style cache — all PostListItem instances with the same theme object reuse one StyleSheet.
 // This eliminates calling StyleSheet.create N times when the feed has N visible items.
 const _styleCache = new WeakMap<Theme, ReturnType<typeof _buildStyles>>();
@@ -608,6 +610,22 @@ const PostListItem = React.memo(function PostListItem({
     initialScore: voteScore,
   });
 
+  const anonChatMutation = useInitiateAnonymousChat();
+
+  const handleAnonChatPress = (e: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (anonChatMutation.isPending) return;
+    anonChatMutation.mutate(
+      { postId, postAuthorId: userId },
+      {
+        onSuccess: ({ chatId }) => {
+          router.push(`/chat/${chatId}`);
+        },
+      },
+    );
+  };
+
   // Handle repost button click - navigate to create-post screen
   const handleRepostClick = (e: any) => {
     e.preventDefault();
@@ -1064,6 +1082,19 @@ const PostListItem = React.memo(function PostListItem({
               >
                 <Ionicons name="share-outline" size={22} color={theme.text} />
               </Pressable>
+              {userId !== currentUserId && (
+                <Pressable
+                  onPress={handleAnonChatPress}
+                  style={[styles.iconBox, anonChatMutation.isPending && { opacity: 0.5 }]}
+                  disabled={anonChatMutation.isPending}
+                >
+                  {anonChatMutation.isPending ? (
+                    <ActivityIndicator size={18} color={theme.text} />
+                  ) : (
+                    <Ionicons name="paper-plane-outline" size={20} color={theme.text} />
+                  )}
+                </Pressable>
+              )}
               {isDetailedPost && onBookmarkPress && (
                 <Pressable
                   onPress={(e) => {

@@ -191,6 +191,8 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          initiator_id: string | null
+          is_anonymous: boolean
           last_message_at: string | null
           participant_1_id: string
           participant_2_id: string
@@ -199,6 +201,8 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          initiator_id?: string | null
+          is_anonymous?: boolean
           last_message_at?: string | null
           participant_1_id: string
           participant_2_id: string
@@ -207,6 +211,8 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          initiator_id?: string | null
+          is_anonymous?: boolean
           last_message_at?: string | null
           participant_1_id?: string
           participant_2_id?: string
@@ -969,6 +975,8 @@ export type Database = {
         Row: {
           chat_id: string | null
           created_at: string | null
+          initiator_id: string | null
+          is_anonymous: boolean | null
           last_message_at: string | null
           last_message_content_p1: string | null
           last_message_content_p2: string | null
@@ -983,6 +991,8 @@ export type Database = {
         Insert: {
           chat_id?: string | null
           created_at?: string | null
+          initiator_id?: string | null
+          is_anonymous?: boolean | null
           last_message_at?: string | null
           last_message_content_p1?: never
           last_message_content_p2?: never
@@ -997,6 +1007,8 @@ export type Database = {
         Update: {
           chat_id?: string | null
           created_at?: string | null
+          initiator_id?: string | null
+          is_anonymous?: boolean | null
           last_message_at?: string | null
           last_message_content_p1?: never
           last_message_content_p2?: never

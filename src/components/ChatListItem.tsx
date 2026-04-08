@@ -18,6 +18,8 @@ type ChatListItemProps = {
   lastMessageHasImage?: boolean;
   unreadCount: number;
   isAnonymous?: boolean;
+  /** Override the internally computed display name (used for anonymous chats). */
+  displayName?: string;
   /** Called when avatar has finished loading (for skeleton reveal) */
   onImageLoad?: () => void;
   /** Called synchronously before navigation, so the caller can pre-seed the RQ
@@ -37,6 +39,7 @@ const arePropsEqual = (prevProps: ChatListItemProps, nextProps: ChatListItemProp
     prevProps.lastMessageHasImage === nextProps.lastMessageHasImage &&
     prevProps.unreadCount === nextProps.unreadCount &&
     prevProps.isAnonymous === nextProps.isAnonymous &&
+    prevProps.displayName === nextProps.displayName &&
     prevProps.otherUser?.id === nextProps.otherUser?.id &&
     prevProps.otherUser?.avatar_url === nextProps.otherUser?.avatar_url &&
     prevProps.otherUser?.username === nextProps.otherUser?.username &&
@@ -52,6 +55,7 @@ const ChatListItem = React.memo(function ChatListItem({
   lastMessageHasImage = false,
   unreadCount,
   isAnonymous,
+  displayName: displayNameOverride,
   onImageLoad,
   onBeforeNavigate,
 }: ChatListItemProps) {
@@ -83,6 +87,7 @@ const ChatListItem = React.memo(function ChatListItem({
   // "Unknown User", preventing the flicker that appears when the users query
   // resolves after the summaries cache is already seeded.
   const getDisplayName = (): string | null => {
+    if (displayNameOverride) return displayNameOverride;
     if (isAnonymous) return "Anonymous User";
     if (!otherUser) return null; // still loading
     return otherUser.username || "Unknown User";
