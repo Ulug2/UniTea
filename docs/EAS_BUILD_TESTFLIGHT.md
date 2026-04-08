@@ -136,3 +136,41 @@ To avoid prompts when running submit, add your App Store Connect App ID to `eas.
 
 - **Wrong env in app**  
   Double-check `eas secret:list` and that secret names match what the app reads (`EXPO_PUBLIC_SUPABASE_URL`, etc.). Rebuild after changing secrets.
+
+For ANDROID:
+
+Each new release
+1. Bump the marketing version (what users see)
+In your project, expo.version lives in app.json (currently 1.1.0). For a new release, increment it (e.g. 1.2.0) following your own semver rules.
+
+Your eas.json has:
+
+"appVersionSource": "remote" — version/build metadata can be coordinated with EAS; you’re also using autoIncrement: true on the production profile, which bumps Android versionCode automatically so you don’t have to edit it by hand.
+If anything ever conflicts with your expectations, check Expo’s docs for remote app version and eas build:version:set / related commands.
+
+2. Build the Android App Bundle
+npm run build:android:production
+or:
+
+eas build --platform android --profile production
+Wait until the build finishes on EAS servers. You’ll get an .aab (and a build page in the Expo dashboard).
+
+3. Upload to Play (EAS Submit)
+npm run submit:android:production
+or:
+
+eas submit --platform android --profile production
+By default you can submit the latest successful production Android build, or pass a specific build ID if you want.
+
+Submit sends the AAB to a track (internal / closed / open / production) depending on what you choose in the wizard or in eas.json submit profile (yours is "production": {}, so defaults apply—confirm track when you run submit).
+
+4. In Play Console
+Complete rollout on the chosen track (staged rollout %, review, etc.).
+
+Quick reference for your repo
+Step	Command
+Build
+npm run build:android:production
+Submit
+npm run submit:android:production
+Typical pitfalls: expired or wrong service account JSON, API not enabled in Cloud, app not granted to the service account in Play Console, or versionCode collisions (your production profile’s autoIncrement is meant to avoid manual versionCode edits).

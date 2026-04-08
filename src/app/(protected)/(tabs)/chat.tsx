@@ -16,6 +16,7 @@ import {
 } from "../../../hooks/useBlocks";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import { saveChatToStorage } from "../../../utils/feedPersistence";
+import { getChatDisplayIdentity } from "../../../features/chat/utils/getChatIdentity";
 
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
 type User = Database["public"]["Tables"]["profiles"]["Row"];
@@ -33,6 +34,8 @@ type ChatSummary = {
   last_message_has_image_p2: boolean | null;
   unread_count_p1: number;
   unread_count_p2: number;
+  is_anonymous: boolean | null;
+  initiator_id: string | null;
 };
 
 export default function ChatScreen() {
@@ -488,11 +491,14 @@ export default function ChatScreen() {
   // Render function for FlatList - must be defined at component level (Rules of Hooks)
   const renderChatItem = useCallback(
     ({ item, index }: { item: ChatSummary; index: number }) => {
-      const { user, isAnonymous } = getOtherUser(item);
+      const { user, isAnonymous: isLegacyAnon } = getOtherUser(item);
       const otherUserId =
         item.participant_1_id === currentUserId
           ? item.participant_2_id
           : item.participant_1_id;
+
+      const identity = getChatDisplayIdentity(item, currentUserId, user);
+      const isAnonymous = isLegacyAnon || identity.isAnonymousChat;
 
       const isP1 = item.participant_1_id === currentUserId;
       const lastMessageContent = isP1
@@ -511,10 +517,9 @@ export default function ChatScreen() {
           lastMessageHasImage={lastMessageHasImage === true}
           unreadCount={getUnreadCount(item)}
           isAnonymous={isAnonymous}
+          displayName={identity.isAnonymousChat ? identity.displayName : undefined}
           onImageLoad={index < 5 ? onItemReady : undefined}
           onBeforeNavigate={() => {
-            // Pre-seed the detail screen queries synchronously so that
-            // ChatDetailSkeleton never flashes when navigating from this list.
             const syntheticChat = {
               id: item.chat_id,
               participant_1_id: item.participant_1_id,
@@ -522,6 +527,8 @@ export default function ChatScreen() {
               post_id: item.post_id,
               created_at: item.created_at,
               last_message_at: item.last_message_at,
+              is_anonymous: item.is_anonymous ?? false,
+              initiator_id: item.initiator_id,
             };
             queryClient.setQueryData(["chat", item.chat_id], syntheticChat, {
               updatedAt: 0,

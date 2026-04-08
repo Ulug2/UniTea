@@ -34,6 +34,7 @@ import { DEFAULT_AVATAR } from "../../../constants/images";
 import { useBlocks } from "../../../hooks/useBlocks";
 import { setCurrentViewedChatPartnerId } from "../../../hooks/usePushNotifications";
 import { hashStringToNumber } from "../../../features/chat/utils/anon";
+import { getChatDisplayIdentity } from "../../../features/chat/utils/getChatIdentity";
 import type {
   ChatMessageVM,
   ReplyingToState,
@@ -199,7 +200,8 @@ export default function ChatDetailScreen() {
       ? chat?.participant_2_id
       : chat?.participant_1_id;
 
-  const isAnonymous = otherUserId?.startsWith("anonymous-");
+  const isLegacyAnonymous = otherUserId?.startsWith("anonymous-");
+  const isChatAnonymous = isLegacyAnonymous || chat?.is_anonymous === true;
 
   // Tell notification handler which chat we're viewing so it can suppress banners for this chat only
   useFocusEffect(
@@ -212,12 +214,12 @@ export default function ChatDetailScreen() {
   // Fetch blocked users
   const { data: blocks = [] } = useBlocks();
 
-  // Fetch other user profile
+  // Fetch other user profile (skip for all anonymous chats)
   const { data: otherUser, isLoading: isLoadingUser } =
     useQuery<Profile | null>({
       queryKey: ["chat-other-user", otherUserId],
       queryFn: async () => {
-        if (!otherUserId || isAnonymous) return null;
+        if (!otherUserId || isChatAnonymous) return null;
 
         const { data, error } = await supabase
           .from("profiles")
@@ -228,19 +230,24 @@ export default function ChatDetailScreen() {
         if (error) throw error;
         return data;
       },
-      enabled: Boolean(otherUserId) && !isAnonymous,
-      staleTime: 1000 * 60 * 30, // Profile stays fresh for 30 minutes
-      gcTime: 1000 * 60 * 60, // Cache for 1 hour
+      enabled: Boolean(otherUserId) && !isChatAnonymous,
+      staleTime: 1000 * 60 * 30,
+      gcTime: 1000 * 60 * 60,
       retry: 2,
     });
 
-  // Fix anonymous name flickering with deterministic generation
+  const chatIdentity = useMemo(
+    () => getChatDisplayIdentity(chat ?? {}, currentUserId, otherUser ?? null),
+    [chat, currentUserId, otherUser],
+  );
+
   const otherUserName = useMemo(() => {
-    if (isAnonymous && otherUserId) {
+    if (chatIdentity.isAnonymousChat) return chatIdentity.displayName;
+    if (isLegacyAnonymous && otherUserId) {
       return `Anonymous User #${hashStringToNumber(otherUserId)}`;
     }
     return otherUser?.username || "Unknown User";
-  }, [isAnonymous, otherUserId, otherUser?.username]);
+  }, [chatIdentity, isLegacyAnonymous, otherUserId, otherUser?.username]);
 
   // Fetch messages with pagination
   const {
@@ -859,7 +866,11 @@ export default function ChatDetailScreen() {
   });
 
   const handleHeaderMenu = useCallback(() => {
-    if (!otherUserId || isAnonymous) return;
+    if (!otherUserId) return;
+
+    const blockLabel = isChatAnonymous
+      ? "Are you sure you want to block this user?"
+      : `Are you sure you want to block ${otherUserName}?`;
 
     const options: string[] = [];
     const actions: Array<() => void> = [];
@@ -867,18 +878,14 @@ export default function ChatDetailScreen() {
     options.push("Block User", "Delete Chat", "Cancel");
     actions.push(
       () => {
-        Alert.alert(
-          "Block User",
-          `Are you sure you want to block ${otherUserName}?`,
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Block",
-              style: "destructive",
-              onPress: () => blockUserMutation.mutate(otherUserId!),
-            },
-          ],
-        );
+        Alert.alert("Block User", blockLabel, [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Block",
+            style: "destructive",
+            onPress: () => blockUserMutation.mutate(otherUserId!),
+          },
+        ]);
       },
       () => {
         Alert.alert(
@@ -901,7 +908,7 @@ export default function ChatDetailScreen() {
       ActionSheetIOS.showActionSheetWithOptions(
         {
           options,
-          destructiveButtonIndex: [0, 1], // Both Block and Delete are destructive
+          destructiveButtonIndex: [0, 1],
           cancelButtonIndex: 2,
         },
         (buttonIndex) => {
@@ -915,18 +922,14 @@ export default function ChatDetailScreen() {
           text: "Block User",
           style: "destructive",
           onPress: () => {
-            Alert.alert(
-              "Block User",
-              `Are you sure you want to block ${otherUserName}?`,
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Block",
-                  style: "destructive",
-                  onPress: () => blockUserMutation.mutate(otherUserId!),
-                },
-              ],
-            );
+            Alert.alert("Block User", blockLabel, [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Block",
+                style: "destructive",
+                onPress: () => blockUserMutation.mutate(otherUserId!),
+              },
+            ]);
           },
         },
         {
@@ -952,7 +955,7 @@ export default function ChatDetailScreen() {
     }
   }, [
     otherUserId,
-    isAnonymous,
+    isChatAnonymous,
     otherUserName,
     blockUserMutation,
     deleteChatMutation,
@@ -1044,14 +1047,14 @@ export default function ChatDetailScreen() {
 
   // Show skeleton loading screen while chat or user data is loading
   // This prevents "Unknown User" flicker and ensures complete data before render
-  const isInitialLoading = isLoadingChat || (isLoadingUser && !isAnonymous);
+  const isInitialLoading = isLoadingChat || (isLoadingUser && !isChatAnonymous);
 
   if (isInitialLoading) {
     return <ChatDetailSkeleton />;
   }
 
   const headerAvatar =
-    !isAnonymous && otherUser?.avatar_url ? (
+    !isChatAnonymous && otherUser?.avatar_url ? (
       otherUser.avatar_url.startsWith("http") ? (
         <Image
           source={{ uri: otherUser.avatar_url }}
@@ -1074,12 +1077,12 @@ export default function ChatDetailScreen() {
         displayName={otherUserName}
         avatarElement={headerAvatar}
         onRowPress={
-          !isAnonymous && otherUserId && otherUserId !== currentUserId
+          !isChatAnonymous && otherUserId && otherUserId !== currentUserId
             ? () => setProfileModalVisible(true)
             : undefined
         }
-        onMenuPress={!isAnonymous && otherUserId ? handleHeaderMenu : undefined}
-        showMenu={!isAnonymous && !!otherUserId}
+        onMenuPress={otherUserId ? handleHeaderMenu : undefined}
+        showMenu={!!otherUserId}
         iconColor={theme.text}
         styles={dynamicStyles}
       />
@@ -1140,7 +1143,7 @@ export default function ChatDetailScreen() {
       </KeyboardAvoidingView>
 
       {/* User Profile Modal */}
-      {!isAnonymous && otherUserId && otherUserId !== currentUserId && (
+      {!isChatAnonymous && otherUserId && otherUserId !== currentUserId && (
         <UserProfileModal
           visible={profileModalVisible}
           onClose={() => setProfileModalVisible(false)}
