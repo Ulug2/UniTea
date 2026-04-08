@@ -10,8 +10,6 @@ const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
 });
 
-const SEXUAL_TEXT_BLOCK_THRESHOLD = 0.65;
-
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
 function getCorsHeaders(req: Request) {
@@ -75,40 +73,61 @@ serve(async (req: Request) => {
       throw new Error("Post ID is required");
     }
 
-    // 4. Text Moderation: sexual content + likely NU student name-drop checks
-    const moderation = await openai.moderations.create({
-      input: content.trim(),
-    });
+    // 4. Text Moderation: Context-aware name drops & sexual content
+    const textToModerate = content.trim();
 
-    const sexualScore = Number(moderation.results?.[0]?.category_scores?.sexual ?? 0);
-    if (sexualScore >= SEXUAL_TEXT_BLOCK_THRESHOLD) {
-      throw new Error("Comment contains sexually explicit content");
+    // 4a. Hard safety checks (illegal/severe harm) using OpenAI Moderation API
+    const moderation = await openai.moderations.create({ input: textToModerate });
+    const modResults = moderation.results?.[0];
+
+    if (modResults) {
+      if (
+        modResults.categories["sexual/minors"] ||
+        modResults.categories["self-harm/intent"] ||
+        modResults.categories["self-harm/instructions"] ||
+        modResults.categories["violence/graphic"]
+      ) {
+        throw new Error("Comment violates severe safety guidelines (harm, minors, graphic violence)");
+      }
     }
 
-    const studentNameCheckPrompt = `You are a moderation AI for an anonymous social app for students at Nazarbayev University.
+    // 4b. Smart Contextual Moderation using GPT-4o-mini
+    const systemPrompt = `You are an AI moderator for an anonymous social app for Nazarbayev University students. 
+Analyze the user's text. The text may be in English, Russian, Kazakh, or Latin-transliterated Russian/Kazakh (e.g., "krasavchik", "zhasap", "pizdec").
 
-Your ONLY job is to detect if a specific, everyday student is being namedropped.
+Evaluate for two violations:
+1. private_name: true if the text explicitly names an everyday, private student or individual. 
+   - FALSE if it's a public figure, celebrity, athlete, actor (e.g., "Erkebulan Toktar"), influencer, or politician.
+   - FALSE for generic titles ("the dean", "my professor", "admin").
+   - FALSE if the context implies a public event, media, or internet drama. If unsure, err on the side of allowing (default to false).
+2. explicit_sexual: true ONLY if the text is highly graphic, pornographic, erotica, or describes sexual violence/non-consensual acts. 
+   - FALSE for normal discussions about relationships, sex, anatomy, or casual sexual slang (e.g., "fingering", "hooking up") used in a conversational, joking, or educational context.
 
-DO NOT FLAG curse words, swear words, hate speech, offensive language, or general complaints (e.g., "the dean", "my professor", "admin"). These are explicitly ALLOWED.
+Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
 
-DO NOT FLAG the names of famous people, celebrities, politicians, or global public figures.
-
-ONLY flag (reply YES) if the text mentions the specific first and/or last name of what appears to be a regular university student.
-
-Otherwise, reply NO.
-
-Reply ONLY with YES or NO.
-
-Text: "${content.trim().slice(0, 2000)}"`;
-    const studentNameCheck = await openai.chat.completions.create({
+    const contextCheck = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: studentNameCheckPrompt }],
-      max_tokens: 10,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: textToModerate.slice(0, 2000) }
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 50,
     });
-    const studentNameAnswer = studentNameCheck.choices[0]?.message?.content
-      ?.trim()
-      .toUpperCase();
-    if (studentNameAnswer?.includes("YES")) {
+
+    const aiResponseText = contextCheck.choices[0]?.message?.content || "{}";
+    let aiResponse: { private_name?: boolean; explicit_sexual?: boolean } = {};
+
+    try {
+      aiResponse = JSON.parse(aiResponseText);
+    } catch (e) {
+      console.error("Failed to parse moderation JSON:", e);
+    }
+
+    if (aiResponse.explicit_sexual) {
+      throw new Error("Comment contains sexually explicit content");
+    }
+    if (aiResponse.private_name) {
       throw new Error("Comment mentions a likely private student name");
     }
 

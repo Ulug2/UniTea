@@ -33,7 +33,7 @@ export function useVote({
             const result = await getUserVote(userId, postId, commentId);
             return result.voteType;
         },
-        enabled: !!userId && (!!postId || !!commentId) && initialUserVote === undefined,
+        enabled: !!userId && (!!postId || !!commentId),
         staleTime: 1000 * 30, // 30 seconds
         gcTime: 1000 * 60 * 5, // 5 minutes
         initialData: initialUserVote,
@@ -50,7 +50,7 @@ export function useVote({
             }
             return 0;
         },
-        enabled: (!!postId || !!commentId) && initialScore === undefined,
+        enabled: !!postId || !!commentId,
         staleTime: 1000 * 10, // 10 seconds
         gcTime: 1000 * 60 * 5, // 5 minutes
         initialData: initialScore,
