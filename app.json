@@ -56,7 +56,7 @@
         }
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/android-icon.png",
         "backgroundColor": "#2FC9C1"
       },
       "edgeToEdgeEnabled": true,

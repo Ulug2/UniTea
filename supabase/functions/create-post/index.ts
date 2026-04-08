@@ -12,7 +12,6 @@ const openai = new OpenAI({
 
 const MAX_POLL_OPTIONS = 11;
 const MAX_POST_IMAGES = 5;
-const SEXUAL_TEXT_BLOCK_THRESHOLD = 0.65;
 
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
@@ -77,43 +76,62 @@ serve(async (req: Request) => {
       poll_allow_multiple,
     } = await req.json();
 
-    // 3. Text Moderation (if content exists): sexual content + likely NU student name-drop checks
-    // Combine title + content for a single moderation pass when both are present
+    // 3. Text Moderation: Context-aware name drops & sexual content
     const textToModerate = [title?.trim(), content?.trim()].filter(Boolean).join(" ");
-    if (textToModerate) {
-      const moderation = await openai.moderations.create({
-        input: textToModerate,
-      });
 
-      const sexualScore = Number(moderation.results?.[0]?.category_scores?.sexual ?? 0);
-      if (sexualScore >= SEXUAL_TEXT_BLOCK_THRESHOLD) {
-        throw new Error("Post contains sexually explicit content");
+    if (textToModerate) {
+      // 3a. Hard safety checks (illegal/severe harm) using OpenAI Moderation API
+      const moderation = await openai.moderations.create({ input: textToModerate });
+      const modResults = moderation.results?.[0];
+
+      if (modResults) {
+        if (
+          modResults.categories["sexual/minors"] ||
+          modResults.categories["self-harm/intent"] ||
+          modResults.categories["self-harm/instructions"] ||
+          modResults.categories["violence/graphic"]
+        ) {
+          throw new Error("Post violates severe safety guidelines (harm, minors, graphic violence)");
+        }
       }
 
-      const studentNameCheckPrompt = `You are a moderation AI for an anonymous social app for students at Nazarbayev University.
+      // 3b. Smart Contextual Moderation using GPT-4o-mini
+      const systemPrompt = `You are an AI moderator for an anonymous social app for Nazarbayev University students. 
+Analyze the user's text. The text may be in English, Russian, Kazakh, or Latin-transliterated Russian/Kazakh (e.g., "krasavchik", "zhasap", "pizdec").
 
-Your ONLY job is to detect if a specific, everyday student is being namedropped.
+Evaluate for two violations:
+1. private_name: true if the text explicitly names an everyday, private student or individual. 
+   - FALSE if it's a public figure, celebrity, athlete, actor (e.g., "Erkebulan Toktar"), influencer, or politician.
+   - FALSE for generic titles ("the dean", "my professor", "admin").
+   - FALSE if the context implies a public event, media, or internet drama. If unsure, err on the side of allowing (default to false).
+2. explicit_sexual: true ONLY if the text is highly graphic, pornographic, erotica, or describes sexual violence/non-consensual acts. 
+   - FALSE for normal discussions about relationships, sex, anatomy, or casual sexual slang (e.g., "fingering", "hooking up") used in a conversational, joking, or educational context.
 
-DO NOT FLAG curse words, swear words, hate speech, offensive language, or general complaints (e.g., "the dean", "my professor", "admin"). These are explicitly ALLOWED.
+Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
 
-DO NOT FLAG the names of famous people, celebrities, politicians, or global public figures.
-
-ONLY flag (reply YES) if the text mentions the specific first and/or last name of what appears to be a regular university student.
-
-Otherwise, reply NO.
-
-Reply ONLY with YES or NO.
-
-Text: "${textToModerate.slice(0, 2000)}"`;
-      const studentNameCheck = await openai.chat.completions.create({
+      const contextCheck = await openai.chat.completions.create({
         model: "gpt-4o-mini",
-        messages: [{ role: "user", content: studentNameCheckPrompt }],
-        max_tokens: 10,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: textToModerate.slice(0, 2000) }
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 50,
       });
-      const studentNameAnswer = studentNameCheck.choices[0]?.message?.content
-        ?.trim()
-        .toUpperCase();
-      if (studentNameAnswer?.includes("YES")) {
+
+      const aiResponseText = contextCheck.choices[0]?.message?.content || "{}";
+      let aiResponse: { private_name?: boolean; explicit_sexual?: boolean } = {};
+
+      try {
+        aiResponse = JSON.parse(aiResponseText);
+      } catch (e) {
+        console.error("Failed to parse moderation JSON:", e);
+      }
+
+      if (aiResponse.explicit_sexual) {
+        throw new Error("Post contains sexually explicit content");
+      }
+      if (aiResponse.private_name) {
         throw new Error("Post mentions a likely private student name");
       }
     }
@@ -142,8 +160,6 @@ Text: "${textToModerate.slice(0, 2000)}"`;
     if (normalizedImageUrls.length > 0) {
       try {
         for (const currentImageUrl of normalizedImageUrls) {
-          // Generate a signed URL for OpenAI to access the image
-          // Valid for 5 minutes (enough time for OpenAI to process)
           const { data: signedUrlData, error: signedUrlError } =
             await supabase.storage.from("post-images").createSignedUrl(currentImageUrl, 300);
 
@@ -152,7 +168,6 @@ Text: "${textToModerate.slice(0, 2000)}"`;
             throw new Error("Failed to process image");
           }
 
-          // Use GPT-4o-mini for image moderation (sexual content only)
           const imageModerationResponse = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
@@ -161,8 +176,14 @@ Text: "${textToModerate.slice(0, 2000)}"`;
                 content: [
                   {
                     type: "text",
-                    text:
-                      "Does this image contain pornographic or sexually explicit visual content (including explicit nudity or sexual acts)? Ignore any visible text, profanity, offensive language, violence, hate symbols, or general edginess. Reply only NO if it is pornographic/sexually explicit. Otherwise reply only YES.",
+                    text: `You are an AI moderator for a university social app. Analyze this image carefully. Pay close attention to BOTH the visual imagery AND any text, memes, or screenshots of chats embedded in the image. Text may be in English, Russian, Kazakh, or Latin-transliterated slang.
+
+Evaluate for three violations:
+1. visual_explicit: true if the image contains explicit nudity or visual pornography.
+2. private_name: true if any text or chat screenshot in the image explicitly exposes the name of an everyday, private student or individual. FALSE for public figures, celebrities, or generic titles.
+3. explicit_sexual_text: true ONLY if text in the image describes highly graphic/pornographic sexual acts. FALSE for casual relationship slang or memes.
+
+Output JSON ONLY: {"visual_explicit": boolean, "private_name": boolean, "explicit_sexual_text": boolean}`
                   },
                   {
                     type: "image_url",
@@ -171,23 +192,37 @@ Text: "${textToModerate.slice(0, 2000)}"`;
                 ],
               },
             ],
-            max_tokens: 10,
+            response_format: { type: "json_object" },
+            max_tokens: 50,
           });
 
-          const answer = imageModerationResponse.choices[0]?.message?.content
-            ?.trim()
-            .toUpperCase();
+          const aiResponseText = imageModerationResponse.choices[0]?.message?.content || "{}";
+          let imgMod: { visual_explicit?: boolean; private_name?: boolean; explicit_sexual_text?: boolean } = {};
 
-          if (!answer || answer.includes("NO")) {
-            throw new Error("Image violates community guidelines");
+          try {
+            imgMod = JSON.parse(aiResponseText);
+          } catch (e) {
+            console.error("Failed to parse image moderation JSON:", e);
+          }
+
+          if (imgMod.visual_explicit) {
+            throw new Error("Image violates community guidelines (explicit visual content)");
+          }
+          if (imgMod.explicit_sexual_text) {
+            throw new Error("Image contains highly explicit sexual text");
+          }
+          if (imgMod.private_name) {
+            throw new Error("Image exposes a likely private student name");
           }
         }
       } catch (error: any) {
-        // If it's already our custom error, re-throw it
-        if (error.message?.includes("violates community guidelines")) {
+        if (
+          error.message?.includes("violates community guidelines") ||
+          error.message?.includes("explicit sexual text") ||
+          error.message?.includes("private student name")
+        ) {
           throw error;
         }
-        // Otherwise, log and throw a generic error
         console.error("Image moderation error:", error);
         throw new Error("Failed to verify image. Please try again.");
       }
