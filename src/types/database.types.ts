@@ -593,6 +593,7 @@ export type Database = {
           created_at: string | null
           edited_at: string | null
           id: string
+          image_aspect_ratio: number | null
           image_url: string | null
           image_urls: string[] | null
           is_anonymous: boolean | null
@@ -613,6 +614,7 @@ export type Database = {
           created_at?: string | null
           edited_at?: string | null
           id?: string
+          image_aspect_ratio?: number | null
           image_url?: string | null
           image_urls?: string[] | null
           is_anonymous?: boolean | null
@@ -633,6 +635,7 @@ export type Database = {
           created_at?: string | null
           edited_at?: string | null
           id?: string
+          image_aspect_ratio?: number | null
           image_url?: string | null
           image_urls?: string[] | null
           is_anonymous?: boolean | null
@@ -916,6 +919,7 @@ export type Database = {
           created_at: string | null
           edited_at: string | null
           hot_score: number | null
+          image_aspect_ratio: number | null
           image_url: string | null
           image_urls: string[] | null
           is_anonymous: boolean | null
@@ -928,6 +932,7 @@ export type Database = {
           original_author_username: string | null
           original_content: string | null
           original_created_at: string | null
+          original_image_aspect_ratio: number | null
           original_image_url: string | null
           original_image_urls: string[] | null
           original_is_anonymous: boolean | null

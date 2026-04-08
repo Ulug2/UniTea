@@ -32,6 +32,7 @@ export function PostHeaderCard({
       title={post.title}
       imageUrl={post.image_url}
       imageUrls={post.image_urls ?? null}
+      imageAspectRatio={post.image_aspect_ratio}
       category={post.category}
       location={post.location}
       postType={post.post_type}
@@ -53,6 +54,7 @@ export function PostHeaderCard({
       originalTitle={post.original_title}
       originalImageUrl={post.original_image_url}
       originalImageUrls={post.original_image_urls ?? null}
+      originalImageAspectRatio={post.original_image_aspect_ratio}
       originalUserId={post.original_user_id}
       originalAuthorUsername={post.original_author_username}
       originalAuthorAvatar={post.original_author_avatar}

@@ -43,7 +43,7 @@ const POSTS_PER_PAGE = 10;
 const ENABLE_FEED_DIAGNOSTICS = false;
 const SEARCH_BAR_HEIGHT = 64;
 const SEARCH_HIDE_SCROLL_Y = 30;
-const PULL_REVEAL_THRESHOLD = -40;
+const PULL_REVEAL_THRESHOLD = -80;
 
 const FEED_FILTER_ORDER = ["hot", "new", "top"] as const;
 type FeedFilterType = (typeof FEED_FILTER_ORDER)[number];
@@ -236,6 +236,7 @@ function FeedPageContent({
         title={item.title}
         imageUrl={item.image_url}
         imageUrls={item.image_urls ?? null}
+        imageAspectRatio={item.image_aspect_ratio}
         category={item.category}
         location={item.location}
         postType={item.post_type}
@@ -257,6 +258,7 @@ function FeedPageContent({
         originalTitle={item.original_title}
         originalImageUrl={item.original_image_url}
         originalImageUrls={item.original_image_urls ?? null}
+        originalImageAspectRatio={item.original_image_aspect_ratio}
         originalUserId={item.original_user_id}
         originalAuthorUsername={item.original_author_username}
         originalAuthorAvatar={item.original_author_avatar}

@@ -45,13 +45,13 @@ describe('useImagePipeline', () => {
       mockLaunch.mockResolvedValue({ canceled: true, assets: [] });
 
       const { result } = renderHook(() => useImagePipeline());
-      let returnedUri: string | null = 'sentinel';
+      let returned: any = 'sentinel';
 
       await act(async () => {
-        returnedUri = await result.current.pickAndPrepareImage();
+        returned = await result.current.pickAndPrepareImage();
       });
 
-      expect(returnedUri).toBeNull();
+      expect(returned).toBeNull();
       expect(mockManipulate).not.toHaveBeenCalled();
     });
   });
@@ -65,13 +65,13 @@ describe('useImagePipeline', () => {
       });
 
       const { result } = renderHook(() => useImagePipeline());
-      let returnedUri: string | null = 'sentinel';
+      let returned: any = 'sentinel';
 
       await act(async () => {
-        returnedUri = await result.current.pickAndPrepareImage();
+        returned = await result.current.pickAndPrepareImage();
       });
 
-      expect(returnedUri).toBeNull();
+      expect(returned).toBeNull();
       expect(mockManipulate).not.toHaveBeenCalled();
     });
 
@@ -79,13 +79,13 @@ describe('useImagePipeline', () => {
       mockLaunch.mockResolvedValue({ canceled: false, assets: undefined });
 
       const { result } = renderHook(() => useImagePipeline());
-      let returnedUri: string | null = 'sentinel';
+      let returned: any = 'sentinel';
 
       await act(async () => {
-        returnedUri = await result.current.pickAndPrepareImage();
+        returned = await result.current.pickAndPrepareImage();
       });
 
-      expect(returnedUri).toBeNull();
+      expect(returned).toBeNull();
     });
   });
 
@@ -94,20 +94,23 @@ describe('useImagePipeline', () => {
     beforeEach(() => {
       mockLaunch.mockResolvedValue({
         canceled: false,
-        assets: [{ uri: 'file://original.png' }],
+        assets: [{ uri: 'file://original.png', width: 1920, height: 1080 }],
       });
       mockManipulate.mockResolvedValue({ uri: 'file://manipulated.webp' });
     });
 
-    it('returns the manipulated URI', async () => {
+    it('returns the manipulated URI and aspect ratio', async () => {
       const { result } = renderHook(() => useImagePipeline());
-      let returnedUri: string | null = null;
+      let returned: any = null;
 
       await act(async () => {
-        returnedUri = await result.current.pickAndPrepareImage();
+        returned = await result.current.pickAndPrepareImage();
       });
 
-      expect(returnedUri).toBe('file://manipulated.webp');
+      expect(returned).toEqual({
+        uri: 'file://manipulated.webp',
+        aspectRatio: 1920 / 1080,
+      });
     });
 
     it('calls manipulateAsync with resize width IMAGE_MAX_WIDTH=1080', async () => {
@@ -178,11 +181,11 @@ describe('useImagePipeline', () => {
       mockLaunch.mockRejectedValue(new Error('Picker crashed'));
 
       const { result } = renderHook(() => useImagePipeline());
-      let returnedUri: string | null = 'sentinel';
+      let returned: any = 'sentinel';
 
-      await act(async () => { returnedUri = await result.current.pickAndPrepareImage(); });
+      await act(async () => { returned = await result.current.pickAndPrepareImage(); });
 
-      expect(returnedUri).toBeNull();
+      expect(returned).toBeNull();
       expect(alertSpy).toHaveBeenCalledWith('Error', 'Failed to process image. Please try again.');
       expect(mockLoggerError).toHaveBeenCalled();
     });
@@ -197,11 +200,11 @@ describe('useImagePipeline', () => {
       mockManipulate.mockRejectedValue(new Error('Manipulate failed'));
 
       const { result } = renderHook(() => useImagePipeline());
-      let returnedUri: string | null = 'sentinel';
+      let returned: any = 'sentinel';
 
-      await act(async () => { returnedUri = await result.current.pickAndPrepareImage(); });
+      await act(async () => { returned = await result.current.pickAndPrepareImage(); });
 
-      expect(returnedUri).toBeNull();
+      expect(returned).toBeNull();
       expect(alertSpy).toHaveBeenCalledWith('Error', 'Failed to process image. Please try again.');
       expect(mockLoggerError).toHaveBeenCalled();
     });

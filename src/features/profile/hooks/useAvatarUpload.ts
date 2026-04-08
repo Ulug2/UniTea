@@ -20,8 +20,9 @@ export function useAvatarUpload() {
 
   const startAvatarUpload = async (): Promise<AvatarUploadResult> => {
     try {
-      const uri = await pickAndPrepareImage();
-      if (!uri) return { status: "cancelled" };
+      const picked = await pickAndPrepareImage();
+      if (!picked) return { status: "cancelled" };
+      const { uri } = picked;
 
       // Read the current avatar path BEFORE uploading the new one so we can
       // delete it from storage after the DB update succeeds.

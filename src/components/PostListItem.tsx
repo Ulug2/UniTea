@@ -174,6 +174,7 @@ type PostListItemProps = {
   title?: string | null;
   imageUrl: string | null;
   imageUrls?: string[] | null;
+  imageAspectRatio?: number | null;
   category: string | null;
   location: string | null;
   postType?: string;
@@ -201,6 +202,7 @@ type PostListItemProps = {
   originalTitle?: string | null;
   originalImageUrl?: string | null;
   originalImageUrls?: string[] | null;
+  originalImageAspectRatio?: number | null;
   originalUserId?: string | null;
   originalAuthorUsername?: string | null;
   originalAuthorAvatar?: string | null;
@@ -311,7 +313,7 @@ function HorizontalImageGalleryItem({
         bucket="post-images"
         sourceKind={path.startsWith("http") ? "uri" : "supabasePath"}
         mode="galleryPreview"
-        backgroundColor="#F3F4F6"
+        backgroundColor="#F0F0F0"
         onLoad={onLoadImage}
       />
     </Pressable>
@@ -320,10 +322,12 @@ function HorizontalImageGalleryItem({
 
 function AdaptiveSingleImage({
   path,
+  aspectRatio,
   onPress,
   onLoadImage,
 }: {
   path: string;
+  aspectRatio?: number | null;
   onPress?: (uri: string) => void;
   onLoadImage?: () => void;
 }) {
@@ -334,8 +338,9 @@ function AdaptiveSingleImage({
       bucket="post-images"
       sourceKind={path.startsWith("http") ? "uri" : "supabasePath"}
       mode="single"
+      knownAspectRatio={aspectRatio}
       style={stylesForAdaptiveSingleImage}
-      backgroundColor="#F3F4F6"
+      backgroundColor="#F0F0F0"
       onLoad={onLoadImage}
       onPress={
         onPress && resolvedUri
@@ -368,6 +373,7 @@ const arePropsEqual = (
     prevProps.imageUrl === nextProps.imageUrl &&
     JSON.stringify(prevProps.imageUrls ?? []) ===
     JSON.stringify(nextProps.imageUrls ?? []) &&
+    prevProps.imageAspectRatio === nextProps.imageAspectRatio &&
     prevProps.category === nextProps.category &&
     prevProps.location === nextProps.location &&
     prevProps.postType === nextProps.postType &&
@@ -390,6 +396,7 @@ const arePropsEqual = (
     prevProps.originalImageUrl === nextProps.originalImageUrl &&
     JSON.stringify(prevProps.originalImageUrls ?? []) ===
     JSON.stringify(nextProps.originalImageUrls ?? []) &&
+    prevProps.originalImageAspectRatio === nextProps.originalImageAspectRatio &&
     prevProps.originalAuthorUsername === nextProps.originalAuthorUsername &&
     prevProps.originalAuthorAvatar === nextProps.originalAuthorAvatar &&
     prevProps.originalIsAnonymous === nextProps.originalIsAnonymous &&
@@ -410,6 +417,7 @@ const PostListItem = React.memo(function PostListItem({
   title,
   imageUrl,
   imageUrls,
+  imageAspectRatio,
   isAnonymous,
   isEdited,
   createdAt,
@@ -425,6 +433,7 @@ const PostListItem = React.memo(function PostListItem({
   originalTitle,
   originalImageUrl,
   originalImageUrls,
+  originalImageAspectRatio,
   originalUserId,
   originalAuthorUsername,
   originalAuthorAvatar,
@@ -795,12 +804,14 @@ const PostListItem = React.memo(function PostListItem({
               onImagePress ? (
                 <AdaptiveSingleImage
                   path={displayImageUrls[0]}
+                  aspectRatio={imageAspectRatio}
                   onPress={onImagePress}
                   onLoadImage={markImageLoaded}
                 />
               ) : (
                 <AdaptiveSingleImage
                   path={displayImageUrls[0]}
+                  aspectRatio={imageAspectRatio}
                   onLoadImage={markImageLoaded}
                 />
               )
@@ -889,11 +900,13 @@ const PostListItem = React.memo(function PostListItem({
                     onImagePress ? (
                       <AdaptiveSingleImage
                         path={displayOriginalImageUrls[0]}
+                        aspectRatio={originalImageAspectRatio}
                         onPress={onImagePress}
                       />
                     ) : (
                       <AdaptiveSingleImage
                         path={displayOriginalImageUrls[0]}
+                        aspectRatio={originalImageAspectRatio}
                       />
                     )
                   ) : (
@@ -920,12 +933,14 @@ const PostListItem = React.memo(function PostListItem({
                     onImagePress ? (
                       <AdaptiveSingleImage
                         path={displayImageUrls[0]}
+                        aspectRatio={imageAspectRatio}
                         onPress={onImagePress}
                         onLoadImage={markImageLoaded}
                       />
                     ) : (
                       <AdaptiveSingleImage
                         path={displayImageUrls[0]}
+                        aspectRatio={imageAspectRatio}
                         onLoadImage={markImageLoaded}
                       />
                     )
