@@ -28,6 +28,7 @@ import { sharePost } from "../utils/sharePost";
 import type { Theme } from "../context/ThemeContext";
 import ResponsiveImage from "./ResponsiveImage";
 import { useInitiateAnonymousChat } from "../features/chat/hooks/useInitiateAnonymousChat";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 // Shared style cache — all PostListItem instances with the same theme object reuse one StyleSheet.
 // This eliminates calling StyleSheet.create N times when the feed has N visible items.
 const _styleCache = new WeakMap<Theme, ReturnType<typeof _buildStyles>>();
@@ -35,8 +36,8 @@ function _buildStyles(theme: Theme) {
   return StyleSheet.create({
     link: { textDecorationLine: "none" },
     card: {
-      paddingHorizontal: 15,
-      paddingVertical: 12,
+      paddingHorizontal: scale(15),
+      paddingVertical: verticalScale(12),
       backgroundColor: theme.card,
       borderBottomWidth: 0.5,
       borderBottomColor: theme.border,
@@ -45,80 +46,96 @@ function _buildStyles(theme: Theme) {
     repostHeader: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      marginBottom: 8,
+      gap: moderateScale(6),
+      marginBottom: verticalScale(8),
     },
     repostText: {
-      fontSize: 13,
+      fontSize: moderateScale(13),
       color: theme.secondaryText,
       fontFamily: "Poppins_400Regular",
     },
     repostComment: {
-      fontSize: 15,
+      fontSize: moderateScale(15),
       color: theme.text,
       fontFamily: "Poppins_400Regular",
-      marginTop: 8,
-      marginBottom: 10,
+      marginTop: verticalScale(8),
+      marginBottom: verticalScale(10),
     },
     originalPostCard: {
       borderWidth: 1,
       borderColor: theme.border,
-      borderRadius: 12,
-      padding: 12,
+      borderRadius: moderateScale(12),
+      padding: moderateScale(12),
       backgroundColor: theme.background,
-      marginTop: 8,
+      marginTop: verticalScale(8),
     },
     originalAuthor: {
-      fontSize: 14,
+      fontSize: moderateScale(14),
       color: theme.text,
       fontFamily: "Poppins_500Medium",
-      marginBottom: 6,
+      marginBottom: verticalScale(6),
     },
     originalContent: {
-      fontSize: 15,
+      fontSize: moderateScale(15),
       color: theme.text,
       fontFamily: "Poppins_400Regular",
-      marginBottom: 6,
+      marginBottom: verticalScale(6),
     },
     originalTitleText: {
-      fontSize: 17,
+      fontSize: moderateScale(17),
       color: theme.text,
       fontFamily: "Poppins_700Bold",
-      marginBottom: 8,
+      marginBottom: verticalScale(8),
     },
-    originalDate: { fontSize: 12, color: theme.secondaryText, marginTop: 8 },
+    originalDate: {
+      fontSize: moderateScale(12),
+      color: theme.secondaryText,
+      marginTop: verticalScale(8),
+    },
     header: { flexDirection: "row", alignItems: "center" },
-    userInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
+    userInfo: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: moderateScale(8),
+    },
     avatar: {
-      width: 35,
-      height: 35,
-      borderRadius: 20,
+      width: scale(35),
+      height: verticalScale(35),
+      borderRadius: moderateScale(20),
       backgroundColor: theme.border,
     },
     username: {
-      fontSize: 15,
+      fontSize: moderateScale(15),
       color: theme.text,
       fontFamily: "Poppins_500Medium",
     },
-    time: { fontSize: 12, color: theme.secondaryText, marginLeft: 10 },
+    time: {
+      fontSize: moderateScale(12),
+      color: theme.secondaryText,
+      marginLeft: scale(10),
+    },
     contentText: {
-      fontSize: 16,
-      marginTop: 6,
+      fontSize: moderateScale(16),
+      marginTop: verticalScale(6),
       fontFamily: "Poppins_400Regular",
       color: theme.text,
     },
     titleText: {
-      fontSize: 19,
-      marginTop: 8,
+      fontSize: moderateScale(19),
+      marginTop: verticalScale(8),
       fontFamily: "Poppins_700Bold",
       color: theme.text,
     },
-    footer: { flexDirection: "row", marginTop: 10, alignItems: "center" },
-    footerLeft: { flexDirection: "row", gap: 16 },
+    footer: {
+      flexDirection: "row",
+      marginTop: verticalScale(10),
+      alignItems: "center",
+    },
+    footerLeft: { flexDirection: "row", gap: moderateScale(16) },
     footerRight: {
       marginLeft: "auto",
       flexDirection: "row",
-      gap: 10,
+      gap: moderateScale(10),
       alignItems: "center",
     },
     iconBox: {
@@ -126,25 +143,25 @@ function _buildStyles(theme: Theme) {
       alignItems: "center",
       borderWidth: 0.5,
       borderColor: theme.border,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 20,
+      paddingHorizontal: scale(12),
+      paddingVertical: verticalScale(8),
+      borderRadius: moderateScale(20),
       backgroundColor: theme.background,
-      marginLeft: -5,
-      minHeight: 40,
-      minWidth: 40,
+      marginLeft: scale(-5),
+      minHeight: verticalScale(40),
+      minWidth: scale(40),
     },
     iconText: {
       fontWeight: "500",
-      marginLeft: 5,
+      marginLeft: scale(5),
       fontFamily: "Poppins_400Regular",
       color: theme.text,
     },
     divider: {
       width: 1,
       backgroundColor: theme.border,
-      height: 14,
-      marginHorizontal: 7,
+      height: verticalScale(14),
+      marginHorizontal: scale(7),
       alignSelf: "center",
     },
   });
@@ -741,7 +758,7 @@ const PostListItem = React.memo(function PostListItem({
             <Text style={styles.time}>
               <AntDesign
                 name="clock-circle"
-                size={12}
+                size={moderateScale(12)}
                 color={theme.secondaryText}
               />
               <Text> {formatDistanceToNowStrict(postCreatedAt)}</Text>
@@ -1032,7 +1049,7 @@ const PostListItem = React.memo(function PostListItem({
                         ? "arrow-up-bold"
                         : "arrow-up-bold-outline"
                     }
-                    size={22}
+                    size={moderateScale(22)}
                     color={userVote === "upvote" ? theme.primary : theme.text}
                   />
                 </Pressable>
@@ -1052,7 +1069,7 @@ const PostListItem = React.memo(function PostListItem({
                         ? "arrow-down-bold"
                         : "arrow-down-bold-outline"
                     }
-                    size={22}
+                    size={moderateScale(22)}
                     color={userVote === "downvote" ? theme.primary : theme.text}
                   />
                 </Pressable>
@@ -1071,7 +1088,7 @@ const PostListItem = React.memo(function PostListItem({
               >
                 <MaterialCommunityIcons
                   name="comment-outline"
-                  size={22}
+                  size={moderateScale(22)}
                   color={theme.text}
                 />
                 <Text style={styles.iconText}>{commentCount || 0}</Text>
@@ -1084,7 +1101,7 @@ const PostListItem = React.memo(function PostListItem({
                 }}
                 style={styles.iconBox}
               >
-                <Ionicons name="repeat-outline" size={22} color={theme.text} />
+                <Ionicons name="repeat-outline" size={moderateScale(22)} color={theme.text} />
                 <Text style={styles.iconText}>{repostCount}</Text>
               </Pressable>
               <Pressable
@@ -1095,7 +1112,7 @@ const PostListItem = React.memo(function PostListItem({
                 }}
                 style={styles.iconBox}
               >
-                <Ionicons name="share-outline" size={22} color={theme.text} />
+                <Ionicons name="share-outline" size={moderateScale(22)} color={theme.text} />
               </Pressable>
               {userId !== currentUserId && (
                 <Pressable
@@ -1104,9 +1121,9 @@ const PostListItem = React.memo(function PostListItem({
                   disabled={anonChatMutation.isPending}
                 >
                   {anonChatMutation.isPending ? (
-                    <ActivityIndicator size={18} color={theme.text} />
+                    <ActivityIndicator size={moderateScale(18)} color={theme.text} />
                   ) : (
-                    <Ionicons name="paper-plane-outline" size={20} color={theme.text} />
+                    <Ionicons name="paper-plane-outline" size={moderateScale(20)} color={theme.text} />
                   )}
                 </Pressable>
               )}
@@ -1121,7 +1138,7 @@ const PostListItem = React.memo(function PostListItem({
                 >
                   <MaterialCommunityIcons
                     name={isBookmarked ? "bookmark" : "bookmark-outline"}
-                    size={22}
+                    size={moderateScale(22)}
                     color={theme.text}
                   />
                 </Pressable>

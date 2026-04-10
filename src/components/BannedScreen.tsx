@@ -4,6 +4,7 @@ import { useTheme } from "../context/ThemeContext";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { supabase } from "../lib/supabase";
 import { router } from "expo-router";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 type BannedScreenProps = {
   isPermanent: boolean;
@@ -35,7 +36,7 @@ export default function BannedScreen({
       <View style={[styles.card, { backgroundColor: theme.card }]}>
         <MaterialCommunityIcons
           name="account-cancel"
-          size={64}
+          size={moderateScale(64)}
           color={theme.error ?? "#EF4444"}
           style={styles.icon}
         />
@@ -66,40 +67,40 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: moderateScale(24),
   },
   card: {
-    maxWidth: 360,
+    maxWidth: scale(360),
     width: "100%",
-    borderRadius: 16,
-    padding: 32,
+    borderRadius: moderateScale(16),
+    padding: moderateScale(32),
     alignItems: "center",
   },
   icon: {
-    marginBottom: 24,
+    marginBottom: verticalScale(24),
   },
   title: {
-    fontSize: 22,
+    fontSize: moderateScale(22),
     fontWeight: "700",
-    marginBottom: 12,
+    marginBottom: verticalScale(12),
     textAlign: "center",
   },
   message: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     textAlign: "center",
-    marginBottom: 28,
-    lineHeight: 24,
+    marginBottom: verticalScale(28),
+    lineHeight: moderateScale(24),
   },
   button: {
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 10,
-    minWidth: 160,
+    paddingVertical: verticalScale(14),
+    paddingHorizontal: scale(32),
+    borderRadius: moderateScale(10),
+    minWidth: scale(160),
     alignItems: "center",
   },
   buttonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "600",
   },
 });

@@ -28,6 +28,7 @@ import { useUpdateProfile } from "../../../features/profile/hooks/useUpdateProfi
 import { useUpdatePassword } from "../../../features/profile/hooks/useUpdatePassword";
 import { useDeleteAccount } from "../../../features/profile/hooks/useDeleteAccount";
 import { useAvatarUpload } from "../../../features/profile/hooks/useAvatarUpload";
+import { moderateScale, scale } from "../../../utils/scaling";
 
 export default function ProfileScreen() {
   const { theme, isDark, isManualDark, toggleTheme } = useTheme();
@@ -107,9 +108,13 @@ export default function ProfileScreen() {
       headerRight: () => (
         <Pressable
           onPress={() => setSettingsVisible(true)}
-          style={{ paddingRight: 15 }}
+          style={{ paddingRight: scale(15) }}
         >
-          <Ionicons name="settings-outline" size={22} color={theme.text} />
+          <Ionicons
+            name="settings-outline"
+            size={moderateScale(22)}
+            color={theme.text}
+          />
         </Pressable>
       ),
     });
@@ -328,7 +333,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   userName: {
-    fontSize: 20,
+    fontSize: moderateScale(20),
     fontFamily: "Poppins_700Bold",
   },
 });

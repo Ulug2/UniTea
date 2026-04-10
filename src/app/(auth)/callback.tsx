@@ -9,6 +9,7 @@ import {
 import { useLocalSearchParams, router } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { logger } from "../../utils/logger";
+import { moderateScale, scale, verticalScale } from "../../utils/scaling";
 
 export default function EmailCallbackScreen() {
   const params = useLocalSearchParams<{
@@ -154,36 +155,36 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: moderateScale(24),
   },
   title: {
-    fontSize: 20,
+    fontSize: moderateScale(20),
     fontWeight: "600",
-    marginTop: 16,
+    marginTop: verticalScale(16),
     textAlign: "center",
   },
   subtitle: {
-    fontSize: 14,
-    marginTop: 8,
+    fontSize: moderateScale(14),
+    marginTop: verticalScale(8),
     textAlign: "center",
     color: "#666",
   },
   errorText: {
-    fontSize: 14,
-    marginTop: 12,
+    fontSize: moderateScale(14),
+    marginTop: verticalScale(12),
     textAlign: "center",
     color: "#E53935",
   },
   backButton: {
-    marginTop: 24,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    marginTop: verticalScale(24),
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(24),
+    borderRadius: moderateScale(8),
     backgroundColor: "#2FC9C1",
   },
   backButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "600",
   },
 });

@@ -34,6 +34,7 @@ import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
 import { saveLostFoundToStorage } from "../../../utils/feedPersistence";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -350,7 +351,9 @@ export default function LostFoundScreen() {
           }
           ListFooterComponent={
             isFetchingNextPage ? (
-              <View style={{ padding: 16, alignItems: "center" }}>
+              <View
+                style={{ padding: moderateScale(16), alignItems: "center" }}
+              >
                 <ActivityIndicator size="small" color={theme.primary} />
               </View>
             ) : null
@@ -400,7 +403,7 @@ export default function LostFoundScreen() {
               <Pressable style={menuStyles.menuItem} onPress={handleDeletePost}>
                 <MaterialCommunityIcons
                   name="delete"
-                  size={20}
+                  size={moderateScale(20)}
                   color="#EF4444"
                 />
                 <Text style={[menuStyles.menuText, { color: "#EF4444" }]}>
@@ -418,7 +421,7 @@ export default function LostFoundScreen() {
               >
                 <MaterialCommunityIcons
                   name="flag"
-                  size={20}
+                  size={moderateScale(20)}
                   color={theme.text}
                 />
                 <Text style={[menuStyles.menuText, { color: theme.text }]}>
@@ -436,7 +439,7 @@ export default function LostFoundScreen() {
               >
                 <MaterialCommunityIcons
                   name="block-helper"
-                  size={20}
+                  size={moderateScale(20)}
                   color={theme.text}
                 />
                 <Text style={[menuStyles.menuText, { color: theme.text }]}>
@@ -461,7 +464,7 @@ export default function LostFoundScreen() {
         onPress={() => router.push("/create-post?type=lost_found")}
         style={[styles.fab, { backgroundColor: theme.primary }]}
       >
-        <FontAwesome name="plus" size={28} color="#fff" />
+        <FontAwesome name="plus" size={moderateScale(28)} color="#fff" />
       </Pressable>
 
       {/* Loading overlay while a lost&found post is being submitted */}
@@ -495,44 +498,44 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   searchHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingHorizontal: scale(16),
+    paddingTop: verticalScale(8),
+    paddingBottom: verticalScale(4),
   },
   searchInput: {
-    marginBottom: 8,
+    marginBottom: verticalScale(8),
   },
   text: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_400Regular",
   },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingTop: 100,
+    paddingTop: verticalScale(100),
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_400Regular",
   },
   fab: {
     position: "absolute",
-    bottom: 20,
-    right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    bottom: verticalScale(20),
+    right: scale(20),
+    width: scale(60),
+    height: verticalScale(60),
+    borderRadius: moderateScale(30),
     justifyContent: "center",
     alignItems: "center",
     elevation: 5,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: verticalScale(4),
     },
     shadowOpacity: 0.3,
-    shadowRadius: 4.65,
+    shadowRadius: moderateScale(4.65),
   },
 });
 
@@ -544,23 +547,23 @@ const menuStyles = StyleSheet.create({
     alignItems: "center",
   },
   menuContainer: {
-    borderRadius: 12,
-    padding: 8,
-    minWidth: 200,
+    borderRadius: moderateScale(12),
+    padding: moderateScale(8),
+    minWidth: scale(200),
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: verticalScale(2) },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: moderateScale(3.84),
     elevation: 5,
   },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
-    gap: 12,
+    padding: moderateScale(12),
+    gap: moderateScale(12),
   },
   menuText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_500Medium",
   },
 });

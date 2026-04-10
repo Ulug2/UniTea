@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import type { Theme } from "../../../context/ThemeContext";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type CommentComposerProps = {
   theme: Theme;
@@ -27,7 +28,10 @@ type CommentComposerProps = {
   currentUserLabel: string;
 };
 
-const COMPOSER_PADDING_BOTTOM = 22;
+/** Extra space below the input row when the home inset is applied by the parent. */
+const COMPOSER_BOTTOM_GAP = verticalScale(8);
+/** When keyboard is open, `insetsBottom` is 0 — keep a modest lift above the IME. */
+const COMPOSER_BOTTOM_GAP_KEYBOARD = verticalScale(12);
 
 export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
   function CommentComposer(
@@ -55,7 +59,10 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
           {
             borderTopColor: theme.border,
             backgroundColor: theme.card,
-            paddingBottom: COMPOSER_PADDING_BOTTOM + insetsBottom,
+            paddingBottom:
+              insetsBottom > 0
+                ? insetsBottom + COMPOSER_BOTTOM_GAP
+                : COMPOSER_BOTTOM_GAP_KEYBOARD,
           },
         ]}
       >
@@ -68,7 +75,7 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
                 style={styles.toggleAvatar}
               />
             ) : (
-              <Ionicons name="person" size={20} color={theme.text} />
+              <Ionicons name="person" size={moderateScale(20)} color={theme.text} />
             )}
             <Text style={[styles.anonymousText, { color: theme.text }]}>
               {isAnonymousMode ? "Anonymous" : `As ${currentUserLabel}`}
@@ -93,7 +100,7 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
             <Pressable onPress={onCancelReply} style={styles.cancelReplyButton}>
               <MaterialCommunityIcons
                 name="close"
-                size={16}
+                size={moderateScale(16)}
                 color={theme.secondaryText}
               />
             </Pressable>
@@ -132,7 +139,7 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
             {isSubmitting ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <MaterialCommunityIcons name="send" size={20} color="#fff" />
+              <MaterialCommunityIcons name="send" size={moderateScale(20)} color="#fff" />
             )}
           </Pressable>
         </View>
@@ -146,16 +153,16 @@ CommentComposer.displayName = "CommentComposer";
 const styles = StyleSheet.create({
   commentInputContainer: {
     borderTopWidth: 1,
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    paddingHorizontal: scale(10),
+    paddingTop: verticalScale(10),
+    borderTopLeftRadius: moderateScale(20),
+    borderTopRightRadius: moderateScale(20),
     shadowOffset: {
       width: 0,
-      height: -3,
+      height: verticalScale(-3),
     },
     shadowOpacity: 0.1,
-    shadowRadius: 3,
+    shadowRadius: moderateScale(3),
     elevation: 10,
     width: "100%",
   },
@@ -163,70 +170,70 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 8,
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    marginBottom: verticalScale(8),
   },
   anonymousToggleLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: moderateScale(8),
   },
   anonymousToggle: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: moderateScale(4),
   },
   toggleAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: scale(30),
+    height: verticalScale(30),
+    borderRadius: moderateScale(15),
   },
   anonymousText: {
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: "Poppins_500Medium",
   },
   replyingToContainer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginBottom: 8,
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    marginBottom: verticalScale(8),
     backgroundColor: "transparent",
   },
   replyingToText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: "Poppins_400Regular",
   },
   cancelReplyButton: {
-    padding: 4,
+    padding: moderateScale(4),
   },
   cancelReplyText: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontFamily: "Poppins_500Medium",
   },
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 10,
+    gap: moderateScale(10),
   },
   commentInput: {
     flex: 1,
-    padding: 12,
-    borderRadius: 20,
-    fontSize: 15,
-    minHeight: 40,
-    maxHeight: 100,
+    padding: moderateScale(12),
+    borderRadius: moderateScale(20),
+    fontSize: moderateScale(15),
+    minHeight: verticalScale(40),
+    maxHeight: verticalScale(100),
     fontFamily: "Poppins_400Regular",
-    marginLeft: 5,
+    marginLeft: scale(5),
   },
   replyButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: scale(40),
+    height: verticalScale(40),
+    borderRadius: moderateScale(20),
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 2,
+    marginBottom: verticalScale(2),
   },
 });

@@ -5,6 +5,7 @@ import { FlippableAvatar } from "./FlippableAvatar";
 import { FoundingBadge } from "./FoundingBadge";
 import type { Theme } from "../../../context/ThemeContext";
 import type { Database } from "../../../types/database.types";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
@@ -41,7 +42,7 @@ export function ProfileHeader({
         <View style={styles.upvotesContainer}>
           <MaterialCommunityIcons
             name={totalVotes >= 0 ? "arrow-up-bold" : "arrow-down-bold"}
-            size={16}
+            size={moderateScale(16)}
             color={totalVotes >= 0 ? "#51CF66" : "#FF6B6B"}
           />
           <Text
@@ -62,32 +63,32 @@ export function ProfileHeader({
 const styles = StyleSheet.create({
   userCard: {
     flexDirection: "row",
-    padding: 16,
-    margin: 16,
-    borderRadius: 16,
+    padding: moderateScale(16),
+    margin: moderateScale(16),
+    borderRadius: moderateScale(16),
     alignItems: "center",
-    gap: 16,
+    gap: moderateScale(16),
   },
   userInfo: {
     flex: 1,
   },
   userName: {
-    fontSize: 20,
+    fontSize: moderateScale(20),
     fontFamily: "Poppins_600SemiBold",
   },
   userEmail: {
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: "Poppins_400Regular",
-    marginTop: 2,
+    marginTop: verticalScale(2),
   },
   upvotesContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    marginTop: 4,
+    gap: moderateScale(4),
+    marginTop: verticalScale(4),
   },
   upvotesText: {
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: "Poppins_500Medium",
   },
 });

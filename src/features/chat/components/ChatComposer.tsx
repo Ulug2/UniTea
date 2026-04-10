@@ -12,6 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import type { ReplyingToState } from "../types";
 import ResponsiveImage from "../../../components/ResponsiveImage";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type ChatComposerProps = {
   value: string;
@@ -109,9 +110,14 @@ export function ChatComposer({
           <TouchableOpacity
             onPress={onCancelReply}
             style={replyStyles.replyCancelButton}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            hitSlop={{
+              top: verticalScale(8),
+              bottom: verticalScale(8),
+              left: scale(8),
+              right: scale(8),
+            }}
           >
-            <Ionicons name="close" size={18} color="#6B7280" />
+            <Ionicons name="close" size={moderateScale(18)} color="#6B7280" />
           </TouchableOpacity>
         </View>
       )}
@@ -123,12 +129,12 @@ export function ChatComposer({
             source={selectedImageUri}
             sourceKind="uri"
             mode="single"
-            borderRadius={12}
+            borderRadius={moderateScale(12)}
             backgroundColor="#F3F4F6"
             style={styleSet.imagePreview}
           />
           <Pressable style={styleSet.removeImageButton} onPress={onRemoveImage}>
-            <Ionicons name="close-circle" size={24} color="#FFFFFF" />
+            <Ionicons name="close-circle" size={moderateScale(24)} color="#FFFFFF" />
           </Pressable>
         </View>
       )}
@@ -136,7 +142,7 @@ export function ChatComposer({
       {/* Input row */}
       <View style={[styleSet.inputContainer, { paddingBottom }]}>
         <Pressable style={styleSet.imagePickerButton} onPress={onPickImage}>
-          <Ionicons name="image-outline" size={24} color={textColor} />
+          <Ionicons name="image-outline" size={moderateScale(24)} color={textColor} />
         </Pressable>
         <TextInput
           placeholder={placeholder}
@@ -155,7 +161,7 @@ export function ChatComposer({
           ]}
           disabled={disabled || isSending}
         >
-          <Ionicons name="send" size={20} color="#FFFFFF" />
+          <Ionicons name="send" size={moderateScale(20)} color="#FFFFFF" />
         </Pressable>
       </View>
     </>
@@ -166,32 +172,32 @@ const replyStyles = StyleSheet.create({
   replyPreviewContainer: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
     borderTopWidth: StyleSheet.hairlineWidth,
     // borderTopColor and backgroundColor are applied inline (theme-aware)
-    gap: 8,
+    gap: moderateScale(8),
   },
   replyAccentBar: {
-    width: 3,
-    borderRadius: 2,
+    width: scale(3),
+    borderRadius: moderateScale(2),
     alignSelf: "stretch",
-    minHeight: 32,
+    minHeight: verticalScale(32),
   },
   replyTextBlock: {
     flex: 1,
   },
   replySenderName: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: "Poppins_600SemiBold",
     marginBottom: 1,
   },
   replyContentText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: "Poppins_400Regular",
     color: "#6B7280",
   },
   replyCancelButton: {
-    padding: 4,
+    padding: moderateScale(4),
   },
 });

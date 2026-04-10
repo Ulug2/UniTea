@@ -1,5 +1,6 @@
 import { View, StyleSheet } from "react-native";
 import { useTheme } from "../context/ThemeContext";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 export default function ChatListSkeleton() {
   const { theme } = useTheme();
@@ -8,8 +9,8 @@ export default function ChatListSkeleton() {
 
   const styles = StyleSheet.create({
     container: {
-      paddingHorizontal: 20,
-      paddingVertical: 16,
+      paddingHorizontal: scale(20),
+      paddingVertical: verticalScale(16),
       backgroundColor: theme.card,
       borderBottomWidth: 0.5,
       borderBottomColor: theme.border,
@@ -19,36 +20,36 @@ export default function ChatListSkeleton() {
       alignItems: "center",
     },
     avatar: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      width: scale(56),
+      height: verticalScale(56),
+      borderRadius: moderateScale(28),
       backgroundColor: theme.border,
     },
     content: {
       flex: 1,
-      marginLeft: 14,
+      marginLeft: scale(14),
     },
     titleBar: {
       flexDirection: "row",
       justifyContent: "space-between",
-      marginBottom: 8,
+      marginBottom: verticalScale(8),
     },
     title: {
-      width: 120,
-      height: 16,
-      borderRadius: 8,
+      width: scale(120),
+      height: verticalScale(16),
+      borderRadius: moderateScale(8),
       backgroundColor: theme.border,
     },
     time: {
-      width: 50,
-      height: 12,
-      borderRadius: 6,
+      width: scale(50),
+      height: verticalScale(12),
+      borderRadius: moderateScale(6),
       backgroundColor: theme.border,
     },
     message: {
       width: "80%",
-      height: 14,
-      borderRadius: 7,
+      height: verticalScale(14),
+      borderRadius: moderateScale(7),
       backgroundColor: theme.border,
     },
   });
@@ -72,4 +73,3 @@ export default function ChatListSkeleton() {
     </>
   );
 }
-

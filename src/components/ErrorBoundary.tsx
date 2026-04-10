@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import { logger } from "../utils/logger";
 import { useTheme } from "../context/ThemeContext";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 interface Props {
   children: ReactNode;
@@ -92,27 +93,27 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: moderateScale(24),
   },
   title: {
-    fontSize: 20,
+    fontSize: moderateScale(20),
     fontWeight: "600",
-    marginBottom: 8,
+    marginBottom: verticalScale(8),
     textAlign: "center",
   },
   message: {
-    fontSize: 14,
-    marginBottom: 24,
+    fontSize: moderateScale(14),
+    marginBottom: verticalScale(24),
     textAlign: "center",
   },
   button: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(24),
+    borderRadius: moderateScale(8),
   },
   buttonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "600",
   },
 });

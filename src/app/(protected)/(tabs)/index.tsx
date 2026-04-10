@@ -36,14 +36,15 @@ import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { saveFeedToStorage } from "../../../utils/feedPersistence";
 import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type PostSummary = PostsSummaryViewRow;
 
 const POSTS_PER_PAGE = 10;
 const ENABLE_FEED_DIAGNOSTICS = false;
-const SEARCH_BAR_HEIGHT = 64;
-const SEARCH_HIDE_SCROLL_Y = 30;
-const PULL_REVEAL_THRESHOLD = -80;
+const SEARCH_BAR_HEIGHT = verticalScale(64);
+const SEARCH_HIDE_SCROLL_Y = verticalScale(30);
+const PULL_REVEAL_THRESHOLD = -verticalScale(80);
 
 const FEED_FILTER_ORDER = ["hot", "new", "top"] as const;
 type FeedFilterType = (typeof FEED_FILTER_ORDER)[number];
@@ -347,10 +348,10 @@ function FeedPageContent({
               autoCorrect={false}
               style={styles.searchInput}
               rightElement={
-                <Pressable onPress={handleSearchSubmit} hitSlop={8}>
+                <Pressable onPress={handleSearchSubmit} hitSlop={moderateScale(8)}>
                   <Feather
                     name="arrow-right-circle"
-                    size={24}
+                    size={moderateScale(24)}
                     color={theme.primary}
                   />
                 </Pressable>
@@ -388,7 +389,9 @@ function FeedPageContent({
           }
           ListFooterComponent={
             isFetchingNextPage ? (
-              <View style={{ padding: 16, alignItems: "center" }}>
+              <View
+                style={{ padding: moderateScale(16), alignItems: "center" }}
+              >
                 <ActivityIndicator size="small" color={theme.primary} />
               </View>
             ) : null
@@ -568,7 +571,7 @@ export default function FeedScreen() {
           onPress={() => router.push("/create-post")}
           style={[styles.fab, { backgroundColor: theme.primary }]}
         >
-          <FontAwesome name="plus" size={28} color="#fff" />
+          <FontAwesome name="plus" size={moderateScale(28)} color="#fff" />
         </Pressable>
       </View>
       <Modal
@@ -612,15 +615,15 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
   },
   skeletonContent: {
-    paddingBottom: 100,
+    paddingBottom: verticalScale(100),
   },
   searchHeaderContainer: {
     overflow: "hidden",
   },
   searchHeaderInner: {
     height: SEARCH_BAR_HEIGHT,
-    paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingHorizontal: scale(16),
+    paddingTop: verticalScale(8),
     justifyContent: "center",
   },
   searchInput: {
@@ -630,28 +633,28 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingTop: 100,
+    paddingTop: verticalScale(100),
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_400Regular",
   },
   fab: {
     position: "absolute",
-    bottom: 20,
-    right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    bottom: verticalScale(20),
+    right: scale(20),
+    width: scale(60),
+    height: verticalScale(60),
+    borderRadius: moderateScale(30),
     justifyContent: "center",
     alignItems: "center",
     elevation: 5,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: verticalScale(4),
     },
     shadowOpacity: 0.3,
-    shadowRadius: 4.65,
+    shadowRadius: moderateScale(4.65),
   },
 });

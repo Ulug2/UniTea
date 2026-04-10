@@ -1,3 +1,4 @@
+import "react-native-reanimated";
 import { Slot, useRouter } from "expo-router";
 import {
   useFonts,
@@ -10,6 +11,7 @@ import {
   Animated,
   View,
   Text,
+  TextInput,
   Pressable,
   StyleSheet,
   Platform,
@@ -40,6 +42,13 @@ import {
   seedUserPostsCacheFromStorage,
   seedUserTotalVotesCacheFromStorage,
 } from "../utils/feedPersistence";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
+
+// RN host components accept runtime defaultProps; typings omit it.
+(Text as any).defaultProps ??= {};
+(Text as any).defaultProps.maxFontSizeMultiplier = 1.1;
+(TextInput as any).defaultProps ??= {};
+(TextInput as any).defaultProps.maxFontSizeMultiplier = 1.1;
 
 // Initialize Sentry before anything else
 initSentry();
@@ -334,23 +343,23 @@ const recoveryStyles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: moderateScale(24),
     backgroundColor: "#f5f5f5",
   },
   title: {
-    fontSize: 18,
-    marginBottom: 24,
+    fontSize: moderateScale(18),
+    marginBottom: verticalScale(24),
     textAlign: "center",
   },
   button: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(24),
+    borderRadius: moderateScale(8),
     backgroundColor: "#2FC9C1",
   },
   buttonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "600",
   },
 });
@@ -364,8 +373,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#2FC9C1",
   },
   splashReplicaIcon: {
-    width: 200,
-    height: 200,
+    width: scale(200),
+    height: verticalScale(200),
   },
 });
 

@@ -1,5 +1,6 @@
 import { View, StyleSheet } from "react-native";
 import { useTheme } from "../context/ThemeContext";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 export default function LostFoundListSkeleton() {
   const { theme } = useTheme();
@@ -9,10 +10,10 @@ export default function LostFoundListSkeleton() {
   const styles = StyleSheet.create({
     card: {
       backgroundColor: theme.card,
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 16,
-      gap: 12,
+      borderRadius: moderateScale(16),
+      padding: moderateScale(16),
+      marginBottom: verticalScale(16),
+      gap: moderateScale(12),
       borderWidth: 1,
       borderColor: theme.border,
     },
@@ -20,50 +21,50 @@ export default function LostFoundListSkeleton() {
     header: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: moderateScale(12),
     },
     avatar: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: scale(40),
+      height: verticalScale(40),
+      borderRadius: moderateScale(20),
       backgroundColor: theme.border,
     },
     userInfo: {
       flex: 1,
-      gap: 6,
+      gap: moderateScale(6),
     },
     username: {
-      width: 100,
-      height: 14,
-      borderRadius: 7,
+      width: scale(100),
+      height: verticalScale(14),
+      borderRadius: moderateScale(7),
       backgroundColor: theme.border,
     },
     timestamp: {
-      width: 70,
-      height: 12,
-      borderRadius: 6,
+      width: scale(70),
+      height: verticalScale(12),
+      borderRadius: moderateScale(6),
       backgroundColor: theme.border,
     },
     // Badge
     badge: {
-      width: 60,
-      height: 24,
-      borderRadius: 12,
+      width: scale(60),
+      height: verticalScale(24),
+      borderRadius: moderateScale(12),
       backgroundColor: theme.border,
     },
     // Image placeholder
     imagePlaceholder: {
       width: "100%",
-      height: 180,
-      borderRadius: 12,
+      height: verticalScale(180),
+      borderRadius: moderateScale(12),
       backgroundColor: theme.border,
     },
     // Content
     contentLine: {
-      height: 14,
-      borderRadius: 7,
+      height: verticalScale(14),
+      borderRadius: moderateScale(7),
       backgroundColor: theme.border,
-      marginBottom: 6,
+      marginBottom: verticalScale(6),
     },
     contentLineLong: {
       width: "100%",
@@ -74,46 +75,46 @@ export default function LostFoundListSkeleton() {
     // Tags
     tagsRow: {
       flexDirection: "row",
-      gap: 8,
-      marginTop: 4,
+      gap: moderateScale(8),
+      marginTop: verticalScale(4),
     },
     tag: {
-      width: 60,
-      height: 24,
-      borderRadius: 12,
+      width: scale(60),
+      height: verticalScale(24),
+      borderRadius: moderateScale(12),
       backgroundColor: theme.border,
     },
     tagWide: {
-      width: 80,
+      width: scale(80),
     },
     // Footer
     footer: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      marginTop: 8,
+      marginTop: verticalScale(8),
     },
     locationRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
+      gap: moderateScale(6),
     },
     icon: {
-      width: 16,
-      height: 16,
-      borderRadius: 8,
+      width: scale(16),
+      height: verticalScale(16),
+      borderRadius: moderateScale(8),
       backgroundColor: theme.border,
     },
     location: {
-      width: 100,
-      height: 12,
-      borderRadius: 6,
+      width: scale(100),
+      height: verticalScale(12),
+      borderRadius: moderateScale(6),
       backgroundColor: theme.border,
     },
     chatButton: {
-      width: 80,
-      height: 36,
-      borderRadius: 18,
+      width: scale(80),
+      height: verticalScale(36),
+      borderRadius: moderateScale(18),
       backgroundColor: theme.border,
     },
   });
@@ -163,4 +164,3 @@ export default function LostFoundListSkeleton() {
     </>
   );
 }
-

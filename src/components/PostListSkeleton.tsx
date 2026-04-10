@@ -1,5 +1,6 @@
 import { View, StyleSheet } from "react-native";
 import { useTheme } from "../context/ThemeContext";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 export default function PostListSkeleton() {
   const { theme } = useTheme();
@@ -8,46 +9,46 @@ export default function PostListSkeleton() {
 
   const styles = StyleSheet.create({
     postCard: {
-      padding: 16,
+      padding: moderateScale(16),
       backgroundColor: theme.card,
       borderBottomWidth: 1,
       borderBottomColor: theme.border,
-      gap: 12,
+      gap: moderateScale(12),
     },
     // Header
     header: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: moderateScale(12),
     },
     avatar: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: scale(40),
+      height: verticalScale(40),
+      borderRadius: moderateScale(20),
       backgroundColor: theme.border,
     },
     userInfo: {
       flex: 1,
-      gap: 6,
+      gap: moderateScale(6),
     },
     username: {
-      width: 120,
-      height: 16,
-      borderRadius: 8,
+      width: scale(120),
+      height: verticalScale(16),
+      borderRadius: moderateScale(8),
       backgroundColor: theme.border,
     },
     timestamp: {
-      width: 80,
-      height: 12,
-      borderRadius: 6,
+      width: scale(80),
+      height: verticalScale(12),
+      borderRadius: moderateScale(6),
       backgroundColor: theme.border,
     },
     // Content
     contentLine: {
-      height: 14,
-      borderRadius: 7,
+      height: verticalScale(14),
+      borderRadius: moderateScale(7),
       backgroundColor: theme.border,
-      marginBottom: 6,
+      marginBottom: verticalScale(6),
     },
     contentLineLong: {
       width: "100%",
@@ -61,33 +62,33 @@ export default function PostListSkeleton() {
     // Image placeholder (optional)
     imagePlaceholder: {
       width: "100%",
-      height: 200,
-      borderRadius: 12,
+      height: verticalScale(200),
+      borderRadius: moderateScale(12),
       backgroundColor: theme.border,
-      marginTop: 8,
+      marginTop: verticalScale(8),
     },
     // Footer
     footer: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 20,
-      marginTop: 8,
+      gap: moderateScale(20),
+      marginTop: verticalScale(8),
     },
     actionButton: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
+      gap: moderateScale(6),
     },
     icon: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
+      width: scale(20),
+      height: verticalScale(20),
+      borderRadius: moderateScale(10),
       backgroundColor: theme.border,
     },
     count: {
-      width: 30,
-      height: 14,
-      borderRadius: 7,
+      width: scale(30),
+      height: verticalScale(14),
+      borderRadius: moderateScale(7),
       backgroundColor: theme.border,
     },
   });
@@ -139,4 +140,3 @@ export default function PostListSkeleton() {
     </>
   );
 }
-

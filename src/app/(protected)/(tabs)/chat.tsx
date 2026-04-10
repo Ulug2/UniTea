@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
+import { moderateScale, verticalScale } from "../../../utils/scaling";
 import { useTheme } from "../../../context/ThemeContext";
 import ChatListItem from "../../../components/ChatListItem";
 import ChatListSkeleton from "../../../components/ChatListSkeleton";
@@ -553,10 +554,10 @@ export default function ChatScreen() {
     emptyContainer: {
       justifyContent: "center",
       alignItems: "center",
-      paddingTop: 100,
+      paddingTop: verticalScale(100),
     },
     emptyText: {
-      fontSize: 16,
+      fontSize: moderateScale(16),
       fontFamily: "Poppins_400Regular",
     },
   });

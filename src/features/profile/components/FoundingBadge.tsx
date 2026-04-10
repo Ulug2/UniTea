@@ -1,6 +1,7 @@
 import React from "react";
 import { Text, StyleSheet } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
+import { moderateScale, verticalScale } from "../../../utils/scaling";
 
 const FOUNDING_FATHER_GOLD_DARK = "#FFD700";
 const FOUNDING_FATHER_GOLD_LIGHT = "#B8860B";
@@ -14,9 +15,9 @@ export function FoundingBadge() {
 
 const styles = StyleSheet.create({
   label: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontFamily: "Poppins_500Medium",
-    lineHeight: 18,
-    marginTop: 6,
+    lineHeight: moderateScale(18),
+    marginTop: verticalScale(6),
   },
 });

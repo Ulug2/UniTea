@@ -20,6 +20,7 @@ import {
   type BanDuration,
 } from "../features/profile/hooks/useBanUser";
 import { useBlockUser } from "../features/posts/hooks/useBlockUser";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 const screenWidth = Dimensions.get("window").width;
 const FOUNDING_FATHER_GOLD_DARK = "#FFD700";
@@ -158,7 +159,7 @@ export default function UserProfileModal({
               <View style={styles.votesContainer}>
                 <MaterialCommunityIcons
                   name={totalVotes >= 0 ? "arrow-up-bold" : "arrow-down-bold"}
-                  size={24}
+                  size={moderateScale(24)}
                   color={totalVotes >= 0 ? "#51CF66" : "#FF6B6B"}
                 />
                 <Text
@@ -197,7 +198,7 @@ export default function UserProfileModal({
                 >
                   <MaterialCommunityIcons
                     name="account-cancel"
-                    size={20}
+                    size={moderateScale(20)}
                     color={theme.error ?? "#EF4444"}
                   />
                   <Text
@@ -223,7 +224,7 @@ export default function UserProfileModal({
                 >
                   <MaterialCommunityIcons
                     name="block-helper"
-                    size={20}
+                    size={moderateScale(20)}
                     color={theme.secondaryText ?? "#9CA3AF"}
                   />
                   <Text
@@ -332,107 +333,107 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: screenWidth * 0.85,
-    maxWidth: 400,
-    borderRadius: 16,
-    padding: 24,
+    maxWidth: scale(400),
+    borderRadius: moderateScale(16),
+    padding: moderateScale(24),
     alignItems: "center",
   },
   loadingContainer: {
-    padding: 40,
+    padding: moderateScale(40),
   },
   avatarContainer: {
-    marginBottom: 24,
+    marginBottom: verticalScale(24),
   },
   avatarText: {
-    fontSize: 48,
+    fontSize: moderateScale(48),
     fontWeight: "600",
     textAlign: "center",
-    lineHeight: 120,
+    lineHeight: moderateScale(120),
   },
   username: {
-    fontSize: 20,
+    fontSize: moderateScale(20),
     fontWeight: "600",
-    marginBottom: 16,
+    marginBottom: verticalScale(16),
   },
   votesContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 24,
-    gap: 8,
+    marginBottom: verticalScale(24),
+    gap: moderateScale(8),
   },
   votesText: {
-    fontSize: 18,
+    fontSize: moderateScale(18),
     fontWeight: "600",
   },
   foundingFatherText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "700",
-    marginBottom: 20,
+    marginBottom: verticalScale(20),
   },
   closeButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 8,
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(32),
+    borderRadius: moderateScale(8),
     width: "100%",
     alignItems: "center",
   },
   closeButtonText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "600",
   },
   banButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    borderWidth: 1.5,
+    gap: moderateScale(8),
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(20),
+    borderRadius: moderateScale(8),
+    borderWidth: moderateScale(1.5),
     width: "100%",
-    marginBottom: 16,
+    marginBottom: verticalScale(16),
   },
   banButtonText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "600",
   },
   blockButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    borderWidth: 1.5,
+    gap: moderateScale(8),
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(20),
+    borderRadius: moderateScale(8),
+    borderWidth: moderateScale(1.5),
     width: "100%",
-    marginBottom: 16,
+    marginBottom: verticalScale(16),
   },
   blockButtonText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "600",
   },
   banModalContent: {
     width: screenWidth * 0.8,
-    maxWidth: 320,
-    borderRadius: 16,
-    padding: 20,
+    maxWidth: scale(320),
+    borderRadius: moderateScale(16),
+    padding: moderateScale(20),
     alignItems: "stretch",
   },
   banModalTitle: {
-    fontSize: 18,
+    fontSize: moderateScale(18),
     fontWeight: "700",
-    marginBottom: 16,
+    marginBottom: verticalScale(16),
     textAlign: "center",
   },
   banOption: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    marginBottom: 8,
+    paddingVertical: verticalScale(14),
+    paddingHorizontal: scale(16),
+    borderRadius: moderateScale(10),
+    marginBottom: verticalScale(8),
   },
   banOptionText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "500",
   },
 });

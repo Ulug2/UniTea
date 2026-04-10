@@ -56,6 +56,7 @@ import { CommentsTreeList } from "../../../features/comments/components/Comments
 import { CommentComposer } from "../../../features/comments/components/CommentComposer";
 import { PostHeaderCard } from "../../../features/posts/components/PostHeaderCard";
 import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 export default function PostDetailed() {
   const { id, fromDeeplink } = useLocalSearchParams<{
@@ -207,9 +208,9 @@ export default function PostDetailed() {
           headerStyle: { backgroundColor: theme.primary },
           headerLeft: () => (
             <AntDesign
-              style={{ marginLeft: 5 }}
+              style={{ marginLeft: scale(5) }}
               name="close"
-              size={24}
+              size={moderateScale(24)}
               color="white"
               onPress={() => router.back()}
             />
@@ -218,9 +219,9 @@ export default function PostDetailed() {
             <Pressable onPress={() => setShowMenu(true)}>
               <Entypo
                 name="dots-three-horizontal"
-                size={24}
+                size={moderateScale(24)}
                 color="white"
-                style={{ marginLeft: 5 }}
+                style={{ marginLeft: scale(5) }}
               />
             </Pressable>
           ),
@@ -232,21 +233,25 @@ export default function PostDetailed() {
         >
           <View
             style={{
-              height: 56,
+              height: verticalScale(56),
               flexDirection: "row",
               alignItems: "center",
-              paddingHorizontal: 16,
+              paddingHorizontal: scale(16),
               justifyContent: "space-between",
             }}
           >
             <AntDesign
               name="close"
-              size={24}
+              size={moderateScale(24)}
               color="white"
               onPress={closeScreen}
             />
             <Pressable onPress={() => setShowMenu(true)}>
-              <Entypo name="dots-three-horizontal" size={24} color="white" />
+              <Entypo
+                name="dots-three-horizontal"
+                size={moderateScale(24)}
+                color="white"
+              />
             </Pressable>
           </View>
         </View>
@@ -700,7 +705,7 @@ export default function PostDetailed() {
               <Pressable style={styles.menuItem} onPress={handleDeletePost}>
                 <MaterialCommunityIcons
                   name="delete"
-                  size={20}
+                  size={moderateScale(20)}
                   color="#EF4444"
                 />
                 <Text style={[styles.menuText, { color: "#EF4444" }]}>
@@ -732,7 +737,7 @@ export default function PostDetailed() {
               >
                 <MaterialCommunityIcons
                   name="eye-off-outline"
-                  size={20}
+                  size={moderateScale(20)}
                   color={theme.text}
                 />
                 <Text style={[styles.menuText, { color: theme.text }]}>
@@ -750,7 +755,7 @@ export default function PostDetailed() {
               >
                 <MaterialCommunityIcons
                   name="flag"
-                  size={20}
+                  size={moderateScale(20)}
                   color={theme.text}
                 />
                 <Text style={[styles.menuText, { color: theme.text }]}>
@@ -768,7 +773,7 @@ export default function PostDetailed() {
               >
                 <MaterialCommunityIcons
                   name="block-helper"
-                  size={20}
+                  size={moderateScale(20)}
                   color={theme.text}
                 />
                 <Text style={[styles.menuText, { color: theme.text }]}>
@@ -863,72 +868,72 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   errorText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_400Regular",
     textAlign: "center",
-    marginBottom: 16,
+    marginBottom: verticalScale(16),
   },
   backToFeedButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(12),
+    borderRadius: moderateScale(8),
   },
   backToFeedButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_500Medium",
   },
   inputContainer: {
     borderTopWidth: 1,
-    padding: 10,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    padding: moderateScale(10),
+    borderTopLeftRadius: moderateScale(20),
+    borderTopRightRadius: moderateScale(20),
     shadowOffset: {
       width: 0,
-      height: -3,
+      height: verticalScale(-3),
     },
     shadowOpacity: 0.1,
-    shadowRadius: 3,
+    shadowRadius: moderateScale(3),
     elevation: 10,
     width: "100%",
   },
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 10,
+    gap: moderateScale(10),
   },
   input: {
     flex: 1,
-    padding: 12,
-    borderRadius: 20,
+    padding: moderateScale(12),
+    borderRadius: moderateScale(20),
     fontFamily: "Poppins_400Regular",
-    fontSize: 15,
-    minHeight: 40,
-    maxHeight: 100,
+    fontSize: moderateScale(15),
+    minHeight: verticalScale(40),
+    maxHeight: verticalScale(100),
   },
   replyButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: scale(40),
+    height: verticalScale(40),
+    borderRadius: moderateScale(20),
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 2, // Align visually with input
+    marginBottom: verticalScale(2), // Align visually with input
   },
   replyIndicator: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginBottom: 8,
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    marginBottom: verticalScale(8),
     backgroundColor: "transparent",
   },
   replyIndicatorText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: "Poppins_400Regular",
   },
   cancelReplyButton: {
-    padding: 4,
+    padding: moderateScale(4),
   },
   modalOverlay: {
     flex: 1,
@@ -937,48 +942,48 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   menuContainer: {
-    borderRadius: 12,
-    padding: 8,
-    minWidth: 200,
+    borderRadius: moderateScale(12),
+    padding: moderateScale(8),
+    minWidth: scale(200),
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: verticalScale(2),
     },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: moderateScale(3.84),
     elevation: 5,
   },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
-    gap: 12,
+    padding: moderateScale(12),
+    gap: moderateScale(12),
   },
   menuText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_500Medium",
   },
   anonymousToggle: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 8,
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    marginBottom: verticalScale(8),
   },
   anonymousToggleLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: moderateScale(8),
   },
   toggleAvatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: scale(20),
+    height: verticalScale(20),
+    borderRadius: moderateScale(10),
   },
   anonymousText: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontFamily: "Poppins_500Medium",
   },
 });

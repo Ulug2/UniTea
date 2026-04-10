@@ -1,6 +1,7 @@
 import { View, StyleSheet } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 export default function ChatDetailSkeleton() {
     const { theme } = useTheme();
@@ -16,54 +17,54 @@ export default function ChatDetailSkeleton() {
         header: {
             flexDirection: "row",
             alignItems: "center",
-            paddingHorizontal: 16,
-            paddingVertical: 12,
+            paddingHorizontal: scale(16),
+            paddingVertical: verticalScale(12),
             backgroundColor: theme.card,
             borderBottomWidth: 1,
             borderBottomColor: theme.border,
-            gap: 12,
+            gap: moderateScale(12),
         },
         backButton: {
-            width: 24,
-            height: 24,
-            borderRadius: 12,
+            width: scale(24),
+            height: verticalScale(24),
+            borderRadius: moderateScale(12),
             backgroundColor: theme.border,
         },
         avatar: {
-            width: 40,
-            height: 40,
-            borderRadius: 20,
+            width: scale(40),
+            height: verticalScale(40),
+            borderRadius: moderateScale(20),
             backgroundColor: theme.border,
         },
         userName: {
             flex: 1,
-            height: 18,
-            borderRadius: 9,
+            height: verticalScale(18),
+            borderRadius: moderateScale(9),
             backgroundColor: theme.border,
-            width: 120,
+            width: scale(120),
         },
         menuButton: {
-            width: 24,
-            height: 24,
-            borderRadius: 12,
+            width: scale(24),
+            height: verticalScale(24),
+            borderRadius: moderateScale(12),
             backgroundColor: theme.border,
         },
         // Messages skeleton
         messagesContainer: {
             flex: 1,
-            paddingHorizontal: 16,
-            paddingVertical: 12,
-            gap: 12,
+            paddingHorizontal: scale(16),
+            paddingVertical: verticalScale(12),
+            gap: moderateScale(12),
         },
         messageRow: {
-            marginBottom: 12,
+            marginBottom: verticalScale(12),
         },
         messageBubble: {
-            borderRadius: 20,
-            paddingHorizontal: 16,
-            paddingVertical: 12,
+            borderRadius: moderateScale(20),
+            paddingHorizontal: scale(16),
+            paddingVertical: verticalScale(12),
             maxWidth: "80%",
-            minWidth: 120,
+            minWidth: scale(120),
         },
         otherUserBubble: {
             alignSelf: "flex-start",
@@ -74,10 +75,10 @@ export default function ChatDetailSkeleton() {
             backgroundColor: theme.border,
         },
         messageLine: {
-            height: 14,
-            borderRadius: 7,
+            height: verticalScale(14),
+            borderRadius: moderateScale(7),
             backgroundColor: theme.card,
-            marginBottom: 4,
+            marginBottom: verticalScale(4),
             width: "100%",
         },
         messageLineShort: {
@@ -90,11 +91,11 @@ export default function ChatDetailSkeleton() {
             width: "85%",
         },
         messageTime: {
-            height: 10,
-            width: 50,
-            borderRadius: 5,
+            height: verticalScale(10),
+            width: scale(50),
+            borderRadius: moderateScale(5),
             backgroundColor: theme.border,
-            marginTop: 4,
+            marginTop: verticalScale(4),
         },
         currentUserTime: {
             alignSelf: "flex-end",
@@ -106,24 +107,24 @@ export default function ChatDetailSkeleton() {
         inputContainer: {
             flexDirection: "row",
             alignItems: "center",
-            paddingHorizontal: 16,
-            paddingTop: 12,
-            paddingBottom: Math.max(insets.bottom, 12),
+            paddingHorizontal: scale(16),
+            paddingTop: verticalScale(12),
+            paddingBottom: Math.max(insets.bottom, verticalScale(12)),
             backgroundColor: theme.card,
             borderTopWidth: 1,
             borderTopColor: theme.border,
-            gap: 12,
+            gap: moderateScale(12),
         },
         input: {
             flex: 1,
-            height: 44,
+            height: verticalScale(44),
             backgroundColor: theme.border,
-            borderRadius: 24,
+            borderRadius: moderateScale(24),
         },
         sendButton: {
-            width: 44,
-            height: 44,
-            borderRadius: 22,
+            width: scale(44),
+            height: verticalScale(44),
+            borderRadius: moderateScale(22),
             backgroundColor: theme.border,
         },
     });
@@ -192,4 +193,3 @@ export default function ChatDetailSkeleton() {
         </View>
     );
 }
-

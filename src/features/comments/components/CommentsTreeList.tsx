@@ -10,6 +10,7 @@ import {
 import CommentListItem from "../../../components/CommentListItem";
 import type { CommentNode } from "../utils/tree";
 import { useTheme } from "../../../context/ThemeContext";
+import { verticalScale } from "../../../utils/scaling";
 
 type CommentsTreeListProps = {
   data: CommentNode[];
@@ -95,10 +96,10 @@ export const CommentsTreeList = React.memo(CommentsTreeListBase);
 
 const styles = StyleSheet.create({
   content: {
-    paddingBottom: 20,
+    paddingBottom: verticalScale(20),
   },
   emptyLoading: {
-    paddingTop: 32,
+    paddingTop: verticalScale(32),
     alignItems: "center",
   },
 });

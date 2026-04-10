@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { logger } from "../utils/logger";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 function isLikelyTransientGatewayError(error: unknown): boolean {
   const msg = String(
@@ -278,7 +279,7 @@ const Poll: React.FC<PollProps> = ({ postId }) => {
             <View style={styles.optionLeft}>
               <MaterialCommunityIcons
                 name={isSelected ? "checkbox-marked" : "checkbox-blank-outline"}
-                size={20}
+                size={moderateScale(20)}
                 color={isSelected ? theme.primary : theme.secondaryText}
               />
               <Text
@@ -327,52 +328,52 @@ const Poll: React.FC<PollProps> = ({ postId }) => {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 8,
-    padding: 10,
-    borderRadius: 12,
+    marginTop: verticalScale(8),
+    padding: moderateScale(10),
+    borderRadius: moderateScale(12),
     borderWidth: 1,
   },
   optionRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 999,
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(10),
+    borderRadius: moderateScale(999),
     borderWidth: 1,
-    marginBottom: 6,
+    marginBottom: verticalScale(6),
   },
   optionLeft: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
-    gap: 8,
+    gap: moderateScale(8),
   },
   optionText: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontFamily: "Poppins_400Regular",
     flexShrink: 1,
   },
   optionRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: moderateScale(8),
   },
   percentageText: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontFamily: "Poppins_500Medium",
   },
   votesText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: "Poppins_400Regular",
   },
   footerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 4,
+    marginTop: verticalScale(4),
   },
   footerText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: "Poppins_400Regular",
   },
 });

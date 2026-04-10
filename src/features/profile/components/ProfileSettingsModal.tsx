@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import type { Theme } from "../../../context/ThemeContext";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type ProfileSettingsModalProps = {
   visible: boolean;
@@ -65,7 +66,7 @@ export function ProfileSettingsModal({
               style={[styles.settingRow, { borderBottomColor: theme.border }]}
             >
               <View style={styles.settingLeft}>
-                <Ionicons name="moon-outline" size={22} color={theme.text} />
+                <Ionicons name="moon-outline" size={moderateScale(22)} color={theme.text} />
                 <View>
                   <Text style={[styles.settingLabel, { color: theme.text }]}>
                     Dark Mode
@@ -98,7 +99,7 @@ export function ProfileSettingsModal({
               <View style={styles.settingLeft}>
                 <Ionicons
                   name="notifications-outline"
-                  size={22}
+                  size={moderateScale(22)}
                   color={theme.text}
                 />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
@@ -107,7 +108,7 @@ export function ProfileSettingsModal({
               </View>
               <Ionicons
                 name="chevron-forward"
-                size={20}
+                size={moderateScale(20)}
                 color={theme.secondaryText}
               />
             </Pressable>
@@ -118,14 +119,14 @@ export function ProfileSettingsModal({
               onPress={onPressContactSupport}
             >
               <View style={styles.settingLeft}>
-                <Ionicons name="mail-outline" size={22} color={theme.text} />
+                <Ionicons name="mail-outline" size={moderateScale(22)} color={theme.text} />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
                   Contact Support
                 </Text>
               </View>
               <Ionicons
                 name="chevron-forward"
-                size={20}
+                size={moderateScale(20)}
                 color={theme.secondaryText}
               />
             </Pressable>
@@ -138,7 +139,7 @@ export function ProfileSettingsModal({
               <View style={styles.settingLeft}>
                 <Ionicons
                   name="document-text-outline"
-                  size={22}
+                  size={moderateScale(22)}
                   color={theme.text}
                 />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
@@ -147,7 +148,7 @@ export function ProfileSettingsModal({
               </View>
               <Ionicons
                 name="chevron-forward"
-                size={20}
+                size={moderateScale(20)}
                 color={theme.secondaryText}
               />
             </Pressable>
@@ -160,7 +161,7 @@ export function ProfileSettingsModal({
               <View style={styles.settingLeft}>
                 <Ionicons
                   name="shield-checkmark-outline"
-                  size={22}
+                  size={moderateScale(22)}
                   color={theme.text}
                 />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
@@ -169,7 +170,7 @@ export function ProfileSettingsModal({
               </View>
               <Ionicons
                 name="chevron-forward"
-                size={20}
+                size={moderateScale(20)}
                 color={theme.secondaryText}
               />
             </Pressable>
@@ -182,7 +183,7 @@ export function ProfileSettingsModal({
               <View style={styles.settingLeft}>
                 <MaterialCommunityIcons
                   name="account-cog"
-                  size={22}
+                  size={moderateScale(22)}
                   color={theme.text}
                 />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
@@ -191,7 +192,7 @@ export function ProfileSettingsModal({
               </View>
               <Ionicons
                 name="chevron-forward"
-                size={20}
+                size={moderateScale(20)}
                 color={theme.secondaryText}
               />
             </Pressable>
@@ -213,55 +214,55 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
-    paddingHorizontal: 16,
-    paddingBottom: 24,
+    borderTopLeftRadius: moderateScale(24),
+    borderTopRightRadius: moderateScale(24),
+    paddingTop: verticalScale(12),
+    paddingHorizontal: scale(16),
+    paddingBottom: verticalScale(24),
     maxHeight: "80%",
   },
   modalHandle: {
     alignSelf: "center",
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    marginBottom: 8,
+    width: scale(40),
+    height: verticalScale(4),
+    borderRadius: moderateScale(2),
+    marginBottom: verticalScale(8),
   },
   modalTitle: {
-    fontSize: 19,
+    fontSize: moderateScale(19),
     fontFamily: "Poppins_600SemiBold",
-    marginBottom: 12,
+    marginBottom: verticalScale(12),
   },
   settingsScroll: {
-    marginTop: 8,
+    marginTop: verticalScale(8),
   },
   settingRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 14,
+    paddingVertical: verticalScale(14),
     borderBottomWidth: 1,
   },
   settingLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: moderateScale(12),
   },
   settingLabel: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_500Medium",
   },
   settingSubLabel: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: "Poppins_400Regular",
     marginTop: 1,
   },
   disclaimer: {
-    fontSize: 11,
+    fontSize: moderateScale(11),
     fontFamily: "Poppins_400Regular",
     textAlign: "center",
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-    lineHeight: 16,
+    paddingVertical: verticalScale(5),
+    paddingHorizontal: scale(8),
+    lineHeight: moderateScale(16),
   },
 });
