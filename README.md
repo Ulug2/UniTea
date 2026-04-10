@@ -1,226 +1,168 @@
 # UniTee
 
-**Your anonymous university community**
+**Your anonymous university community.**
 
-UniTee is a React Native mobile application built with Expo that serves as an anonymous community platform for university students. Share thoughts, find lost items, connect with peers, and engage in discussions—all while maintaining privacy when you choose.
+UniTee is a mobile community for university students: post to the feed, help others find lost items, chat 1:1, and join discussions — with **optional anonymity** that still preserves safety and accountability.
 
-## 🚀 Features
+- **Status**: Live on iOS (App Store). Android (Google Play) coming soon.
+- **Deep links**: `unitea.app` (supports `/post/*` and `/lostfoundpost/*`).
+- **Bundle IDs**: iOS `com.unitea.app`, Android `com.unitea.app`.
 
-### Core Features
-- **📱 Feed** - Browse and create posts from the university community
-- **🔍 Lost & Found** - Post and find lost items on campus
-- **💬 Chat** - Direct messaging with other users
-- **💭 Comments** - Nested comment threads with replies
-- **👍 Voting** - Upvote and downvote posts and comments
-- **🔖 Bookmarks** - Save posts for later
-- **👤 Profiles** - User profiles with verification badges
-- **🎭 Anonymous Posting** - Option to post anonymously while maintaining account functionality
-- **🌓 Theme Support** - Light and dark theme support
+## Key product capabilities
 
-### Technical Features
-- **Real-time Data** - Powered by Supabase for real-time updates
-- **Smart Caching** - TanStack Query for efficient data fetching and caching
-- **Type Safety** - Full TypeScript support
-- **Modern UI** - Clean, intuitive interface with smooth animations
+- **Feed + Lost & Found**: Two post types backed by a unified schema and denormalized summary view for fast listing.
+- **Comments**: Nested threads, including a per-post stable anonymous identifier (`post_specific_anon_id`).
+- **Voting + ranking**: Vote aggregation and time-decayed “hot” scoring via DB views/triggers.
+- **Chat**: Direct messaging, including “anonymous chats” tied to post context.
+- **Safety + moderation**:
+  - In-app reporting, blocking, notifications
+  - AI-assisted moderation on post/comment creation (Edge Functions)
+  - Separate admin moderation dashboard with a full audit log
+- **Reliability**: Sentry integration, Expo push notifications, client-side caching (TanStack Query).
 
-## 🛠️ Tech Stack
+## Tech stack
 
-- **Framework**: React Native with Expo (~54.0.30)
-- **Navigation**: Expo Router (file-based routing)
-- **Backend**: Supabase (PostgreSQL, Authentication, Real-time)
-- **State Management**: TanStack Query (React Query) v5
-- **Language**: TypeScript
-- **UI Components**: Custom components with Expo Vector Icons
-- **Fonts**: Poppins (Google Fonts)
+### Mobile app
 
-## 📋 Prerequisites
+- **Expo + React Native**: Expo SDK 54, React 19, React Native 0.81
+- **Routing**: Expo Router
+- **Server state**: TanStack Query v5
+- **Error tracking**: Sentry (`@sentry/react-native`)
+- **Push**: `expo-notifications` + Expo Push Tokens
 
-Before you begin, ensure you have the following installed:
+### Backend
 
-- [Node.js](https://nodejs.org/) (v18 or later)
-- [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
-- [Expo CLI](https://docs.expo.dev/get-started/installation/)
-- [Supabase Account](https://supabase.com/) (for backend services)
+- **Supabase**: Postgres + Auth + Realtime + Storage
+- **Edge Functions (Deno)**:
+  - AI moderation on create (`create-post`, `create-comment`)
+  - Push delivery (`send-push-notification`)
+  - Admin actions (`ban-user`, `unban-user`, `delete-post`, `delete-comment`)
+  - Utility (`check-email-exists`)
 
-## 🔧 Installation
+### Admin tooling
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd unitee
-   ```
+- **Moderation dashboard**: Next.js app in `moderation/` (admin-only, Supabase Auth)
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+## Repo layout
 
-3. **Set up environment variables**
-   
-   Create a `.env` file in the root directory:
-   ```env
-   EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
-   EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-   ```
-
-4. **Set up Supabase Database**
-   
-   Run the SQL scripts in your Supabase SQL Editor to create tables:
-   - `profiles` - User profile information
-   - `posts` - Feed and lost & found posts
-   - `comments` - Post comments with nested replies
-   - `votes` - Upvotes and downvotes
-   - `chats` - Chat conversations
-   - `chat_messages` - Individual chat messages
-   - `notifications` - User notifications
-   - `bookmarks` - Saved posts
-   - `blocks` - User blocking functionality
-   - `reports` - Content reporting
-
-5. **Start the development server**
-   ```bash
-   npm start
-   ```
-
-   Then press:
-   - `i` for iOS simulator
-   - `a` for Android emulator
-   - `w` for web browser
-   - Scan QR code with Expo Go app on your device
-
-## 📱 Project Structure
-
-```
-unitee/
-├── src/
-│   ├── app/                    # Expo Router pages
-│   │   ├── (auth)/            # Authentication screens
-│   │   ├── (protected)/       # Protected routes
-│   │   │   ├── (tabs)/        # Tab navigation screens
-│   │   │   │   ├── index.tsx  # Feed screen
-│   │   │   │   ├── chat.tsx   # Chat list
-│   │   │   │   ├── lostfound.tsx # Lost & Found
-│   │   │   │   └── profile.tsx   # User profile
-│   │   │   ├── post/[id].tsx  # Post detail view
-│   │   │   └── create-post.tsx # Create new post
-│   │   └── _layout.tsx        # Root layout
-│   ├── components/            # Reusable components
-│   │   ├── PostListItem.tsx
-│   │   ├── CommentListItem.tsx
-│   │   ├── ChatListItem.tsx
-│   │   └── ...
-│   ├── context/               # React Context providers
-│   │   ├── AuthContext.tsx
-│   │   └── ThemeContext.tsx
-│   ├── hooks/                 # Custom React hooks
-│   │   └── usePostScore.ts
-│   ├── lib/                   # Utilities and configurations
-│   │   └── supabase.ts        # Supabase client setup
-│   ├── types/                 # TypeScript type definitions
-│   │   ├── types.ts
-│   │   └── database.types.ts   # Generated Supabase types
-│   └── utils/                 # Helper functions
-│       └── votes.ts           # Vote calculation utilities
-├── assets/                    # Images, fonts, and static data
-└── app.json                   # Expo configuration
+```text
+.
+├── src/                     # Mobile app source (Expo Router, features, hooks)
+├── assets/                  # App assets
+├── app.json                 # Expo config (bundle IDs, deep links, plugins)
+├── eas.json                 # EAS build/submit profiles
+├── supabase/
+│   ├── migrations/          # Postgres migrations (views, triggers, schema changes)
+│   ├── functions/           # Edge Functions (moderation, push, admin actions)
+│   └── config.toml
+├── moderation/              # Next.js admin dashboard for moderation + audit log
+├── sql/                     # One-off SQL scripts (RLS, admin logs, constraints, etc.)
+└── docs/                    # Release + operational runbooks
 ```
 
-## 🗄️ Database Schema
+## Local development
 
-### Key Tables
+### Prerequisites
 
-- **profiles** - Extends `auth.users` with additional user data (username, avatar, bio, verification status)
-- **posts** - Main content table (feed posts and lost & found items)
-- **comments** - Nested comment structure with `parent_comment_id` for replies
-- **votes** - Stores upvotes/downvotes for posts and comments
-- **chats** - Chat conversations between users
-- **chat_messages** - Individual messages within chats
-- **notifications** - User notifications (comment replies, upvotes, messages)
-- **bookmarks** - User saved posts
-- **blocks** - User blocking relationships
-- **reports** - Content moderation reports
+- [Node.js](https://nodejs.org/) (v18+)
+- [Expo](https://docs.expo.dev/get-started/installation/)
+- [Supabase](https://supabase.com/) project (or local Supabase via CLI)
 
-## 🔐 Authentication
+### Mobile app setup (root)
 
-UniTee uses Supabase Authentication with email/password. Users must sign up with a university email address (e.g., `@nu.edu.kz`).
-
-## 🎨 Theming
-
-The app supports light and dark themes through a custom `ThemeContext`. Theme preferences are managed globally and can be toggled in the app settings.
-
-## 📊 Data Fetching
-
-UniTee uses **TanStack Query** for all server state management:
-
-- Automatic caching and background refetching
-- Optimistic updates
-- Request deduplication
-- Error handling and retry logic
-- Loading states
-
-## 🚦 Development
-
-### Running on Different Platforms
+Install dependencies:
 
 ```bash
-# iOS
-npm run ios
-
-# Android
-npm run android
-
-# Web
-npm run web
+npm install
 ```
 
-### Debugging
+Create `.env` in repo root (do not commit it):
 
-- **React Query DevTools**: Press `Shift + M` in Expo and select "Open @dev-plugins/react-query" to view query cache and state
-- **Supabase Dashboard**: Monitor database queries and real-time subscriptions
+```env
+EXPO_PUBLIC_SUPABASE_URL=...
+EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 
-## 📝 Scripts
+# Optional
+EXPO_PUBLIC_SENTRY_DSN=...
+# Used in release/share flows in docs
+EXPO_PUBLIC_APP_URL=https://unitea.app
+```
 
-- `npm start` - Start Expo development server
-- `npm run ios` - Start on iOS simulator
-- `npm run android` - Start on Android emulator
-- `npm run web` - Start web version
+Run the app:
 
-## 🔒 Security
+```bash
+npm start
+```
 
-- Row Level Security (RLS) policies protect user data
-- Authentication required for all protected routes
-- Anonymous posting option maintains user privacy
-- Content moderation through reporting system
+Platform-specific (native) runs:
 
-## 🐛 Troubleshooting
+```bash
+npm run ios
+npm run android
+```
 
-### Common Issues
+### Tests
 
-1. **Supabase Connection Errors**
-   - Verify your `.env` file has correct credentials
-   - Check Supabase project is active
-   - Ensure RLS policies allow your user to read/write
+```bash
+npm test
+```
 
-2. **TypeScript Errors**
-   - Run `npm install` to ensure all dependencies are installed
-   - Regenerate Supabase types if database schema changed
+### Supabase (DB + Edge Functions)
 
-3. **Build Errors**
-   - Clear Expo cache: `npx expo start -c`
-   - Delete `node_modules` and reinstall
+- **Migrations**: live under `supabase/migrations/` (views, triggers, ranking, chat schema, image metadata, etc.)
+- **Edge Functions secrets** (set via Supabase secrets for deployed functions):
+  - `SUPABASE_URL`
+  - `SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_ROLE_KEY` (required for admin functions and utilities)
+  - `OPENAI_API_KEY` (required for AI moderation functions)
 
-## 🤝 Contributing
+Generate updated DB types (requires Supabase CLI access to the project):
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+```bash
+npm run types
+```
 
-## 📄 License
+## Moderation dashboard (admin web)
 
-This project is private and proprietary.
+The admin dashboard lives in `moderation/` and requires an account with `profiles.is_admin = true`.
 
-## 👥 Authors
+Setup:
 
-Built for the university community.
+- Copy `.env.local.example` → `.env.local`
+- Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- Run DB scripts (from repo root) in the Supabase SQL Editor:
+  - `sql/rls_moderation_admin.sql`
+  - `sql/create_admin_action_logs.sql`
+- Deploy Edge Functions used by moderation:
 
----
+```bash
+supabase functions deploy ban-user
+supabase functions deploy unban-user
+supabase functions deploy delete-post
+```
 
-**Note**: This app is designed specifically for university students and requires a valid university email address for authentication.
+Run locally:
+
+```bash
+cd moderation
+npm install
+npm run dev
+```
+
+## Releases
+
+This repo uses **EAS** (`eas.json`) with `development`, `preview`, and `production` profiles.
+
+- **iOS (TestFlight/App Store)**: see `docs/EAS_BUILD_TESTFLIGHT.md`
+- **Android (Google Play)**: see `docs/google-play-android.md`
+  - Includes `.well-known/assetlinks.json` hosting requirements for `unitea.app`
+
+## Security and privacy
+
+- **RLS-first**: Supabase Row Level Security is used to protect user data.
+- **Optional anonymity**: anonymity is a product feature, not “no account”; server-side rules still apply.
+- **Least privilege on device**: the Android config blocks sensitive permissions like microphone recording.
+
+## License
+
+MIT. See `LICENSE`.
