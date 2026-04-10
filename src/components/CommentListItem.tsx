@@ -28,6 +28,7 @@ import { useBlockUser } from "../features/posts/hooks/useBlockUser";
 import { useBlocks, hasBlockForScope } from "../hooks/useBlocks";
 import ReportModal from "./ReportModal";
 import UserProfileModal from "./UserProfileModal";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Comment = Database["public"]["Tables"]["comments"]["Row"];
@@ -313,9 +314,9 @@ const CommentListItem = ({
             >
               <MaterialCommunityIcons
                 name="play"
-                size={12}
+                size={moderateScale(12)}
                 color={theme.secondaryText}
-                style={{ marginLeft: 4 }}
+                style={{ marginLeft: scale(4) }}
               />
               <Text
                 style={[styles.replyToUsername, { color: theme.secondaryText }]}
@@ -334,7 +335,7 @@ const CommentListItem = ({
         <Pressable style={styles.threeDots} onPress={() => setShowMenu(true)}>
           <Entypo
             name="dots-three-horizontal"
-            size={15}
+            size={moderateScale(15)}
             color={theme.secondaryText}
           />
         </Pressable>
@@ -356,7 +357,7 @@ const CommentListItem = ({
               <Pressable style={styles.menuItem} onPress={handleDeleteComment}>
                 <MaterialCommunityIcons
                   name="delete"
-                  size={20}
+                  size={moderateScale(20)}
                   color="#EF4444"
                 />
                 <Text style={[styles.menuText, { color: "#EF4444" }]}>
@@ -374,7 +375,7 @@ const CommentListItem = ({
               >
                 <MaterialCommunityIcons
                   name="flag"
-                  size={20}
+                  size={moderateScale(20)}
                   color={theme.text}
                 />
                 <Text style={[styles.menuText, { color: theme.text }]}>
@@ -392,7 +393,7 @@ const CommentListItem = ({
               >
                 <MaterialCommunityIcons
                   name="block-helper"
-                  size={20}
+                  size={moderateScale(20)}
                   color={theme.text}
                 />
                 <Text style={[styles.menuText, { color: theme.text }]}>
@@ -424,7 +425,7 @@ const CommentListItem = ({
           onPress={() => handleReplyPress(comment.id)}
           style={styles.actionButton}
         >
-          <Octicons name="reply" size={16} color={theme.secondaryText} />
+          <Octicons name="reply" size={moderateScale(16)} color={theme.secondaryText} />
           <Text style={[styles.actionText, { color: theme.secondaryText }]}>
             Reply
           </Text>
@@ -437,7 +438,7 @@ const CommentListItem = ({
                   ? "arrow-up-bold"
                   : "arrow-up-bold-outline"
               }
-              size={20}
+              size={moderateScale(20)}
               color={
                 userVote === "upvote" ? theme.primary : theme.secondaryText
               }
@@ -453,7 +454,7 @@ const CommentListItem = ({
                   ? "arrow-down-bold"
                   : "arrow-down-bold-outline"
               }
-              size={20}
+              size={moderateScale(20)}
               color={
                 userVote === "downvote" ? theme.primary : theme.secondaryText
               }
@@ -556,9 +557,9 @@ const CommentListItem = ({
 const styles = StyleSheet.create({
   container: {
     marginTop: 0,
-    paddingLeft: 15,
-    paddingVertical: 6,
-    gap: 5,
+    paddingLeft: scale(15),
+    paddingVertical: verticalScale(6),
+    gap: moderateScale(5),
   },
   userRow: {
     flexDirection: "row",
@@ -568,64 +569,64 @@ const styles = StyleSheet.create({
   userInfoRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: moderateScale(4),
     flex: 1,
   },
   userInfo: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
+    gap: moderateScale(3),
   },
   avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 15,
-    marginRight: 4,
+    width: scale(28),
+    height: verticalScale(28),
+    borderRadius: moderateScale(15),
+    marginRight: scale(4),
   },
   username: {
     fontWeight: "600",
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontFamily: "Poppins_500Medium",
   },
   replyToUsername: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: "Poppins_400Regular",
-    marginLeft: 2,
+    marginLeft: scale(2),
   },
   dot: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
   },
   threeDots: {
-    marginRight: 15,
+    marginRight: scale(15),
   },
   time: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontFamily: "Poppins_400Regular",
   },
   content: {
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: "Poppins_400Regular",
-    lineHeight: 22,
-    marginRight: 15,
+    lineHeight: moderateScale(22),
+    marginRight: scale(15),
   },
   actions: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginRight: 15, // Consistent right margin for all comments
+    marginRight: scale(15), // Consistent right margin for all comments
   },
   actionButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: moderateScale(5),
   },
   actionText: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontFamily: "Poppins_400Regular",
   },
   votes: {
     flexDirection: "row",
-    gap: 5,
+    gap: moderateScale(5),
     alignItems: "center",
   },
   voteCount: {
@@ -633,27 +634,27 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_500Medium",
   },
   showRepliesButton: {
-    borderRadius: 6,
-    paddingVertical: 6,
+    borderRadius: moderateScale(6),
+    paddingVertical: verticalScale(6),
     alignItems: "center",
-    marginTop: 5,
+    marginTop: verticalScale(5),
   },
   hideRepliesButton: {
-    borderRadius: 6,
-    paddingVertical: 6,
+    borderRadius: moderateScale(6),
+    paddingVertical: verticalScale(6),
     alignItems: "center",
-    marginTop: 5,
-    marginBottom: 5,
+    marginTop: verticalScale(5),
+    marginBottom: verticalScale(5),
   },
   loadMoreButton: {
-    borderRadius: 6,
-    paddingVertical: 6,
+    borderRadius: moderateScale(6),
+    paddingVertical: verticalScale(6),
     alignItems: "center",
-    marginTop: 5,
+    marginTop: verticalScale(5),
   },
   showRepliesText: {
-    fontSize: 12,
-    letterSpacing: 0.5,
+    fontSize: moderateScale(12),
+    letterSpacing: moderateScale(0.5),
     fontWeight: "500",
     fontFamily: "Poppins_500Medium",
   },
@@ -664,26 +665,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   menuContainer: {
-    borderRadius: 12,
-    padding: 8,
-    minWidth: 200,
+    borderRadius: moderateScale(12),
+    padding: moderateScale(8),
+    minWidth: scale(200),
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: verticalScale(2),
     },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: moderateScale(3.84),
     elevation: 5,
   },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
-    gap: 12,
+    padding: moderateScale(12),
+    gap: moderateScale(12),
   },
   menuText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_500Medium",
   },
 });

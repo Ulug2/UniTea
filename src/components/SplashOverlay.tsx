@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, Platform, StyleSheet, Image } from "react-native";
+import { moderateScale } from "../utils/scaling";
 
 /**
  * Keep JS overlay size aligned with Android native splash layers to avoid
  * visible size jumps while app content is fading in.
  */
-const LOGO_SIZE = 268;
+const LOGO_SIZE = moderateScale(268);
 const ANDROID_SPLASH = require("../../assets/splash-logo-android.png");
 
 interface SplashOverlayProps {

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { AntDesign } from "@expo/vector-icons";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const MIN_SCALE = 1;
@@ -43,11 +44,11 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     position: "absolute",
-    top: 52,
-    right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    top: verticalScale(52),
+    right: scale(20),
+    width: scale(40),
+    height: verticalScale(40),
+    borderRadius: moderateScale(20),
     backgroundColor: "rgba(0, 0, 0, 0.45)",
     alignItems: "center",
     justifyContent: "center",
@@ -287,8 +288,12 @@ export function FullscreenImageModal({
           )}
         </Pressable>
 
-        <Pressable onPress={onClose} style={styles.closeButton} hitSlop={10}>
-          <AntDesign name="close" size={20} color="#fff" />
+        <Pressable
+          onPress={onClose}
+          style={styles.closeButton}
+          hitSlop={moderateScale(10)}
+        >
+          <AntDesign name="close" size={moderateScale(20)} color="#fff" />
         </Pressable>
       </View>
     </Modal>

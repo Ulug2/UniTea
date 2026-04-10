@@ -4,6 +4,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import React from "react";
 import { View, Pressable, StyleSheet, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { useFilterContext } from "../../../context/FilterContext";
 import { useGlobalUnreadCount } from "../../../hooks/useGlobalUnreadCount";
 
@@ -22,7 +23,7 @@ function FilterButtons() {
       >
         <FontAwesome
           name="fire"
-          size={18}
+          size={moderateScale(18)}
           color={selectedFilter === "hot" ? theme.primary : theme.secondaryText}
         />
       </Pressable>
@@ -35,7 +36,7 @@ function FilterButtons() {
       >
         <FontAwesome
           name="clock-o"
-          size={18}
+          size={moderateScale(18)}
           color={selectedFilter === "new" ? theme.primary : theme.secondaryText}
         />
       </Pressable>
@@ -48,7 +49,7 @@ function FilterButtons() {
       >
         <FontAwesome
           name="trophy"
-          size={18}
+          size={moderateScale(18)}
           color={selectedFilter === "top" ? theme.primary : theme.secondaryText}
         />
       </Pressable>
@@ -61,7 +62,7 @@ export default function TabLayout() {
   const globalUnreadCount = useGlobalUnreadCount();
   const insets = useSafeAreaInsets();
   const isAndroid = Platform.OS === "android";
-  const baseTabHeight = 56;
+  const baseTabHeight = verticalScale(56);
 
   return (
     <>
@@ -76,15 +77,17 @@ export default function TabLayout() {
             backgroundColor: theme.card,
             borderTopColor: theme.border,
             borderTopWidth: 1,
-            height: isAndroid ? baseTabHeight + insets.bottom : 80,
-            paddingTop: isAndroid ? 6 : 0,
+            height: isAndroid
+              ? baseTabHeight + insets.bottom
+              : verticalScale(80),
+            paddingTop: isAndroid ? verticalScale(6) : 0,
             paddingBottom: isAndroid ? insets.bottom : 0,
           },
           headerStyle: {
             backgroundColor: theme.background,
             borderBottomWidth: 1,
             borderBottomColor: theme.border,
-            height: 100,
+            height: verticalScale(100),
           },
         }}
       >
@@ -95,13 +98,17 @@ export default function TabLayout() {
             headerTitle: "UniTee",
             headerTitleAlign: "left",
             headerTitleStyle: {
-              fontSize: 28,
+              fontSize: moderateScale(28),
               fontWeight: "bold",
               color: theme.text,
             },
             headerRight: () => <FilterButtons />,
             tabBarIcon: ({ color }) => (
-              <Ionicons name="home-outline" size={24} color={color} />
+              <Ionicons
+                name="home-outline"
+                size={moderateScale(24)}
+                color={color}
+              />
             ),
           }}
         />
@@ -111,23 +118,23 @@ export default function TabLayout() {
             title: "Chat",
             headerTitleAlign: "center",
             headerTitleStyle: {
-              fontSize: 24,
+              fontSize: moderateScale(24),
               fontWeight: "bold",
               color: theme.text,
             },
             tabBarIcon: ({ color }) => (
               <Ionicons
                 name="chatbubble-ellipses-outline"
-                size={24}
+                size={moderateScale(24)}
                 color={color}
               />
             ),
             tabBarBadge: globalUnreadCount > 0 ? globalUnreadCount : undefined,
             tabBarBadgeStyle: {
               backgroundColor: "#EF4444",
-              fontSize: 11,
-              minWidth: 18,
-              height: 18,
+              fontSize: moderateScale(11),
+              minWidth: scale(18),
+              height: verticalScale(18),
             },
           }}
         />
@@ -138,12 +145,16 @@ export default function TabLayout() {
             tabBarHideOnKeyboard: true,
             headerTitleAlign: "center",
             headerTitleStyle: {
-              fontSize: 24,
+              fontSize: moderateScale(24),
               fontWeight: "bold",
               color: theme.text,
             },
             tabBarIcon: ({ color }) => (
-              <Ionicons name="bag-outline" size={24} color={color} />
+              <Ionicons
+                name="bag-outline"
+                size={moderateScale(24)}
+                color={color}
+              />
             ),
           }}
         />
@@ -153,12 +164,16 @@ export default function TabLayout() {
             title: "Profile",
             headerTitleAlign: "center",
             headerTitleStyle: {
-              fontSize: 24,
+              fontSize: moderateScale(24),
               fontWeight: "bold",
               color: theme.text,
             },
             tabBarIcon: ({ color }) => (
-              <Ionicons name="person-outline" size={24} color={color} />
+              <Ionicons
+                name="person-outline"
+                size={moderateScale(24)}
+                color={color}
+              />
             ),
           }}
         />
@@ -171,13 +186,13 @@ const styles = StyleSheet.create({
   filterButtons: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginRight: 16,
+    gap: moderateScale(8),
+    marginRight: scale(16),
   },
   filterBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: scale(36),
+    height: verticalScale(36),
+    borderRadius: moderateScale(18),
     alignItems: "center",
     justifyContent: "center",
   },

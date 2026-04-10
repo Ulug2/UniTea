@@ -7,6 +7,7 @@ import SupabaseImage from "./SupabaseImage";
 import { DEFAULT_AVATAR } from "../constants/images";
 import { formatDistanceToNowStrict } from "date-fns";
 import { useAuth } from "../context/AuthContext";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -118,7 +119,7 @@ const ChatListItem = React.memo(function ChatListItem({
   const styles = StyleSheet.create({
     container: {
       flexDirection: "row",
-      padding: 16,
+      padding: moderateScale(16),
       borderBottomWidth: 1,
       borderBottomColor: theme.border,
       backgroundColor: theme.card,
@@ -126,50 +127,50 @@ const ChatListItem = React.memo(function ChatListItem({
     },
     avatarContainer: {
       position: "relative",
-      marginRight: 12,
+      marginRight: scale(12),
     },
     avatar: {
-      width: 50,
-      height: 50,
-      borderRadius: 25,
+      width: scale(50),
+      height: verticalScale(50),
+      borderRadius: moderateScale(25),
       backgroundColor: theme.primary,
       justifyContent: "center",
       alignItems: "center",
     },
     avatarImage: {
-      width: 50,
-      height: 50,
-      borderRadius: 25,
+      width: scale(50),
+      height: verticalScale(50),
+      borderRadius: moderateScale(25),
       backgroundColor: theme.border,
     },
     avatarText: {
-      fontSize: 20,
+      fontSize: moderateScale(20),
       color: "#FFFFFF",
       fontFamily: "Poppins_700Bold",
     },
     unreadBadge: {
       position: "absolute",
-      top: -2,
-      right: -2,
+      top: verticalScale(-2),
+      right: scale(-2),
       backgroundColor: "#EF4444",
-      borderRadius: 10,
-      minWidth: 20,
-      height: 20,
+      borderRadius: moderateScale(10),
+      minWidth: scale(20),
+      height: verticalScale(20),
       justifyContent: "center",
       alignItems: "center",
-      paddingHorizontal: 4,
-      borderWidth: 2,
+      paddingHorizontal: scale(4),
+      borderWidth: moderateScale(2),
       borderColor: theme.card,
     },
     unreadText: {
       color: "#FFFFFF",
-      fontSize: 10,
+      fontSize: moderateScale(10),
       fontFamily: "Poppins_700Bold",
     },
     contentContainer: {
       flex: 1,
       justifyContent: "center",
-      gap: 4,
+      gap: moderateScale(4),
     },
     header: {
       flexDirection: "row",
@@ -177,17 +178,17 @@ const ChatListItem = React.memo(function ChatListItem({
       alignItems: "center",
     },
     username: {
-      fontSize: 16,
+      fontSize: moderateScale(16),
       fontFamily: "Poppins_600SemiBold",
       color: theme.text,
     },
     time: {
-      fontSize: 12,
+      fontSize: moderateScale(12),
       fontFamily: "Poppins_400Regular",
       color: theme.secondaryText,
     },
     lastMessage: {
-      fontSize: 14,
+      fontSize: moderateScale(14),
       fontFamily: "Poppins_400Regular",
       color: unreadCount > 0 ? theme.text : theme.secondaryText,
       fontWeight: unreadCount > 0 ? "600" : "400",
@@ -242,9 +243,9 @@ const ChatListItem = React.memo(function ChatListItem({
               // Profile still loading — show a neutral pill instead of "Unknown User"
               <View
                 style={{
-                  height: 14,
-                  width: 100,
-                  borderRadius: 7,
+                  height: verticalScale(14),
+                  width: scale(100),
+                  borderRadius: moderateScale(7),
                   backgroundColor: theme.border,
                   opacity: 0.6,
                 }}

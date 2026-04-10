@@ -17,6 +17,7 @@ import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 type NotificationSettings = {
   user_id: string;
@@ -281,7 +282,7 @@ export default function NotificationSettingsModal({
             <View style={styles.optionLeft}>
               <Ionicons
                 name="chatbubble-outline"
-                size={22}
+                size={moderateScale(22)}
                 color={theme.text}
               />
               <Text style={[styles.optionLabel, { color: theme.text }]}>
@@ -300,7 +301,7 @@ export default function NotificationSettingsModal({
             <View style={styles.optionLeft}>
               <MaterialCommunityIcons
                 name="arrow-up-bold-outline"
-                size={22}
+                size={moderateScale(22)}
                 color={theme.text}
               />
               <Text style={[styles.optionLabel, { color: theme.text }]}>
@@ -327,49 +328,49 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
-    paddingBottom: 32,
-    paddingHorizontal: 20,
+    borderTopLeftRadius: moderateScale(24),
+    borderTopRightRadius: moderateScale(24),
+    paddingTop: verticalScale(12),
+    paddingBottom: verticalScale(32),
+    paddingHorizontal: scale(20),
   },
   modalHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
+    width: scale(40),
+    height: verticalScale(4),
+    borderRadius: moderateScale(2),
     alignSelf: "center",
-    marginBottom: 16,
+    marginBottom: verticalScale(16),
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: moderateScale(20),
     fontFamily: "Poppins_700Bold",
     textAlign: "center",
-    marginBottom: 16,
+    marginBottom: verticalScale(16),
   },
   loadingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
+    gap: moderateScale(8),
+    marginBottom: verticalScale(16),
   },
   loadingText: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontFamily: "Poppins_400Regular",
   },
   optionRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 16,
+    paddingVertical: verticalScale(16),
     borderBottomWidth: 1,
   },
   optionLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: moderateScale(12),
   },
   optionLabel: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_500Medium",
   },
 });

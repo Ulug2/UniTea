@@ -48,15 +48,17 @@ import {
   resolvePostImageUri,
 } from "../../components/FullscreenImageModal";
 import { mapWithConcurrency } from "../../utils/asyncConcurrency";
+import { moderateScale, scale, verticalScale } from "../../utils/scaling";
 
 const MAX_POLL_OPTIONS = 11;
 const MAX_POST_IMAGES = 5;
 const MAX_CONCURRENT_UPLOADS = 3;
 /** Fixed tile size avoids layout jump from async Image.getSize (matches feed gallery tiles). */
-const CREATE_POST_GALLERY_TILE_WIDTH = 280;
-const CREATE_POST_GALLERY_TILE_HEIGHT = 355;
+const CREATE_POST_GALLERY_TILE_WIDTH = scale(280);
+const CREATE_POST_GALLERY_TILE_HEIGHT = verticalScale(355);
 /** Header row + strip; fixed height keeps layout stable when images appear. */
-const IMAGE_GALLERY_SECTION_HEIGHT = CREATE_POST_GALLERY_TILE_HEIGHT + 44;
+const IMAGE_GALLERY_SECTION_HEIGHT =
+  CREATE_POST_GALLERY_TILE_HEIGHT + verticalScale(44);
 
 type SelectedImagePreviewProps = {
   uri: string;
@@ -78,12 +80,12 @@ const SelectedImagePreview = React.memo(function SelectedImagePreview({
         {
           width: CREATE_POST_GALLERY_TILE_WIDTH,
           height: CREATE_POST_GALLERY_TILE_HEIGHT,
-          marginRight: isLast ? 0 : 4,
+          marginRight: isLast ? 0 : scale(4),
         },
       ]}
     >
       <Pressable onPress={onRemove} style={styles.galleryRemoveButton}>
-        <AntDesign name="close" size={16} color="white" />
+        <AntDesign name="close" size={moderateScale(16)} color="white" />
       </Pressable>
       <Pressable onPress={onOpen} style={styles.galleryImagePressable}>
         <ExpoImage
@@ -208,6 +210,22 @@ export default function CreatePostScreen() {
     );
     const hide = Keyboard.addListener("keyboardDidHide", () =>
       setAndroidKeyboardInset(0)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
+  /** iOS: avoid stacking home-indicator inset on the footer while KAV is lifting the shell. */
+  const [iosKeyboardOpen, setIosKeyboardOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    const show = Keyboard.addListener("keyboardWillShow", () =>
+      setIosKeyboardOpen(true)
+    );
+    const hide = Keyboard.addListener("keyboardWillHide", () =>
+      setIosKeyboardOpen(false)
     );
     return () => {
       show.remove();
@@ -370,12 +388,12 @@ export default function CreatePostScreen() {
           styles.header,
           {
             borderBottomColor: theme.border,
-            paddingTop: Math.max(insets.top, 10) + 10,
+            paddingTop: Math.max(insets.top, verticalScale(10)) + verticalScale(10),
           },
         ]}
       >
         <Pressable onPress={goBack} style={styles.closeButton}>
-          <AntDesign name="close" size={28} color={theme.text} />
+          <AntDesign name="close" size={moderateScale(28)} color={theme.text} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: theme.text }]}>
           {isRepost
@@ -418,9 +436,11 @@ export default function CreatePostScreen() {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
             nestedScrollEnabled
-            automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+            // KAV already applies keyboard padding on iOS; this prop would double-count.
+            automaticallyAdjustKeyboardInsets={false}
             contentContainerStyle={{
-              paddingBottom: Math.min(insets.bottom, 18) + 24,
+              // Space above footer only; safe area is handled on the footer row.
+              paddingBottom: verticalScale(16),
             }}
           >
             {/* LOST & FOUND CATEGORY SELECTOR */}
@@ -444,7 +464,7 @@ export default function CreatePostScreen() {
                   >
                     <Ionicons
                       name="alert-circle"
-                      size={20}
+                      size={moderateScale(20)}
                       color={category === "lost" ? "#FFF" : theme.text}
                     />
                     <Text
@@ -470,7 +490,7 @@ export default function CreatePostScreen() {
                   >
                     <Ionicons
                       name="checkmark-circle"
-                      size={20}
+                      size={moderateScale(20)}
                       color={category === "found" ? "#FFF" : theme.text}
                     />
                     <Text
@@ -504,7 +524,7 @@ export default function CreatePostScreen() {
                 >
                   <Ionicons
                     name="pricetag-outline"
-                    size={20}
+                    size={moderateScale(20)}
                     color={theme.secondaryText}
                   />
                   <TextInput
@@ -537,7 +557,7 @@ export default function CreatePostScreen() {
                 >
                   <Ionicons
                     name="location-outline"
-                    size={20}
+                    size={moderateScale(20)}
                     color={theme.secondaryText}
                   />
                   <TextInput
@@ -569,7 +589,7 @@ export default function CreatePostScreen() {
                 >
                   <Ionicons
                     name="text-outline"
-                    size={20}
+                    size={moderateScale(20)}
                     color={theme.secondaryText}
                   />
                   <TextInput
@@ -635,7 +655,7 @@ export default function CreatePostScreen() {
                   >
                     <AntDesign
                       name="close"
-                      size={18}
+                      size={moderateScale(18)}
                       color={theme.secondaryText}
                     />
                   </Pressable>
@@ -693,7 +713,7 @@ export default function CreatePostScreen() {
                         >
                           <AntDesign
                             name="close"
-                            size={16}
+                            size={moderateScale(16)}
                             color={theme.secondaryText}
                           />
                         </Pressable>
@@ -711,7 +731,7 @@ export default function CreatePostScreen() {
                     >
                       <Feather
                         name="plus-circle"
-                        size={18}
+                        size={moderateScale(18)}
                         color={theme.primary}
                       />
                       <Text
@@ -854,7 +874,10 @@ export default function CreatePostScreen() {
               {
                 backgroundColor: theme.card,
                 borderTopColor: theme.border,
-                paddingBottom: Math.max(insets.bottom, 44),
+                paddingBottom:
+                  Platform.OS === "ios" && iosKeyboardOpen
+                    ? verticalScale(20)
+                    : insets.bottom + verticalScale(10),
               },
             ]}
           >
@@ -879,12 +902,12 @@ export default function CreatePostScreen() {
                   >
                     <MaterialCommunityIcons
                       name="poll"
-                      size={24}
+                      size={moderateScale(24)}
                       color={theme.text}
                     />
                   </Pressable>
                   <Pressable onPress={pickImage} style={styles.footerButton}>
-                    <Feather name="image" size={24} color={theme.text} />
+                    <Feather name="image" size={moderateScale(24)} color={theme.text} />
                   </Pressable>
                 </View>
               </>
@@ -893,7 +916,7 @@ export default function CreatePostScreen() {
               <>
                 <View />
                 <Pressable onPress={pickImage} style={styles.footerButton}>
-                  <Feather name="image" size={24} color={theme.text} />
+                  <Feather name="image" size={moderateScale(24)} color={theme.text} />
                 </Pressable>
               </>
             )}
@@ -928,83 +951,83 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 15,
-    paddingBottom: 12,
+    paddingHorizontal: scale(15),
+    paddingBottom: verticalScale(12),
     borderBottomWidth: 1,
   },
   closeButton: {
-    padding: 5,
+    padding: moderateScale(5),
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: moderateScale(18),
     fontFamily: "Poppins_600SemiBold",
     flex: 1,
     textAlign: "center",
-    marginHorizontal: 10,
+    marginHorizontal: scale(10),
   },
   postButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: 20,
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(20),
+    borderRadius: moderateScale(20),
   },
   postButtonText: {
     color: "white",
     fontWeight: "600",
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: "Poppins_500Medium",
   },
   scrollView: {
     flex: 1,
-    paddingHorizontal: 15,
+    paddingHorizontal: scale(15),
   },
   categorySection: {
-    paddingTop: 20,
-    paddingBottom: 10,
+    paddingTop: verticalScale(20),
+    paddingBottom: verticalScale(10),
   },
   sectionLabel: {
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: "Poppins_600SemiBold",
-    marginBottom: 10,
+    marginBottom: verticalScale(10),
   },
   categoryButtons: {
     flexDirection: "row",
-    gap: 12,
+    gap: moderateScale(12),
   },
   categoryButton: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
+    gap: moderateScale(8),
+    paddingVertical: verticalScale(14),
+    paddingHorizontal: scale(16),
+    borderRadius: moderateScale(12),
     borderWidth: 2,
   },
   categoryButtonText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_600SemiBold",
   },
   locationSection: {
-    paddingTop: 15,
-    paddingBottom: 10,
+    paddingTop: verticalScale(15),
+    paddingBottom: verticalScale(10),
   },
   locationInputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 12,
+    gap: moderateScale(10),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(12),
+    borderRadius: moderateScale(12),
     borderWidth: 1,
   },
   locationInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: "Poppins_400Regular",
   },
   androidTitleInputContainer: {
-    paddingVertical: 10,
+    paddingVertical: verticalScale(10),
   },
   androidTitleInput: {
     paddingVertical: 0,
@@ -1012,10 +1035,10 @@ const styles = StyleSheet.create({
     textAlignVertical: "center",
   },
   contentSection: {
-    paddingTop: 15,
+    paddingTop: verticalScale(15),
   },
   pollSection: {
-    paddingTop: 6,
+    paddingTop: verticalScale(6),
   },
   pollHeaderRow: {
     flexDirection: "row",
@@ -1023,71 +1046,71 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   pollOptionsContainer: {
-    marginTop: 8,
-    gap: 8,
+    marginTop: verticalScale(8),
+    gap: moderateScale(8),
   },
   pollOptionRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: moderateScale(8),
   },
   pollOptionIndex: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: scale(26),
+    height: verticalScale(26),
+    borderRadius: moderateScale(13),
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
   },
   pollOptionIndexText: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontFamily: "Poppins_500Medium",
   },
   pollOptionInput: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
+    borderRadius: moderateScale(10),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(8),
+    fontSize: moderateScale(14),
     fontFamily: "Poppins_400Regular",
   },
   pollRemoveButton: {
-    padding: 4,
+    padding: moderateScale(4),
   },
   pollOptionRemoveButton: {
-    padding: 4,
+    padding: moderateScale(4),
   },
   pollAddOptionButton: {
-    marginTop: 4,
+    marginTop: verticalScale(4),
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
+    gap: moderateScale(6),
+    paddingVertical: verticalScale(6),
+    paddingHorizontal: scale(10),
+    borderRadius: moderateScale(999),
     borderWidth: 1,
   },
   pollAddOptionText: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontFamily: "Poppins_500Medium",
   },
   anonymousLabel: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_500Medium",
   },
   contentInput: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_400Regular",
-    paddingVertical: 10,
-    minHeight: 48,
-    maxHeight: 420,
+    paddingVertical: verticalScale(10),
+    minHeight: verticalScale(48),
+    maxHeight: verticalScale(420),
     textAlignVertical: "top",
   },
   imageGalleryContainer: {
-    marginTop: 14,
-    marginBottom: 6,
+    marginTop: verticalScale(14),
+    marginBottom: verticalScale(6),
     height: IMAGE_GALLERY_SECTION_HEIGHT,
   },
   imageGalleryFlatList: {
@@ -1099,10 +1122,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: verticalScale(10),
   },
   galleryCountText: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontFamily: "Poppins_400Regular",
   },
   imageGalleryGrid: {
@@ -1114,17 +1137,17 @@ const styles = StyleSheet.create({
   },
   galleryImageItem: {
     position: "relative",
-    borderRadius: 10,
+    borderRadius: moderateScale(10),
     overflow: "hidden",
   },
   galleryRemoveButton: {
     position: "absolute",
-    right: 6,
-    top: 6,
+    right: scale(6),
+    top: verticalScale(6),
     zIndex: 1,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: scale(22),
+    height: verticalScale(22),
+    borderRadius: moderateScale(11),
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.7)",
@@ -1132,67 +1155,67 @@ const styles = StyleSheet.create({
   galleryImagePreview: {
     width: "100%",
     height: "100%",
-    borderRadius: 10,
+    borderRadius: moderateScale(10),
   },
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 15,
-    paddingTop: 15,
+    paddingHorizontal: scale(15),
+    paddingTop: verticalScale(15),
     borderTopWidth: 1,
   },
   anonymousFooterRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: moderateScale(10),
   },
   footerActionsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: moderateScale(12),
   },
   footerButton: {
     justifyContent: "center",
     alignItems: "center",
-    padding: 5,
+    padding: moderateScale(5),
   },
   originalPostPreview: {
-    marginTop: 15,
-    marginBottom: 15,
-    padding: 15,
-    borderRadius: 12,
+    marginTop: verticalScale(15),
+    marginBottom: verticalScale(15),
+    padding: moderateScale(15),
+    borderRadius: moderateScale(12),
     borderWidth: 1,
   },
   originalPostLabel: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontFamily: "Poppins_500Medium",
-    marginBottom: 10,
+    marginBottom: verticalScale(10),
   },
   originalPostHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: verticalScale(10),
   },
   originalAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: scale(32),
+    height: verticalScale(32),
+    borderRadius: moderateScale(16),
   },
   originalPostHeaderText: {
-    marginLeft: 10,
+    marginLeft: scale(10),
     flex: 1,
   },
   originalAuthor: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontFamily: "Poppins_500Medium",
   },
   originalTime: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
   },
   originalContent: {
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: "Poppins_400Regular",
-    lineHeight: 22,
+    lineHeight: moderateScale(22),
   },
 });

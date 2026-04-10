@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -71,7 +72,7 @@ export default function ReportModal({
               <View style={styles.header}>
                 <MaterialCommunityIcons
                   name="flag"
-                  size={20}
+                  size={moderateScale(20)}
                   color={theme.primary}
                 />
                 <Text style={[styles.title, { color: theme.text }]}>
@@ -80,7 +81,7 @@ export default function ReportModal({
                 <Pressable onPress={handleClose} style={styles.closeButton}>
                   <MaterialCommunityIcons
                     name="close"
-                    size={20}
+                    size={moderateScale(20)}
                     color={theme.secondaryText}
                   />
                 </Pressable>
@@ -165,66 +166,66 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    padding: moderateScale(20),
   },
   modalContent: {
-    width: screenWidth - 60, // 30px padding on each side
+    width: screenWidth - scale(60),
     maxHeight: "75%",
-    borderRadius: 16,
-    padding: 18,
+    borderRadius: moderateScale(16),
+    padding: moderateScale(18),
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: verticalScale(2),
     },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: moderateScale(3.84),
     elevation: 5,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
-    gap: 10,
+    marginBottom: verticalScale(14),
+    gap: moderateScale(10),
   },
   title: {
     flex: 1,
-    fontSize: 18,
+    fontSize: moderateScale(18),
     fontFamily: "Poppins_600SemiBold",
   },
   closeButton: {
-    padding: 4,
+    padding: moderateScale(4),
   },
   description: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontFamily: "Poppins_400Regular",
-    marginBottom: 14,
-    lineHeight: 20,
+    marginBottom: verticalScale(14),
+    lineHeight: moderateScale(20),
   },
   input: {
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 15,
+    borderRadius: moderateScale(12),
+    padding: moderateScale(12),
+    fontSize: moderateScale(15),
     fontFamily: "Poppins_400Regular",
-    minHeight: 100,
-    maxHeight: 140,
+    minHeight: verticalScale(100),
+    maxHeight: verticalScale(140),
   },
   charCount: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: "Poppins_400Regular",
     textAlign: "right",
-    marginTop: 4,
-    marginBottom: 14,
+    marginTop: verticalScale(4),
+    marginBottom: verticalScale(14),
   },
   actions: {
     flexDirection: "row",
-    gap: 12,
+    gap: moderateScale(12),
   },
   button: {
     flex: 1,
-    paddingVertical: 13,
-    borderRadius: 12,
+    paddingVertical: verticalScale(13),
+    borderRadius: moderateScale(12),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -235,11 +236,11 @@ const styles = StyleSheet.create({
     // backgroundColor set dynamically
   },
   buttonText: {
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: "Poppins_500Medium",
   },
   submitButtonText: {
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: "Poppins_500Medium",
     color: "#FFFFFF",
   },

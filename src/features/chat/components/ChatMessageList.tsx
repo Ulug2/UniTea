@@ -13,6 +13,7 @@ import {
   type NativeScrollEvent,
 } from "react-native";
 import type { ChatMessageVM } from "../types";
+import { moderateScale } from "../../../utils/scaling";
 
 type ChatMessageListProps<T = ChatMessageVM> = {
   messages: T[];
@@ -57,7 +58,7 @@ export function ChatMessageList<T = ChatMessageVM>({
 }: ChatMessageListProps<T>) {
   const listFooter =
     isFetchingNextPage ? (
-      <View style={{ padding: 16, alignItems: "center" }}>
+      <View style={{ padding: moderateScale(16), alignItems: "center" }}>
         <ActivityIndicator size="small" color={theme.primary} />
       </View>
     ) : null;
@@ -75,6 +76,7 @@ export function ChatMessageList<T = ChatMessageVM>({
       )}
       <FlatList
         ref={listRef as React.RefObject<FlatList<T> | null>}
+        style={{ flex: 1 }}
         data={messages}
         renderItem={renderItem}
         keyExtractor={keyExtractor}

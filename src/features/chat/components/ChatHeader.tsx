@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, Pressable, type StyleProp, type ViewStyle } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { moderateScale } from "../../../utils/scaling";
 
 type ChatHeaderProps = {
   onBack?: () => void;
@@ -41,7 +42,7 @@ export function ChatHeader({
   return (
     <View style={styleSet.header}>
       <Pressable onPress={onBack ?? (() => router.back())} style={styleSet.backButton}>
-        <Ionicons name="arrow-back" size={24} color={iconColor} />
+        <Ionicons name="arrow-back" size={moderateScale(24)} color={iconColor} />
       </Pressable>
       {onRowPress ? (
         <Pressable style={{ flexDirection: "row", alignItems: "center", flex: 1 }} onPress={onRowPress}>
@@ -54,7 +55,7 @@ export function ChatHeader({
       )}
       {showMenu && onMenuPress && (
         <Pressable style={styleSet.menuButton} onPress={onMenuPress}>
-          <Ionicons name="ellipsis-vertical" size={24} color={iconColor} />
+          <Ionicons name="ellipsis-vertical" size={moderateScale(24)} color={iconColor} />
         </Pressable>
       )}
     </View>

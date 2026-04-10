@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import SupabaseImage from "../../../components/SupabaseImage";
 import { DEFAULT_AVATAR } from "../../../constants/images";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type AvatarPreviewModalProps = {
   visible: boolean;
@@ -56,9 +57,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   avatarPreview: {
-    width: 220,
-    height: 220,
-    borderRadius: 110,
+    width: scale(220),
+    height: verticalScale(220),
+    borderRadius: moderateScale(110),
   },
 });
 

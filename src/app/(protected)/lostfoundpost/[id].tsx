@@ -26,6 +26,7 @@ import {
 } from "../../../components/FullscreenImageModal";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import ResponsiveImage from "../../../components/ResponsiveImage";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -53,16 +54,16 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
     header: {
       flexDirection: "row",
       alignItems: "center",
-      paddingTop: topInset + 10,
-      paddingBottom: 14,
-      paddingHorizontal: 16,
+      paddingTop: topInset + verticalScale(10),
+      paddingBottom: verticalScale(14),
+      paddingHorizontal: scale(16),
       backgroundColor: theme.card,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: theme.border,
-      gap: 14,
+      gap: moderateScale(14),
     },
     headerTitle: {
-      fontSize: 18,
+      fontSize: moderateScale(18),
       fontFamily: "Poppins_700Bold",
       color: theme.text,
       flex: 1,
@@ -71,23 +72,23 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
     // Scroll container
     scroll: { flex: 1 },
     scrollContent: {
-      paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: bottomInset + 24,
-      gap: 12,
+      paddingHorizontal: scale(16),
+      paddingTop: verticalScale(16),
+      paddingBottom: bottomInset + verticalScale(24),
+      gap: moderateScale(12),
     },
 
     // Shared card surface
     card: {
       backgroundColor: theme.card,
-      borderRadius: 16,
+      borderRadius: moderateScale(16),
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: theme.border,
-      padding: 18,
+      padding: moderateScale(18),
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: 1 },
+      shadowOffset: { width: 0, height: verticalScale(1) },
       shadowOpacity: 0.06,
-      shadowRadius: 4,
+      shadowRadius: moderateScale(4),
       elevation: 2,
     },
 
@@ -96,67 +97,67 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      marginBottom: 16,
+      marginBottom: verticalScale(16),
     },
     userLeft: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: moderateScale(12),
       flex: 1,
     },
     avatarCircle: {
-      width: 46,
-      height: 46,
-      borderRadius: 23,
+      width: scale(46),
+      height: verticalScale(46),
+      borderRadius: moderateScale(23),
       backgroundColor: TEAL,
       justifyContent: "center",
       alignItems: "center",
     },
     avatarInitial: {
-      fontSize: 20,
+      fontSize: moderateScale(20),
       color: "#fff",
       fontFamily: "Poppins_600SemiBold",
     },
     avatarImage: {
-      width: 46,
-      height: 46,
-      borderRadius: 23,
+      width: scale(46),
+      height: verticalScale(46),
+      borderRadius: moderateScale(23),
     },
     userDetails: { gap: 1 },
     username: {
-      fontSize: 15,
+      fontSize: moderateScale(15),
       color: theme.text,
       fontFamily: "Poppins_600SemiBold",
     },
     timeRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 4,
+      gap: moderateScale(4),
     },
     time: {
-      fontSize: 13,
+      fontSize: moderateScale(13),
       color: theme.secondaryText,
       fontFamily: "Poppins_400Regular",
     },
 
     // Title
     title: {
-      fontSize: 22,
+      fontSize: moderateScale(22),
       fontFamily: "Poppins_700Bold",
       color: theme.text,
-      lineHeight: 30,
-      marginBottom: 14,
+      lineHeight: moderateScale(30),
+      marginBottom: verticalScale(14),
     },
 
     // Meta rows (location, date)
     metaRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
-      marginBottom: 8,
+      gap: moderateScale(8),
+      marginBottom: verticalScale(8),
     },
     metaText: {
-      fontSize: 14,
+      fontSize: moderateScale(14),
       fontFamily: "Poppins_400Regular",
       color: theme.secondaryText,
       flex: 1,
@@ -165,43 +166,43 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
     divider: {
       height: StyleSheet.hairlineWidth,
       backgroundColor: theme.border,
-      marginVertical: 14,
+      marginVertical: verticalScale(14),
     },
 
     // Section label
     sectionLabel: {
-      fontSize: 15,
+      fontSize: moderateScale(15),
       fontFamily: "Poppins_600SemiBold",
       color: theme.text,
-      marginBottom: 6,
+      marginBottom: verticalScale(6),
     },
 
     // Description
     descriptionText: {
-      fontSize: 15,
+      fontSize: moderateScale(15),
       fontFamily: "Poppins_400Regular",
       color: theme.secondaryText,
-      lineHeight: 24,
+      lineHeight: moderateScale(24),
     },
 
     // Post image
     imageContainer: {
-      marginBottom: 16,
+      marginBottom: verticalScale(16),
     },
     postImage: {
       width: "100%",
       aspectRatio: 4 / 3,
-      borderRadius: 12,
+      borderRadius: moderateScale(12),
     },
     imageGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 8,
+      gap: moderateScale(8),
     },
     imageTile: {
       width: "48%",
       aspectRatio: 1,
-      borderRadius: 12,
+      borderRadius: moderateScale(12),
       overflow: "hidden",
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: theme.border,
@@ -217,37 +218,37 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
     // Action row (chat + share)
     actionRow: {
       flexDirection: "row",
-      gap: 10,
-      marginTop: 18,
+      gap: moderateScale(10),
+      marginTop: verticalScale(18),
     },
     chatButton: {
       flex: 1,
       backgroundColor: TEAL,
-      borderRadius: 12,
-      paddingVertical: 14,
+      borderRadius: moderateScale(12),
+      paddingVertical: verticalScale(14),
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 8,
+      gap: moderateScale(8),
     },
     chatButtonText: {
       color: "#fff",
-      fontSize: 15,
+      fontSize: moderateScale(15),
       fontFamily: "Poppins_600SemiBold",
     },
     shareButton: {
       flex: 1,
-      borderRadius: 12,
-      paddingVertical: 14,
+      borderRadius: moderateScale(12),
+      paddingVertical: verticalScale(14),
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 8,
+      gap: moderateScale(8),
       borderWidth: 1,
       borderColor: theme.border,
     },
     shareButtonText: {
-      fontSize: 15,
+      fontSize: moderateScale(15),
       fontFamily: "Poppins_500Medium",
       color: theme.text,
     },
@@ -255,27 +256,27 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
     // Safety reminder card
     safetyCard: {
       backgroundColor: theme.card,
-      borderRadius: 16,
+      borderRadius: moderateScale(16),
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: theme.border,
-      padding: 18,
+      padding: moderateScale(18),
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: 1 },
+      shadowOffset: { width: 0, height: verticalScale(1) },
       shadowOpacity: 0.06,
-      shadowRadius: 4,
+      shadowRadius: moderateScale(4),
       elevation: 2,
     },
     safetyTitle: {
-      fontSize: 15,
+      fontSize: moderateScale(15),
       fontFamily: "Poppins_600SemiBold",
       color: theme.text,
-      marginBottom: 6,
+      marginBottom: verticalScale(6),
     },
     safetyText: {
-      fontSize: 14,
+      fontSize: moderateScale(14),
       fontFamily: "Poppins_400Regular",
       color: theme.secondaryText,
-      lineHeight: 22,
+      lineHeight: moderateScale(22),
     },
 
     // Loading / error
@@ -285,7 +286,7 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
       alignItems: "center",
     },
     errorText: {
-      fontSize: 15,
+      fontSize: moderateScale(15),
       fontFamily: "Poppins_400Regular",
       color: theme.secondaryText,
     },
@@ -305,7 +306,7 @@ function LostFoundDetailGalleryItem({
     <Pressable
       onPress={onPress}
       style={{
-        marginRight: isLast ? 0 : 4,
+        marginRight: isLast ? 0 : scale(4),
       }}
     >
       <ResponsiveImage
@@ -559,8 +560,12 @@ export default function LostFoundPostDetailed() {
     <View style={styles.container}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <Pressable hitSlop={12} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
+        <Pressable hitSlop={moderateScale(12)} onPress={() => router.back()}>
+          <Ionicons
+            name="arrow-back"
+            size={moderateScale(24)}
+            color={theme.text}
+          />
         </Pressable>
         <Text style={styles.headerTitle}>Item Details</Text>
       </View>
@@ -603,7 +608,7 @@ export default function LostFoundPostDetailed() {
                   <View style={styles.timeRow}>
                     <Ionicons
                       name="time-outline"
-                      size={12}
+                      size={moderateScale(12)}
                       color={theme.secondaryText}
                     />
                     <Text style={styles.time}>{timeAgo}</Text>
@@ -616,14 +621,14 @@ export default function LostFoundPostDetailed() {
             <View
               style={{
                 backgroundColor: badgeBg,
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: 8,
+                paddingHorizontal: scale(10),
+                paddingVertical: verticalScale(4),
+                borderRadius: moderateScale(8),
               }}
             >
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: moderateScale(13),
                   fontFamily: "Poppins_600SemiBold",
                   color: badgeColor,
                 }}
@@ -641,7 +646,7 @@ export default function LostFoundPostDetailed() {
             <View style={styles.metaRow}>
               <Ionicons
                 name="location-outline"
-                size={16}
+                size={moderateScale(16)}
                 color={theme.secondaryText}
               />
               <Text style={styles.metaText}>{post.location}</Text>
@@ -653,7 +658,7 @@ export default function LostFoundPostDetailed() {
             <View style={styles.metaRow}>
               <Ionicons
                 name="calendar-outline"
-                size={16}
+                size={moderateScale(16)}
                 color={theme.secondaryText}
               />
               <Text style={styles.metaText}>{formattedDate}</Text>
@@ -722,7 +727,7 @@ export default function LostFoundPostDetailed() {
               >
                 <MaterialCommunityIcons
                   name="message-outline"
-                  size={20}
+                  size={moderateScale(20)}
                   color="#fff"
                 />
                 <Text style={styles.chatButtonText}>
@@ -734,7 +739,11 @@ export default function LostFoundPostDetailed() {
               style={styles.shareButton}
               onPress={() => sharePost(postId, "lost_found")}
             >
-              <Ionicons name="share-outline" size={20} color={theme.text} />
+              <Ionicons
+                name="share-outline"
+                size={moderateScale(20)}
+                color={theme.text}
+              />
               <Text style={styles.shareButtonText}>Share</Text>
             </Pressable>
           </View>

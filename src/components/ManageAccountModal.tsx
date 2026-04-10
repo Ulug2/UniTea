@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 interface ManageAccountModalProps {
   visible: boolean;
@@ -121,7 +122,7 @@ export default function ManageAccountModal({
           <View style={styles.optionLeft}>
             <MaterialCommunityIcons
               name="account-circle-outline"
-              size={22}
+              size={moderateScale(22)}
               color={theme.text}
             />
             <Text style={[styles.optionLabel, { color: theme.text }]}>
@@ -133,7 +134,7 @@ export default function ManageAccountModal({
           ) : (
             <Ionicons
               name="chevron-forward"
-              size={20}
+              size={moderateScale(20)}
               color={theme.secondaryText}
             />
           )}
@@ -148,7 +149,7 @@ export default function ManageAccountModal({
           <View style={styles.optionLeft}>
             <MaterialCommunityIcons
               name="account-edit-outline"
-              size={22}
+              size={moderateScale(22)}
               color={theme.text}
             />
             <Text style={[styles.optionLabel, { color: theme.text }]}>
@@ -157,7 +158,7 @@ export default function ManageAccountModal({
           </View>
           <Ionicons
             name="chevron-forward"
-            size={20}
+            size={moderateScale(20)}
             color={theme.secondaryText}
           />
         </Pressable>
@@ -171,7 +172,7 @@ export default function ManageAccountModal({
           <View style={styles.optionLeft}>
             <MaterialCommunityIcons
               name="lock-outline"
-              size={22}
+              size={moderateScale(22)}
               color={theme.text}
             />
             <Text style={[styles.optionLabel, { color: theme.text }]}>
@@ -180,7 +181,7 @@ export default function ManageAccountModal({
           </View>
           <Ionicons
             name="chevron-forward"
-            size={20}
+            size={moderateScale(20)}
             color={theme.secondaryText}
           />
         </Pressable>
@@ -194,14 +195,14 @@ export default function ManageAccountModal({
           }}
         >
           <View style={styles.optionLeft}>
-            <Ionicons name="log-out-outline" size={22} color={theme.text} />
+            <Ionicons name="log-out-outline" size={moderateScale(22)} color={theme.text} />
             <Text style={[styles.optionLabel, { color: theme.text }]}>
               Log Out
             </Text>
           </View>
           <Ionicons
             name="chevron-forward"
-            size={20}
+            size={moderateScale(20)}
             color={theme.secondaryText}
           />
         </Pressable>
@@ -215,7 +216,7 @@ export default function ManageAccountModal({
           <View style={styles.optionLeft}>
             <MaterialCommunityIcons
               name="account-check-outline"
-              size={22}
+              size={moderateScale(22)}
               color={theme.text}
             />
             <Text style={[styles.optionLabel, { color: theme.text }]}>
@@ -227,7 +228,7 @@ export default function ManageAccountModal({
           ) : (
             <Ionicons
               name="chevron-forward"
-              size={20}
+              size={moderateScale(20)}
               color={theme.secondaryText}
             />
           )}
@@ -240,7 +241,7 @@ export default function ManageAccountModal({
           disabled={isDeleting}
         >
           <View style={styles.optionLeft}>
-            <Ionicons name="trash-outline" size={22} color="#EF4444" />
+            <Ionicons name="trash-outline" size={moderateScale(22)} color="#EF4444" />
             <Text style={[styles.optionLabel, { color: "#EF4444" }]}>
               Delete Account
             </Text>
@@ -250,7 +251,7 @@ export default function ManageAccountModal({
           ) : (
             <Ionicons
               name="chevron-forward"
-              size={20}
+              size={moderateScale(20)}
               color={theme.secondaryText}
             />
           )}
@@ -266,12 +267,12 @@ export default function ManageAccountModal({
           onPress={() => setCurrentView("menu")}
           style={styles.backButton}
         >
-          <Ionicons name="chevron-back" size={24} color={theme.text} />
+          <Ionicons name="chevron-back" size={moderateScale(24)} color={theme.text} />
         </Pressable>
         <Text style={[styles.modalTitle, { color: theme.text, flex: 1 }]}>
           Change Username
         </Text>
-        <View style={{ width: 40 }} />
+        <View style={{ width: scale(40) }} />
       </View>
 
       <ScrollView
@@ -328,12 +329,12 @@ export default function ManageAccountModal({
           onPress={() => setCurrentView("menu")}
           style={styles.backButton}
         >
-          <Ionicons name="chevron-back" size={24} color={theme.text} />
+          <Ionicons name="chevron-back" size={moderateScale(24)} color={theme.text} />
         </Pressable>
         <Text style={[styles.modalTitle, { color: theme.text, flex: 1 }]}>
           Change Password
         </Text>
-        <View style={{ width: 40 }} />
+        <View style={{ width: scale(40) }} />
       </View>
 
       <ScrollView
@@ -363,7 +364,10 @@ export default function ManageAccountModal({
         />
 
         <Text
-          style={[styles.label, { color: theme.secondaryText, marginTop: 16 }]}
+          style={[
+            styles.label,
+            { color: theme.secondaryText, marginTop: verticalScale(16) },
+          ]}
         >
           Confirm Password
         </Text>
@@ -454,79 +458,79 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
-    paddingBottom: 32,
+    borderTopLeftRadius: moderateScale(24),
+    borderTopRightRadius: moderateScale(24),
+    paddingTop: verticalScale(12),
+    paddingBottom: verticalScale(32),
     maxHeight: "60%",
   },
   modalHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
+    width: scale(40),
+    height: verticalScale(4),
+    borderRadius: moderateScale(2),
     alignSelf: "center",
-    marginBottom: 16,
+    marginBottom: verticalScale(16),
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: moderateScale(20),
     fontFamily: "Poppins_700Bold",
     textAlign: "center",
-    marginBottom: 16,
+    marginBottom: verticalScale(16),
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
-    paddingHorizontal: 20,
+    marginBottom: verticalScale(16),
+    paddingHorizontal: scale(20),
   },
   backButton: {
-    padding: 4,
-    marginRight: 8,
+    padding: moderateScale(4),
+    marginRight: scale(8),
   },
   optionsContainer: {
-    paddingHorizontal: 20,
+    paddingHorizontal: scale(20),
   },
   option: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 16,
+    paddingVertical: verticalScale(16),
     borderBottomWidth: 1,
   },
   optionLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: moderateScale(12),
   },
   optionLabel: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_500Medium",
   },
   formContainer: {
-    paddingHorizontal: 20,
+    paddingHorizontal: scale(20),
   },
   label: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontFamily: "Poppins_500Medium",
-    marginBottom: 8,
+    marginBottom: verticalScale(8),
   },
   input: {
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
+    borderRadius: moderateScale(12),
+    padding: moderateScale(14),
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_400Regular",
-    marginBottom: 16,
+    marginBottom: verticalScale(16),
   },
   saveButton: {
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: verticalScale(14),
+    borderRadius: moderateScale(12),
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 8,
+    marginTop: verticalScale(8),
   },
   saveButtonText: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_600SemiBold",
     color: "#FFFFFF",
   },

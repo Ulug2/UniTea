@@ -16,6 +16,7 @@ import {
 import { chatDetailStyles } from "../styles";
 import ResponsiveImage from "../../../components/ResponsiveImage";
 import type { Theme } from "../../../context/ThemeContext";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type ChatMessageRowProps = {
   item: ChatMessageVM;
@@ -211,7 +212,7 @@ function ChatMessageRowInner({
             chatDetailStyles.messageBubble,
             {
               backgroundColor: "transparent",
-              borderRadius: 20,
+              borderRadius: moderateScale(20),
               paddingHorizontal: 0,
               paddingVertical: 0,
               overflow: "hidden" as const,
@@ -283,19 +284,23 @@ function ChatMessageRowInner({
                         ? "#B91C1C"
                         : "#5DBEBC"
                       : theme.messageBubble,
-                  paddingHorizontal: 16,
-                  paddingTop: 6,
-                  paddingBottom: 6,
+                  paddingHorizontal: scale(16),
+                  paddingTop: verticalScale(6),
+                  paddingBottom: verticalScale(6),
                   // Ensure bubble is tall enough so the timestamp (absolute bottom) is never clipped
-                  minHeight: 39,
+                  minHeight: verticalScale(39),
                   // Ensure bubble is wide enough for short messages (e.g. "1", "hi") + timestamp
-                  minWidth: 80,
-                  borderBottomLeftRadius: 20,
-                  borderBottomRightRadius: 20,
+                  minWidth: scale(80),
+                  borderBottomLeftRadius: moderateScale(20),
+                  borderBottomRightRadius: moderateScale(20),
                   borderTopLeftRadius:
-                    (item.image_url && !showTombstone) || hasReply ? 0 : 20,
+                    (item.image_url && !showTombstone) || hasReply
+                      ? 0
+                      : moderateScale(20),
                   borderTopRightRadius:
-                    (item.image_url && !showTombstone) || hasReply ? 0 : 20,
+                    (item.image_url && !showTombstone) || hasReply
+                      ? 0
+                      : moderateScale(20),
                   position: "relative" as const,
                 },
                 item.image_url &&
@@ -423,33 +428,33 @@ export const ChatMessageRow = memo(
 const inlineTimestampStyles = StyleSheet.create({
   // Extra gap above this message when the one above is from the other sender (partner → me or me → partner).
   messageGapAfterOtherSender: {
-    marginTop: 12,
+    marginTop: verticalScale(12),
   },
   // Absolute bottom-right; half above / half below last line via paddingBottom 8 on text-wrap.
   textBubbleTime: {
     position: "absolute",
     bottom: 0,
-    right: 12,
+    right: scale(12),
     // marginLeft: 4,
-    fontSize: 9,
+    fontSize: moderateScale(9),
     fontFamily: "Poppins_400Regular",
-    lineHeight: 16,
+    lineHeight: moderateScale(16),
   },
   // Semi-transparent pill that overlays the image for image-only messages.
   imagePill: {
     position: "absolute",
-    bottom: 8,
-    right: 8,
+    bottom: verticalScale(8),
+    right: scale(8),
     backgroundColor: "rgba(0,0,0,0.35)",
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderRadius: moderateScale(10),
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(2),
   },
   imagePillText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: "Poppins_400Regular",
     color: "#FFFFFF",
-    lineHeight: 16,
+    lineHeight: moderateScale(16),
   },
 });
 
@@ -458,7 +463,7 @@ const inlineTimestampStyles = StyleSheet.create({
  * this wide, preventing short replies from squishing the embedded quote.
  * ~45 chars × ~6.5px (fontSize 11) + accent bar + padding ≈ 290dp.
  */
-const REPLY_BLOCK_MIN_WIDTH = 290;
+const REPLY_BLOCK_MIN_WIDTH = scale(290);
 
 const replyQuoteStyles = StyleSheet.create({
   container: {
@@ -468,18 +473,18 @@ const replyQuoteStyles = StyleSheet.create({
     // alignSelf:stretch (RN default in a column container) makes this fill
     // the full bubble width so long messages don't leave the reply block narrow.
     overflow: "hidden",
-    paddingVertical: 6,
-    paddingRight: 10,
+    paddingVertical: verticalScale(6),
+    paddingRight: scale(10),
   },
   containerCurrentUser: {
     backgroundColor: "#28B3AC",
   },
   accentBar: {
-    width: 3,
-    borderRadius: 2,
-    marginHorizontal: 8,
+    width: scale(3),
+    borderRadius: moderateScale(2),
+    marginHorizontal: scale(8),
     alignSelf: "stretch",
-    minHeight: 28,
+    minHeight: verticalScale(28),
   },
   textBlock: {
     // flex:1 fills the remaining width after the accent bar (3+8+8 = 19dp).
@@ -487,12 +492,12 @@ const replyQuoteStyles = StyleSheet.create({
     justifyContent: "center",
   },
   authorName: {
-    fontSize: 11,
+    fontSize: moderateScale(11),
     fontFamily: "Poppins_600SemiBold",
     marginBottom: 1,
   },
   contentSnippet: {
-    fontSize: 11,
+    fontSize: moderateScale(11),
     fontFamily: "Poppins_400Regular",
   },
 });
@@ -503,23 +508,23 @@ const tombstoneStyles = StyleSheet.create({
     alignItems: "center",
   },
   iconWrapper: {
-    width: 18,
-    height: 18,
-    marginRight: 8,
+    width: scale(18),
+    height: verticalScale(18),
+    marginRight: scale(8),
     justifyContent: "center",
     alignItems: "center",
   },
   iconCircle: {
     position: "absolute",
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 1.5,
+    width: scale(14),
+    height: verticalScale(14),
+    borderRadius: moderateScale(7),
+    borderWidth: moderateScale(1.5),
   },
   iconSlash: {
     position: "absolute",
-    width: 12,
-    height: 1.5,
+    width: scale(12),
+    height: verticalScale(1.5),
     transform: [{ rotate: "45deg" }],
   },
 });

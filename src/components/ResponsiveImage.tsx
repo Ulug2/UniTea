@@ -12,12 +12,13 @@ import {
 import { Image as ExpoImage } from "expo-image";
 import SupabaseImage from "./SupabaseImage";
 import { useImageAspectRatio } from "../hooks/useImageAspectRatio";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 const DEFAULT_BACKGROUND = "#F0F0F0";
 const SINGLE_MAX_HEIGHT_RATIO = 0.55;
-const GALLERY_ITEM_WIDTH = 225;
-const GALLERY_ITEM_HEIGHT = 300;
+const GALLERY_ITEM_WIDTH = scale(225);
+const GALLERY_ITEM_HEIGHT = verticalScale(300);
 
 type ResponsiveImageProps = {
   source: string;
@@ -55,7 +56,7 @@ export default function ResponsiveImage({
   sourceKind = "auto",
   mode = "single",
   knownAspectRatio,
-  borderRadius = 10,
+  borderRadius = moderateScale(10),
   backgroundColor = DEFAULT_BACKGROUND,
   onPress,
   onLoad,

@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 interface CustomInputProps extends TextInputProps {
   label?: string;
@@ -46,7 +47,7 @@ export default function CustomInput({
         {leftIcon && leftIcon.type === "font-awesome" && (
           <FontAwesome
             name={leftIcon.name as any}
-            size={20}
+            size={moderateScale(20)}
             color={theme.secondaryText}
             style={styles.icon}
           />
@@ -72,35 +73,35 @@ export default function CustomInput({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    marginBottom: verticalScale(16),
   },
   label: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: "600",
-    marginBottom: 8,
+    marginBottom: verticalScale(8),
   },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    minHeight: 48,
+    borderRadius: moderateScale(8),
+    paddingHorizontal: scale(12),
+    minHeight: verticalScale(48),
   },
   icon: {
-    marginRight: 10,
+    marginRight: scale(10),
   },
   input: {
     flex: 1,
-    fontSize: 16,
-    paddingVertical: 12,
+    fontSize: moderateScale(16),
+    paddingVertical: verticalScale(12),
   },
   rightElement: {
-    marginLeft: 8,
+    marginLeft: scale(8),
   },
   errorText: {
-    fontSize: 12,
-    marginTop: 4,
-    marginLeft: 4,
+    fontSize: moderateScale(12),
+    marginTop: verticalScale(4),
+    marginLeft: scale(4),
   },
 });

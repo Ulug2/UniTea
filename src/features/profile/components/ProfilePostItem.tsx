@@ -7,6 +7,7 @@ import type { PostsSummaryViewRow } from "../../../types/posts";
 import type { Database } from "../../../types/database.types";
 import type { Theme } from "../../../context/ThemeContext";
 import { sharePost } from "../../../utils/sharePost";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type Post = Database["public"]["Tables"]["posts"]["Row"];
 
@@ -86,7 +87,7 @@ const ProfilePostItem = memo(
             <View style={styles.postStat}>
               <MaterialCommunityIcons
                 name="arrow-up-bold"
-                size={16}
+                size={moderateScale(16)}
                 color="#51CF66"
               />
               <Text
@@ -99,7 +100,7 @@ const ProfilePostItem = memo(
           <View style={styles.postStat}>
             <MaterialCommunityIcons
               name="comment-outline"
-              size={16}
+              size={moderateScale(16)}
               color={theme.secondaryText}
             />
             <Text
@@ -117,7 +118,7 @@ const ProfilePostItem = memo(
           >
             <Ionicons
               name="share-outline"
-              size={16}
+              size={moderateScale(16)}
               color={theme.secondaryText}
             />
           </Pressable>
@@ -151,26 +152,26 @@ ProfilePostItem.displayName = "ProfilePostItem";
 
 const styles = StyleSheet.create({
   postCard: {
-    padding: 16,
+    padding: moderateScale(16),
     borderBottomWidth: 1,
   },
   postHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 4,
+    marginBottom: verticalScale(4),
   },
   postLabel: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontFamily: "Poppins_400Regular",
   },
   postTime: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontFamily: "Poppins_400Regular",
   },
   postContent: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontFamily: "Poppins_400Regular",
-    marginBottom: 8,
+    marginBottom: verticalScale(8),
   },
   postFooter: {
     flexDirection: "row",
@@ -178,11 +179,11 @@ const styles = StyleSheet.create({
   postStat: {
     flexDirection: "row",
     alignItems: "center",
-    marginRight: 16,
+    marginRight: scale(16),
   },
   postStatText: {
-    marginLeft: 4,
-    fontSize: 13,
+    marginLeft: scale(4),
+    fontSize: moderateScale(13),
     fontFamily: "Poppins_400Regular",
   },
 });

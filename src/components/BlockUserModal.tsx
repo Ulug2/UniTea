@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { moderateScale, scale, verticalScale } from '../utils/scaling';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -44,7 +45,7 @@ export default function BlockUserModal({
             <View style={[styles.iconContainer, { backgroundColor: '#FEE2E2' }]}>
               <MaterialCommunityIcons
                 name="account-cancel"
-                size={32}
+                size={moderateScale(32)}
                 color="#EF4444"
               />
             </View>
@@ -101,52 +102,52 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: moderateScale(20),
   },
   modalContent: {
-    width: screenWidth - 60, // 30px padding on each side
-    borderRadius: 16,
-    padding: 22,
+    width: screenWidth - scale(60), // scaled inset each side
+    borderRadius: moderateScale(16),
+    padding: moderateScale(22),
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: verticalScale(2),
     },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: moderateScale(3.84),
     elevation: 5,
     alignItems: 'center',
   },
   iconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: scale(60),
+    height: verticalScale(60),
+    borderRadius: moderateScale(30),
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
+    marginBottom: verticalScale(14),
   },
   title: {
-    fontSize: 19,
+    fontSize: moderateScale(19),
     fontFamily: 'Poppins_600SemiBold',
-    marginBottom: 12,
+    marginBottom: verticalScale(12),
     textAlign: 'center',
   },
   description: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontFamily: 'Poppins_400Regular',
-    lineHeight: 21,
-    marginBottom: 22,
+    lineHeight: moderateScale(21),
+    marginBottom: verticalScale(22),
     textAlign: 'center',
   },
   actions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: moderateScale(12),
     width: '100%',
   },
   button: {
     flex: 1,
-    paddingVertical: 13,
-    borderRadius: 12,
+    paddingVertical: verticalScale(13),
+    borderRadius: moderateScale(12),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -157,11 +158,11 @@ const styles = StyleSheet.create({
     // backgroundColor set dynamically
   },
   buttonText: {
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: 'Poppins_500Medium',
   },
   blockButtonText: {
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontFamily: 'Poppins_500Medium',
     color: '#FFFFFF',
   },

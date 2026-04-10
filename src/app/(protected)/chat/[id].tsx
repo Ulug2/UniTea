@@ -6,7 +6,6 @@ import {
   Text,
   Pressable,
   FlatList,
-  KeyboardAvoidingView,
   Platform,
   Alert,
   ActivityIndicator,
@@ -18,6 +17,7 @@ import {
   type TextStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { moderateScale } from "../../../utils/scaling";
 import { useTheme } from "../../../context/ThemeContext";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { Database } from "../../../types/database.types";
@@ -74,6 +74,11 @@ export default function ChatDetailScreen() {
   );
   const [message, setMessage] = useState("");
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  /**
+   * Extra bottom inset while IME is open (Android edge-to-edge + resize often
+   * under-lifts; iOS can use a small boost when stack header is hidden).
+   */
+  const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [fullScreenImagePath, setFullScreenImagePath] = useState<string | null>(
@@ -153,18 +158,28 @@ export default function ChatDetailScreen() {
     },
   );
 
-  // Track keyboard visibility - use "Will" events on iOS for instant effect
+  // Track keyboard visibility - use "Will" events on iOS for instant effect.
+  // Apply measured IME height as extra padding; `behavior="padding"` on KAV
+  // handles most of the lift, but edge-to-edge Android often needs the remainder.
   useEffect(() => {
     const showEvent =
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent =
       Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
 
-    const showSubscription = Keyboard.addListener(showEvent, () => {
-      setIsKeyboardVisible(true);
-    });
+    const showSubscription = Keyboard.addListener(
+      showEvent,
+      (e: { endCoordinates?: { height?: number } }) => {
+        setIsKeyboardVisible(true);
+        const h = e.endCoordinates?.height;
+        if (typeof h === "number" && h > 0) {
+          setKeyboardBottomInset(h);
+        }
+      },
+    );
     const hideSubscription = Keyboard.addListener(hideEvent, () => {
       setIsKeyboardVisible(false);
+      setKeyboardBottomInset(0);
     });
 
     return () => {
@@ -1088,10 +1103,17 @@ export default function ChatDetailScreen() {
       />
 
       {/* MESSAGES LIST */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={0}
+      {/* Manual bottom padding from Keyboard events — KAV fights Android resize + leaves gaps */}
+      <View
+        style={{
+          flex: 1,
+          paddingBottom:
+            keyboardBottomInset > 0
+              ? Platform.OS === "ios"
+                ? keyboardBottomInset + insets.bottom - moderateScale(10)
+                : keyboardBottomInset + insets.bottom
+              : 0,
+        }}
       >
         <ChatMessageList
           messages={messages}
@@ -1138,9 +1160,15 @@ export default function ChatDetailScreen() {
           replyPreviewBg={theme.card}
           replyPreviewBorderColor={theme.border}
           styles={dynamicStyles}
-          paddingBottom={isKeyboardVisible ? 15 : insets.bottom}
+          paddingBottom={
+            isKeyboardVisible
+              ? Platform.OS === "ios"
+                ? moderateScale(0)
+                : moderateScale(10)
+              : insets.bottom
+          }
         />
-      </KeyboardAvoidingView>
+      </View>
 
       {/* User Profile Modal */}
       {!isChatAnonymous && otherUserId && otherUserId !== currentUserId && (

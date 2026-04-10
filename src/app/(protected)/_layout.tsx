@@ -3,6 +3,7 @@ import { Stack, router, usePathname, useSegments } from "expo-router";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { Platform, View } from "react-native";
+import { moderateScale, scale } from "../../utils/scaling";
 import { useEffect } from "react";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
@@ -168,14 +169,18 @@ export default function AppLayout() {
             headerLeft: () => (
               <AntDesign
                 name="close"
-                size={24}
+                size={moderateScale(24)}
                 color="white"
                 onPress={() => router.back()}
               />
             ),
             headerRight: () => (
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                <Entypo name="dots-three-horizontal" size={24} color="white" />
+              <View style={{ flexDirection: "row", gap: moderateScale(10) }}>
+                <Entypo
+                  name="dots-three-horizontal"
+                  size={moderateScale(24)}
+                  color="white"
+                />
               </View>
             ),
             animation:
@@ -192,7 +197,7 @@ export default function AppLayout() {
             gestureEnabled: true,
             fullScreenGestureEnabled: false,
             // Narrower edge zone so back swipe only triggers from the very edge; reduces conflict with list scrolling
-            gestureResponseDistance: { start: 15 },
+            gestureResponseDistance: { start: scale(15) },
           }}
         />
         <Stack.Screen

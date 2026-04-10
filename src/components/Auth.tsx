@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -7,6 +7,12 @@ import {
   Text,
   ActivityIndicator,
 } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import CustomInput from "./CustomInput";
@@ -14,34 +20,35 @@ import { useTheme } from "../context/ThemeContext";
 import { PRIVACY_URL, TERMS_URL } from "../constants/links";
 import { useAuthFlow } from "../hooks/useAuthFlow";
 import { openExternalLink } from "../utils/links";
+import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
-// Design constants (no more magic numbers!)
+// Design constants (scaled from iPhone 15 Plus baseline)
 const SPACING = {
-  xs: 4,
-  sm: 8,
-  md: 16,
-  lg: 24,
-  xl: 32,
-  xxl: 48,
+  xs: moderateScale(4),
+  sm: moderateScale(8),
+  md: moderateScale(16),
+  lg: moderateScale(24),
+  xl: moderateScale(32),
+  xxl: moderateScale(48),
 } as const;
 
 const FONT_SIZES = {
-  xs: 12,
-  sm: 13,
-  md: 14,
-  base: 15,
-  lg: 16,
-  xl: 24,
-  xxl: 28,
-  xxxl: 32,
+  xs: moderateScale(12),
+  sm: moderateScale(13),
+  md: moderateScale(14),
+  base: moderateScale(15),
+  lg: moderateScale(16),
+  xl: moderateScale(24),
+  xxl: moderateScale(28),
+  xxxl: moderateScale(32),
 } as const;
 
 const BORDER_RADIUS = {
-  sm: 8,
-  md: 12,
-  lg: 18,
-  xl: 24,
-  xxl: 28,
+  sm: moderateScale(8),
+  md: moderateScale(12),
+  lg: moderateScale(18),
+  xl: moderateScale(24),
+  xxl: moderateScale(28),
 } as const;
 
 const AUTH_CONFIG = {
@@ -93,6 +100,40 @@ export default function Auth() {
   const isPrimaryButtonDisabled =
     isLoading || (isPrimaryEmailRequestMode && isEmailRequestCooldownActive);
 
+  const [authToggleWidth, setAuthToggleWidth] = useState(0);
+  const authToggleTranslateX = useSharedValue(0);
+
+  const switchAuthMode = useCallback(
+    (nextMode: "login" | "signup") => {
+      setMode(nextMode);
+      if (nextMode !== "signup") {
+        setPrivacyAccepted(false);
+        setPrivacyError("");
+      }
+      if (showResendOption) dismissResendOption();
+    },
+    [
+      dismissResendOption,
+      setMode,
+      setPrivacyAccepted,
+      setPrivacyError,
+      showResendOption,
+    ],
+  );
+
+  useEffect(() => {
+    if (mode === "forgot" || authToggleWidth <= 0) return;
+    const toValue = mode === "signup" ? authToggleWidth / 2 : 0;
+    authToggleTranslateX.value = withTiming(toValue, {
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [authToggleTranslateX, authToggleWidth, mode]);
+
+  const authToggleIndicatorStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: authToggleTranslateX.value }],
+  }));
+
   const handleOpenExternalLink = useCallback(async (url: string) => {
     try {
       await openExternalLink(url);
@@ -123,9 +164,64 @@ export default function Auth() {
         </View>
 
         <View style={[styles.card, { backgroundColor: theme.card }]}>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>
-            {headline}
-          </Text>
+          {mode === "forgot" ? (
+            <Text style={[styles.cardTitle, { color: theme.text }]}>
+              {headline}
+            </Text>
+          ) : (
+            <View
+              style={[
+                styles.authToggleContainer,
+                { borderColor: theme.primary },
+              ]}
+              accessibilityRole="tablist"
+              onLayout={(e) => setAuthToggleWidth(e.nativeEvent.layout.width)}
+            >
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.authToggleIndicator,
+                  {
+                    backgroundColor: theme.primary,
+                    width: authToggleWidth > 0 ? authToggleWidth / 2 : "50%",
+                  },
+                  authToggleIndicatorStyle,
+                ]}
+              />
+              <Pressable
+                onPress={() => switchAuthMode("login")}
+                disabled={isLoading}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: mode === "login" }}
+                style={styles.authToggleOption}
+              >
+                <Text
+                  style={[
+                    styles.authToggleText,
+                    { color: mode === "login" ? "#fff" : theme.primary },
+                  ]}
+                >
+                  Sign in
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => switchAuthMode("signup")}
+                disabled={isLoading}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: mode === "signup" }}
+                style={styles.authToggleOption}
+              >
+                <Text
+                  style={[
+                    styles.authToggleText,
+                    { color: mode === "signup" ? "#fff" : theme.primary },
+                  ]}
+                >
+                  Sign up
+                </Text>
+              </Pressable>
+            </View>
+          )}
           <Text style={[styles.cardHelper, { color: theme.secondaryText }]}>
             {helper}
           </Text>
@@ -326,11 +422,7 @@ export default function Auth() {
                 <Pressable
                   onPress={() => {
                     const nextMode = mode === "login" ? "signup" : "login";
-                    setMode(nextMode);
-                    if (nextMode !== "signup") {
-                      setPrivacyAccepted(false);
-                      setPrivacyError("");
-                    }
+                    switchAuthMode(nextMode);
                   }}
                   style={styles.switchButton}
                   disabled={isLoading}
@@ -369,8 +461,8 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   logoBadge: {
-    width: 72,
-    height: 72,
+    width: scale(72),
+    height: verticalScale(72),
     borderRadius: BORDER_RADIUS.xl,
     justifyContent: "center",
     alignItems: "center",
@@ -389,7 +481,7 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     gap: SPACING.md,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: SPACING.lg + 2 },
+    shadowOffset: { width: 0, height: verticalScale(26) },
     shadowOpacity: 0.08,
     shadowRadius: BORDER_RADIUS.xxl,
     elevation: 4,
@@ -398,6 +490,31 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xl,
     fontWeight: "700",
     textAlign: "center",
+  },
+  authToggleContainer: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: "hidden",
+    alignSelf: "center",
+    position: "relative",
+  },
+  authToggleIndicator: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+  },
+  authToggleOption: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1,
+  },
+  authToggleText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: "700",
   },
   cardHelper: {
     fontSize: FONT_SIZES.md,
@@ -442,7 +559,7 @@ const styles = StyleSheet.create({
   },
   checkboxIcon: {
     marginRight: SPACING.sm,
-    marginTop: 2,
+    marginTop: verticalScale(2),
   },
   checkboxText: {
     flex: 1,
@@ -459,7 +576,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.lg,
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 52,
+    minHeight: verticalScale(52),
   },
   primaryButtonText: {
     color: "#fff",
@@ -482,10 +599,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 6,
+    gap: moderateScale(6),
   },
   switchButton: {
-    paddingVertical: 2,
+    paddingVertical: verticalScale(2),
     paddingHorizontal: SPACING.xs,
   },
   switchText: {
@@ -497,11 +614,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   disclaimer: {
-    fontSize: 11,
+    fontSize: moderateScale(11),
     fontFamily: "Poppins_400Regular",
     textAlign: "center",
     marginTop: SPACING.lg,
     paddingHorizontal: SPACING.md,
-    lineHeight: 16,
+    lineHeight: moderateScale(16),
   },
 });

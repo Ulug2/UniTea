@@ -6,6 +6,7 @@ import {
   FOUNDING_FATHER_BADGE,
 } from "../../../constants/images";
 import type { Database } from "../../../types/database.types";
+import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
@@ -14,8 +15,10 @@ type FlippableAvatarProps = {
   onAvatarPress: () => void;
 };
 
-const AVATAR_SIZE = 120;
-const SWIPE_THRESHOLD = 30;
+const AVATAR_WIDTH = scale(120);
+const AVATAR_HEIGHT = verticalScale(120);
+const AVATAR_RADIUS = moderateScale(60);
+const SWIPE_THRESHOLD = scale(30);
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 
 /**
@@ -61,10 +64,10 @@ export function FlippableAvatar({
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, { dx }) => Math.abs(dx) > 5,
+      onMoveShouldSetPanResponder: (_, { dx }) => Math.abs(dx) > scale(5),
       onPanResponderRelease: (_, { dx, dy }) => {
         const isHorizontalSwipe = Math.abs(dx) > SWIPE_THRESHOLD;
-        const isTap = Math.abs(dx) < 10 && Math.abs(dy) < 10;
+        const isTap = Math.abs(dx) < scale(10) && Math.abs(dy) < verticalScale(10);
 
         if (isHorizontalSwipe && isFoundingMemberRef.current) {
           flip();
@@ -148,13 +151,13 @@ export function FlippableAvatar({
 
 const styles = StyleSheet.create({
   container: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
+    width: AVATAR_WIDTH,
+    height: AVATAR_HEIGHT,
   },
   face: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
+    width: AVATAR_WIDTH,
+    height: AVATAR_HEIGHT,
+    borderRadius: AVATAR_RADIUS,
     overflow: "hidden",
     backfaceVisibility: "hidden",
   },
