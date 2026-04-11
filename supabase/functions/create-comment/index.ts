@@ -218,7 +218,7 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
         // Don't throw; fail gracefully so comment creation isn't prevented
       } else if (postData && postData.user_id !== user.id) {
         // Only notify if comment author is NOT the post author
-        const { error: notificationError } = await supabase
+        const { data: notificationRow, error: notificationError } = await supabase
           .from("notifications")
           .insert({
             user_id: postData.user_id,
@@ -227,11 +227,40 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
             related_comment_id: data?.id, // Optional, for future use
             message: "Your post received a new comment.",
             is_read: false,
-          });
+          })
+          .select("id")
+          .single();
 
         if (notificationError) {
           console.error("Error creating comment notification:", notificationError);
           // Don't throw; fail gracefully so comment creation isn't prevented
+        } else if (notificationRow?.id) {
+          try {
+            const { error: pushInvokeError } = await supabase.functions.invoke(
+              "send-push-notification",
+              {
+                body: {
+                  userId: postData.user_id,
+                  title: "New Comment",
+                  body: "Someone commented on your post.",
+                  data: {
+                    type: "comment_reply",
+                    relatedPostId: post_id,
+                    notificationId: notificationRow.id,
+                    route: `/post/${post_id}`,
+                  },
+                },
+              },
+            );
+            if (pushInvokeError) {
+              console.error(
+                "send-push-notification invoke failed:",
+                pushInvokeError,
+              );
+            }
+          } catch (pushErr) {
+            console.error("send-push-notification invoke threw:", pushErr);
+          }
         }
       }
     } catch (notificationError: any) {

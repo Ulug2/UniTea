@@ -47,6 +47,216 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Direct invoke (e.g. from create-comment): JSON body with userId, title, body, data.notificationId
+    let parsedBody: Record<string, unknown> | null = null;
+    if (req.method === "POST") {
+      try {
+        const text = await req.text();
+        if (text.trim()) {
+          parsedBody = JSON.parse(text) as Record<string, unknown>;
+        }
+      } catch {
+        parsedBody = null;
+      }
+    }
+
+    const dataField = parsedBody?.data;
+    const dataRecord =
+      typeof dataField === "object" && dataField !== null && !Array.isArray(dataField)
+        ? (dataField as Record<string, unknown>)
+        : null;
+    const notificationIdRaw =
+      parsedBody?.notificationId ?? dataRecord?.notificationId;
+    const notificationId =
+      typeof notificationIdRaw === "string" ? notificationIdRaw : null;
+    const userIdDirect =
+      typeof parsedBody?.userId === "string" ? parsedBody.userId : null;
+    const titleDirect =
+      typeof parsedBody?.title === "string" ? parsedBody.title : null;
+    const bodyDirect =
+      typeof parsedBody?.body === "string" ? parsedBody.body : null;
+
+    if (notificationId && userIdDirect && titleDirect && bodyDirect) {
+      const { data: directRow, error: directFetchError } = await supabase
+        .from("notifications")
+        .select("id, user_id, type, related_post_id")
+        .eq("id", notificationId)
+        .maybeSingle();
+
+      if (directFetchError) {
+        console.error("direct push: fetch notification", directFetchError);
+        return new Response(
+          JSON.stringify({ error: "Failed to load notification" }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      const row = directRow as {
+        id: string;
+        user_id: string;
+        type: string;
+        related_post_id: string | null;
+      } | null;
+
+      if (
+        !row ||
+        row.user_id !== userIdDirect ||
+        row.type !== "comment_reply"
+      ) {
+        return new Response(
+          JSON.stringify({ error: "Notification not found" }),
+          {
+            status: 404,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      const { data: settingsRow } = await supabase
+        .from("notification_settings")
+        .select("push_token")
+        .eq("user_id", userIdDirect)
+        .maybeSingle();
+
+      const pushToken = settingsRow?.push_token as string | undefined;
+      if (!pushToken) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            direct: true,
+            status: "skipped",
+            reason: "no_push_token",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      const notificationIds = [notificationId];
+      const { error: directMarkError } = await supabase
+        .from("notifications")
+        .update({ push_sent: true })
+        .in("id", notificationIds)
+        .or("push_sent.is.null,push_sent.eq.false");
+
+      if (directMarkError) {
+        console.error("direct push: mark sent", directMarkError);
+        return new Response(
+          JSON.stringify({ error: "Failed to update notification" }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      const { data: verifyDirect } = await supabase
+        .from("notifications")
+        .select("id")
+        .in("id", notificationIds)
+        .eq("push_sent", true);
+
+      if (!verifyDirect || verifyDirect.length === 0) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            direct: true,
+            status: "skipped",
+            reason: "already_sent",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      const pushData: Record<string, unknown> = {
+        notificationId: row.id,
+        type: "comment_reply",
+        relatedPostId: row.related_post_id,
+      };
+      if (dataRecord) {
+        for (const [k, v] of Object.entries(dataRecord)) {
+          if (!(k in pushData)) pushData[k] = v;
+        }
+      }
+
+      const pushPayload = {
+        to: pushToken,
+        title: titleDirect,
+        body: bodyDirect,
+        sound: "default",
+        badge: 0,
+        data: pushData,
+      };
+
+      const pushResponse = await fetch(EXPO_PUSH_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "Accept-Encoding": "gzip, deflate",
+        },
+        body: JSON.stringify(pushPayload),
+      });
+
+      if (!pushResponse.ok) {
+        const errorText = await pushResponse.text();
+        await supabase
+          .from("notifications")
+          .update({ push_sent: false })
+          .in("id", notificationIds);
+        return new Response(
+          JSON.stringify({
+            error: `Expo Push API error: ${pushResponse.status}`,
+            details: errorText,
+          }),
+          {
+            status: 502,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      const pushResult = await pushResponse.json();
+      if (pushResult.data?.status !== "ok") {
+        await supabase
+          .from("notifications")
+          .update({ push_sent: false })
+          .in("id", notificationIds);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            direct: true,
+            error: String(pushResult.data?.message ?? "Unknown error"),
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          direct: true,
+          sent: 1,
+          userId: userIdDirect,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        },
+      );
+    }
+
     // Get unread notifications that haven't been sent yet (deduplication)
     // We'll use a webhook approach: fetch recent notifications and send push notifications
     const { data: notifications, error: fetchError } = await supabase
