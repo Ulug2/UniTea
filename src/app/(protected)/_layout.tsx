@@ -84,16 +84,14 @@ export default function AppLayout() {
           getQueryParamFromRawUrl("post_type") ||
           getQueryParamFromRawUrl("type");
 
-        if (pathParts[0] === "post" && pathParts[1]) {
-          // `/post/<id>?postType=lost_found` should open the lost&found detail screen.
-          // This keeps universal-link configuration aligned with the existing `/post/*` path.
-          if (postType === "lost_found") {
-            router.navigate(`/lostfoundpost/${pathParts[1]}?fromDeeplink=1`);
-          } else {
-            router.navigate(`/post/${pathParts[1]}?fromDeeplink=1`);
-          }
-        } else if (pathParts[0] === "lostfoundpost" && pathParts[1]) {
-          router.navigate(`/lostfoundpost/${pathParts[1]}?fromDeeplink=1`);
+        // Expo Router already navigates to deep-linked routes; only intervene when
+        // a universal `/post/:id` link must open the Lost & Found screen instead.
+        if (
+          pathParts[0] === "post" &&
+          pathParts[1] &&
+          postType === "lost_found"
+        ) {
+          router.replace(`/lostfoundpost/${pathParts[1]}?fromDeeplink=1`);
         }
       } catch {
         // Silently ignore parse/navigation errors so user never sees alerts
