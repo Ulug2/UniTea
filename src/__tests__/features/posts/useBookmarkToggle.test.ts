@@ -82,7 +82,7 @@ describe('useBookmarkToggle', () => {
 
   // ── add bookmark ─────────────────────────────────────────────────────────────
   describe('add bookmark (shouldBookmark = true)', () => {
-    it('calls supabase.from("bookmarks").insert with correct payload', async () => {
+    it('calls supabase.from("bookmarks").upsert with correct payload', async () => {
       const chain = buildChain({ data: null, error: null });
       mockFrom.mockReturnValueOnce(chain);
 
@@ -96,7 +96,10 @@ describe('useBookmarkToggle', () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
       expect(mockFrom).toHaveBeenCalledWith('bookmarks');
-      expect(chain.insert).toHaveBeenCalledWith({ user_id: viewerId, post_id: postId });
+      expect(chain.upsert).toHaveBeenCalledWith(
+        { user_id: viewerId, post_id: postId },
+        { onConflict: 'user_id,post_id', ignoreDuplicates: true }
+      );
     });
 
     it('invalidates the correct query keys on success', async () => {
@@ -162,7 +165,6 @@ describe('useBookmarkToggle', () => {
     });
 
     it('shows fallback Alert message for non-Error errors', async () => {
-      // Make insert resolve badly: chain's then gives an error
       const chain = buildChain({ data: null, error: 'string-error' });
       mockFrom.mockReturnValueOnce(chain);
 
@@ -178,6 +180,28 @@ describe('useBookmarkToggle', () => {
       expect(alertSpy).toHaveBeenCalledWith(
         'Error',
         'Failed to update bookmark. Please try again.'
+      );
+    });
+
+    it('shows Supabase-style error message when error has message but is not Error', async () => {
+      const chain = buildChain({
+        data: null,
+        error: { message: 'duplicate key value violates unique constraint' },
+      });
+      mockFrom.mockReturnValueOnce(chain);
+
+      const { result } = renderHook(
+        () => useBookmarkToggle({ postId, viewerId }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => { result.current.mutate(true); });
+
+      await waitFor(() => expect(result.current.isError).toBe(true));
+
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Error',
+        'duplicate key value violates unique constraint'
       );
     });
   });

@@ -199,7 +199,11 @@ export default function NotificationSettingsModal({
         }
       }
 
-      // At this point, OS permission is granted.
+      // At this point, OS permission is granted: persist toggle first so the UI
+      // stays on even if Expo push token registration fails (common on Android
+      // without Play Services).
+      updateSettingMutation.mutate({ field, value: true });
+
       const expoProjectId =
         Constants?.expoConfig?.extra?.eas?.projectId ??
         Constants?.easConfig?.projectId;
@@ -209,27 +213,41 @@ export default function NotificationSettingsModal({
           "Notifications Setup Error",
           "Expo projectId is missing. Please check app.json/app.config."
         );
+        queryClient.invalidateQueries({
+          queryKey: ["notification-settings", userId],
+        });
         return;
       }
 
-      const token = await Notifications.getExpoPushTokenAsync({
-        projectId: expoProjectId,
-      });
+      try {
+        const token = await Notifications.getExpoPushTokenAsync({
+          projectId: expoProjectId,
+        });
 
-      // Preserve the other toggle value (if we already have one loaded),
-      // but ensure the toggled one becomes true.
-      const prevNotifyChats = settings?.notify_chats ?? false;
-      const prevNotifyUpvotes = settings?.notify_upvotes ?? false;
+        const snap = queryClient.getQueryData<NotificationSettings | null>([
+          "notification-settings",
+          userId,
+        ]);
+        const prevNotifyChats =
+          snap?.notify_chats ?? settings?.notify_chats ?? false;
+        const prevNotifyUpvotes =
+          snap?.notify_upvotes ?? settings?.notify_upvotes ?? false;
 
-      await supabase.from("notification_settings").upsert(
-        {
-          user_id: userId!,
-          push_token: token.data,
-          notify_chats: field === "notify_chats" ? true : prevNotifyChats,
-          notify_upvotes: field === "notify_upvotes" ? true : prevNotifyUpvotes,
-        },
-        { onConflict: "user_id" }
-      );
+        await supabase.from("notification_settings").upsert(
+          {
+            user_id: userId!,
+            push_token: token.data,
+            notify_chats: field === "notify_chats" ? true : prevNotifyChats,
+            notify_upvotes: field === "notify_upvotes" ? true : prevNotifyUpvotes,
+          },
+          { onConflict: "user_id" }
+        );
+      } catch (e) {
+        console.warn(
+          "Failed to get or register Expo push token; notification toggles remain on.",
+          e
+        );
+      }
 
       queryClient.invalidateQueries({
         queryKey: ["notification-settings", userId],

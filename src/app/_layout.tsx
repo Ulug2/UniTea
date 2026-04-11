@@ -219,31 +219,40 @@ function RootLayoutContent() {
         //    sees nothing, but hooks now run against the pre-seeded cache.
         setCacheReady(true);
 
-        // 3. Fetch fresh data in the background. prefetchInitialData overwrites
-        //    the "new" feed slot with the latest posts from the network.
-        const profileData = await prefetchInitialData(
-          session.user.id,
-          queryClient
-        );
-
-        if (profileData) {
-          // Persist the profile for the next cold start.
-          await persistProfile({
-            avatar_url: profileData.avatar_url ?? null,
-            username: profileData.username ?? null,
-          });
-
-          // Warm the expo-image disk cache so the avatar is ready before the
-          // profile screen mounts.
-          if (profileData.avatar_url) {
-            const avatarUrl = profileData.avatar_url.startsWith("http")
-              ? profileData.avatar_url
-              : `${SUPABASE_URL}/storage/v1/object/public/avatars/${profileData.avatar_url}`;
-            ExpoImage.prefetch(avatarUrl);
-          }
-        }
-
+        // 3. Hide the native splash as soon as local seeding is done — do NOT
+        //    await network prefetch here. Awaiting prefetchInitialData made cold
+        //    starts (e.g. universal link to /post/:id after force-quit) sit on the
+        //    splash for feed + blocks + profile round-trips the user never waited
+        //    for. Fresh data still loads via prefetch and query refetch.
         setStartupReadyToHideSplash(true);
+
+        void (async () => {
+          try {
+            const profileData = await prefetchInitialData(
+              session.user.id,
+              queryClient
+            );
+
+            if (profileData) {
+              await persistProfile({
+                avatar_url: profileData.avatar_url ?? null,
+                username: profileData.username ?? null,
+              });
+
+              if (profileData.avatar_url) {
+                const avatarUrl = profileData.avatar_url.startsWith("http")
+                  ? profileData.avatar_url
+                  : `${SUPABASE_URL}/storage/v1/object/public/avatars/${profileData.avatar_url}`;
+                ExpoImage.prefetch(avatarUrl);
+              }
+            }
+          } catch (error) {
+            logger.error(
+              "[Prefetch] Background initial prefetch failed",
+              error as Error
+            );
+          }
+        })();
       })();
     } else if (fontsLoaded && !authLoading && !session) {
       (async () => {

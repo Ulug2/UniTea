@@ -15,10 +15,13 @@ export function useBookmarkToggle({ postId, viewerId }: UseBookmarkToggleOptions
       if (!viewerId || !postId) throw new Error("User or post ID missing");
 
       if (shouldBookmark) {
-        const { error } = await supabase.from("bookmarks").insert({
-          user_id: viewerId,
-          post_id: postId,
-        });
+        const { error } = await supabase.from("bookmarks").upsert(
+          {
+            user_id: viewerId,
+            post_id: postId,
+          },
+          { onConflict: "user_id,post_id", ignoreDuplicates: true }
+        );
         if (error) throw error;
       } else {
         const { error } = await supabase
@@ -30,10 +33,13 @@ export function useBookmarkToggle({ postId, viewerId }: UseBookmarkToggleOptions
       }
     },
     onError: (error: unknown) => {
+      const supabaseMessage = (error as { message?: unknown } | null)?.message;
       const message =
         error instanceof Error
           ? error.message
-          : "Failed to update bookmark. Please try again.";
+          : typeof supabaseMessage === "string"
+            ? supabaseMessage
+            : "Failed to update bookmark. Please try again.";
       Alert.alert("Error", message);
     },
     onSuccess: () => {
