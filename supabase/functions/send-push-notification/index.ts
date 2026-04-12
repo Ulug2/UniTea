@@ -79,7 +79,7 @@ serve(async (req) => {
     if (notificationId && userIdDirect && titleDirect && bodyDirect) {
       const { data: directRow, error: directFetchError } = await supabase
         .from("notifications")
-        .select("id, user_id, type, related_post_id")
+        .select("id, user_id, type, related_post_id, related_user_id")
         .eq("id", notificationId)
         .maybeSingle();
 
@@ -99,6 +99,7 @@ serve(async (req) => {
         user_id: string;
         type: string;
         related_post_id: string | null;
+        related_user_id: string | null;
       } | null;
 
       if (
@@ -180,6 +181,7 @@ serve(async (req) => {
         notificationId: row.id,
         type: "comment_reply",
         relatedPostId: row.related_post_id,
+        relatedUserId: row.related_user_id,
       };
       if (dataRecord) {
         for (const [k, v] of Object.entries(dataRecord)) {

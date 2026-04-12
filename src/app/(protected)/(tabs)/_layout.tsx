@@ -63,6 +63,9 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const isAndroid = Platform.OS === "android";
   const baseTabHeight = verticalScale(56);
+  const androidBottomInset = isAndroid
+    ? Math.max(insets.bottom, verticalScale(56))
+    : 0;
 
   return (
     <>
@@ -78,10 +81,10 @@ export default function TabLayout() {
             borderTopColor: theme.border,
             borderTopWidth: 1,
             height: isAndroid
-              ? baseTabHeight + insets.bottom
+              ? baseTabHeight + androidBottomInset
               : verticalScale(80),
             paddingTop: isAndroid ? verticalScale(6) : 0,
-            paddingBottom: isAndroid ? insets.bottom : 0,
+            paddingBottom: androidBottomInset,
           },
           headerStyle: {
             backgroundColor: theme.background,
