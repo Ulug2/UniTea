@@ -47,6 +47,13 @@ serve(async (req: Request) => {
       }
     );
 
+    // Service-role client for server-side actions that should bypass caller RLS
+    // (e.g. resolving post owner + inserting notifications reliably).
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const adminSupabase = serviceRoleKey
+      ? createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceRoleKey)
+      : null;
+
     const {
       data: { user },
       error: authError,
@@ -206,8 +213,10 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
 
     // 6a. Create notification for post author (gracefully fail if notification insert fails)
     try {
+      const notificationDb = adminSupabase ?? supabase;
+
       // Query the posts table to get the post author's user_id
-      const { data: postData, error: postError } = await supabase
+      const { data: postData, error: postError } = await notificationDb
         .from("posts")
         .select("user_id")
         .eq("id", post_id)
@@ -216,15 +225,21 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
       if (postError) {
         console.error("Error fetching post author:", postError);
         // Don't throw; fail gracefully so comment creation isn't prevented
+      } else if (!postData) {
+        console.error(
+          "Post author lookup returned no row; skipping comment notification",
+          { post_id },
+        );
       } else if (postData && postData.user_id !== user.id) {
         // Only notify if comment author is NOT the post author
-        const { data: notificationRow, error: notificationError } = await supabase
+        const { data: notificationRow, error: notificationError } = await notificationDb
           .from("notifications")
           .insert({
             user_id: postData.user_id,
             type: "comment_reply",
             related_post_id: post_id,
             related_comment_id: data?.id, // Optional, for future use
+            related_user_id: user.id,
             message: "Your post received a new comment.",
             is_read: false,
           })

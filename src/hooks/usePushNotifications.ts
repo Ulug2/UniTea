@@ -87,13 +87,14 @@ Notifications.setNotificationHandler({
           shouldShowList: true,
         };
       }
+      // Show non-chat notifications (e.g. comment replies, upvotes) in foreground.
       if (!isChatMessage) {
         return {
-          shouldShowAlert: false,
-          shouldPlaySound: false,
+          shouldShowAlert: true,
+          shouldPlaySound: true,
           shouldSetBadge: true,
-          shouldShowBanner: false,
-          shouldShowList: false,
+          shouldShowBanner: true,
+          shouldShowList: true,
         };
       }
       // Viewing this chat – suppress banner
