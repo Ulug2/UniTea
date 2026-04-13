@@ -232,7 +232,7 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
         );
       } else if (postData && postData.user_id !== user.id) {
         // Only notify if comment author is NOT the post author
-        const { data: notificationRow, error: notificationError } = await notificationDb
+        const { error: notificationError } = await notificationDb
           .from("notifications")
           .insert({
             user_id: postData.user_id,
@@ -249,33 +249,6 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
         if (notificationError) {
           console.error("Error creating comment notification:", notificationError);
           // Don't throw; fail gracefully so comment creation isn't prevented
-        } else if (notificationRow?.id) {
-          try {
-            const { error: pushInvokeError } = await supabase.functions.invoke(
-              "send-push-notification",
-              {
-                body: {
-                  userId: postData.user_id,
-                  title: "New Comment",
-                  body: "Someone commented on your post.",
-                  data: {
-                    type: "comment_reply",
-                    relatedPostId: post_id,
-                    notificationId: notificationRow.id,
-                    route: `/post/${post_id}`,
-                  },
-                },
-              },
-            );
-            if (pushInvokeError) {
-              console.error(
-                "send-push-notification invoke failed:",
-                pushInvokeError,
-              );
-            }
-          } catch (pushErr) {
-            console.error("send-push-notification invoke threw:", pushErr);
-          }
         }
       }
     } catch (notificationError: any) {
