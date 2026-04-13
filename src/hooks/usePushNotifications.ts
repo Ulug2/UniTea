@@ -15,6 +15,7 @@ let currentAppState: AppStateStatus = AppState.currentState;
 // Track which chat screen is currently viewed (other user id) so we can suppress
 // in-app banners for messages from that chat only
 let currentViewedChatPartnerId: string | null = null;
+const handledNotificationResponseIds = new Set<string>();
 
 export function setCurrentViewedChatPartnerId(partnerId: string | null) {
   currentViewedChatPartnerId = partnerId;
@@ -29,10 +30,11 @@ const appStateSubscription = AppState.addEventListener(
   }
 );
 
-function getNotificationData(notification: Notifications.Notification): {
+export function getNotificationData(notification: Notifications.Notification): {
   type?: string;
   relatedUserId?: string;
   relatedPostId?: string;
+  relatedChatId?: string;
 } {
   const contentData = notification.request.content.data as
     | Record<string, unknown>
@@ -47,7 +49,119 @@ function getNotificationData(notification: Notifications.Notification): {
       (contentData?.relatedUserId as string) ?? remoteData?.relatedUserId,
     relatedPostId:
       (contentData?.relatedPostId as string) ?? remoteData?.relatedPostId,
+    relatedChatId:
+      (contentData?.relatedChatId as string) ??
+      (contentData?.related_chat_id as string) ??
+      remoteData?.relatedChatId ??
+      remoteData?.related_chat_id,
   };
+}
+
+async function resolveChatIdForParticipants(
+  userId: string,
+  relatedUserId: string,
+): Promise<string | null> {
+  const { data: summary1 } = await supabase
+    .from("user_chats_summary")
+    .select("chat_id")
+    .eq("participant_1_id", userId)
+    .eq("participant_2_id", relatedUserId)
+    .maybeSingle();
+
+  const chatId =
+    summary1?.chat_id ??
+    (
+      await supabase
+        .from("user_chats_summary")
+        .select("chat_id")
+        .eq("participant_1_id", relatedUserId)
+        .eq("participant_2_id", userId)
+        .maybeSingle()
+    )?.data?.chat_id;
+
+  return chatId ?? null;
+}
+
+export async function routeFromNotification(
+  notification: Notifications.Notification,
+  userId: string,
+) {
+  const { type, relatedUserId, relatedPostId, relatedChatId } =
+    getNotificationData(notification);
+
+  // Chat notifications should open the exact chat if payload is complete.
+  if (type === "chat_message") {
+    if (relatedChatId) {
+      router.push(`/chat/${relatedChatId}`);
+      return;
+    }
+
+    if (!relatedUserId) {
+      logger.warn("Missing relatedUserId in chat notification payload", {
+        userId,
+        notificationType: type,
+        component: "usePushNotifications",
+      });
+      router.push("/chat");
+      return;
+    }
+
+    setCurrentViewedChatPartnerId(relatedUserId);
+    const chatId = await resolveChatIdForParticipants(userId, relatedUserId);
+
+    if (chatId) {
+      router.push(`/chat/${chatId}`);
+      return;
+    }
+
+    logger.warn("Could not resolve chatId from notification payload", {
+      userId,
+      relatedUserId,
+      notificationType: type,
+      component: "usePushNotifications",
+    });
+    router.push("/chat");
+    return;
+  }
+
+  // Upvote and comment notifications should open post details directly.
+  if (type === "upvote" || type === "comment_reply") {
+    if (relatedPostId) {
+      router.push(`/post/${relatedPostId}`);
+      return;
+    }
+
+    logger.warn("Missing relatedPostId in post notification payload", {
+      userId,
+      notificationType: type,
+      component: "usePushNotifications",
+    });
+    router.push("/");
+    return;
+  }
+
+  // Unknown type fallback.
+  logger.warn("Unknown notification type during routing", {
+    userId,
+    notificationType: type,
+    component: "usePushNotifications",
+  });
+}
+
+export async function handleNotificationResponse(
+  response: Notifications.NotificationResponse,
+  userId: string,
+) {
+  const responseId = response.notification.request.identifier;
+  if (responseId && handledNotificationResponseIds.has(responseId)) {
+    return;
+  }
+
+  if (responseId) {
+    handledNotificationResponseIds.add(responseId);
+  }
+
+  await routeFromNotification(response.notification, userId);
 }
 
 // Set notification handler: show chat message banners in foreground except when viewing that chat
@@ -314,49 +428,10 @@ export function usePushNotifications() {
 
     const subscription = Notifications.addNotificationResponseReceivedListener(
       async (response) => {
-        const { type, relatedUserId, relatedPostId } = getNotificationData(
-          response.notification
-        );
-
         try {
-          // Handle chat message notifications
-          if (type === "chat_message" && relatedUserId) {
-            // Mark the currently viewed chat partner so
-            // foreground notification handling stays suppressed.
-            setCurrentViewedChatPartnerId(relatedUserId);
-
-            // Resolve chat id between the two participants.
-            // (We query the cached `user_chats_summary` view.)
-            const { data: summary1 } = await supabase
-              .from("user_chats_summary")
-              .select("chat_id")
-              .eq("participant_1_id", userId)
-              .eq("participant_2_id", relatedUserId)
-              .maybeSingle();
-
-            const chatId =
-              summary1?.chat_id ??
-              (
-                await supabase
-                  .from("user_chats_summary")
-                  .select("chat_id")
-                  .eq("participant_1_id", relatedUserId)
-                  .eq("participant_2_id", userId)
-                  .maybeSingle()
-              )?.data?.chat_id;
-
-            if (chatId) {
-              router.push(`/chat/${chatId}`);
-            }
-          }
-          // Handle upvote and comment reply notifications (route to post detail)
-          else if (
-            (type === "upvote" || type === "comment_reply") &&
-            relatedPostId
-          ) {
-            router.push(`/post/${relatedPostId}`);
-          }
+          await handleNotificationResponse(response, userId);
         } catch (error: any) {
+          const type = getNotificationData(response.notification).type;
           logger.error("Error handling notification tap", error as Error, {
             userId,
             notificationType: type,

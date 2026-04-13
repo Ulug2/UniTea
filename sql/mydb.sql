@@ -55,10 +55,13 @@ CREATE TABLE public.chats (
   participant_2_id uuid NOT NULL,
   last_message_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now(),
+  is_anonymous boolean NOT NULL DEFAULT false,
+  initiator_id uuid,
   CONSTRAINT chats_pkey PRIMARY KEY (id),
   CONSTRAINT chats_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id),
   CONSTRAINT chats_participant_1_id_fkey FOREIGN KEY (participant_1_id) REFERENCES auth.users(id),
-  CONSTRAINT chats_participant_2_id_fkey FOREIGN KEY (participant_2_id) REFERENCES auth.users(id)
+  CONSTRAINT chats_participant_2_id_fkey FOREIGN KEY (participant_2_id) REFERENCES auth.users(id),
+  CONSTRAINT chats_initiator_id_fkey FOREIGN KEY (initiator_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.comments (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -159,6 +162,7 @@ CREATE TABLE public.posts (
   repost_comment text,
   title text,
   image_urls ARRAY,
+  image_aspect_ratio double precision,
   CONSTRAINT posts_pkey PRIMARY KEY (id),
   CONSTRAINT posts_reposted_from_post_id_fkey FOREIGN KEY (reposted_from_post_id) REFERENCES public.posts(id),
   CONSTRAINT posts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)

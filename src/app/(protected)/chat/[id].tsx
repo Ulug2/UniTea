@@ -101,7 +101,7 @@ export default function ChatDetailScreen() {
         .from("user_chats_summary")
         .select("*")
         .or(
-          `participant_1_id.eq.${currentUserId},participant_2_id.eq.${currentUserId}`
+          `participant_1_id.eq.${currentUserId},participant_2_id.eq.${currentUserId}`,
         )
         .order("last_message_at", {
           ascending: false,
@@ -258,11 +258,11 @@ export default function ChatDetailScreen() {
 
   const otherUserName = useMemo(() => {
     if (chatIdentity.isAnonymousChat) return chatIdentity.displayName;
-    if (isLegacyAnonymous && otherUserId) {
-      return `Anonymous User #${hashStringToNumber(otherUserId)}`;
+    if (isLegacyAnonymous && id) {
+      return `Anonymous User #${hashStringToNumber(id)}`;
     }
     return otherUser?.username || "Unknown User";
-  }, [chatIdentity, isLegacyAnonymous, otherUserId, otherUser?.username]);
+  }, [chatIdentity, isLegacyAnonymous, id, otherUser?.username]);
 
   // Fetch messages with pagination
   const {
@@ -311,7 +311,9 @@ export default function ChatDetailScreen() {
 
   useEffect(() => {
     if (!id || !firstPageMessageIdSignature) return;
-    if (lastPersistedFirstPageSignatureRef.current === firstPageMessageIdSignature)
+    if (
+      lastPersistedFirstPageSignatureRef.current === firstPageMessageIdSignature
+    )
       return;
 
     // Debounce writes because realtime inserts can cause rapid successive
@@ -319,10 +321,7 @@ export default function ChatDetailScreen() {
     const timer = setTimeout(() => {
       lastPersistedFirstPageSignatureRef.current = firstPageMessageIdSignature;
       const firstPage = messagesData?.pages?.[0] ?? [];
-      saveChatMessagesToStorage(
-        id,
-        firstPage as Record<string, unknown>[],
-      );
+      saveChatMessagesToStorage(id, firstPage as Record<string, unknown>[]);
     }, 700);
 
     return () => clearTimeout(timer);
@@ -642,11 +641,21 @@ export default function ChatDetailScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["blocks", currentUserId] });
-      queryClient.invalidateQueries({ queryKey: ["posts"], refetchType: "none" });
-      queryClient.invalidateQueries({ queryKey: ["comments"], refetchType: "none" });
-      queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
+      queryClient.invalidateQueries({
+        queryKey: ["posts"],
+        refetchType: "none",
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["comments"],
+        refetchType: "none",
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["chat-summaries", currentUserId],
+      });
       queryClient.invalidateQueries({ queryKey: ["chat-messages", id] });
-      queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });
+      queryClient.invalidateQueries({
+        queryKey: ["global-unread-count", currentUserId],
+      });
       router.back();
     },
     onError: (error) => {
@@ -916,7 +925,7 @@ export default function ChatDetailScreen() {
           ],
         );
       },
-      () => { },
+      () => {},
     );
 
     if (Platform.OS === "ios") {
@@ -991,7 +1000,8 @@ export default function ChatDetailScreen() {
       if (!msg.created_at) continue;
 
       const tombstone = isDeletedForEveryone(msg);
-      const visibleForViewer = tombstone || !isDeletedForViewer(msg, currentUserId);
+      const visibleForViewer =
+        tombstone || !isDeletedForViewer(msg, currentUserId);
 
       if (visibleForViewer) {
         visibleDateKeys.add(dateKey(new Date(msg.created_at)));
