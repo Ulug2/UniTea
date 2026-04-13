@@ -414,13 +414,17 @@ export default function ChatScreen() {
   const participantIds = useMemo(() => {
     const ids = new Set<string>();
     (chatSummaries as ChatSummary[]).forEach((chat: ChatSummary) => {
+      if (chat.is_anonymous === true) {
+        return;
+      }
       ids.add(chat.participant_1_id);
       ids.add(chat.participant_2_id);
     });
     return Array.from(ids)
+      .filter((id: string) => id !== currentUserId)
       .filter((id: string) => !id.startsWith("anonymous-"))
       .sort();
-  }, [chatSummaries]);
+  }, [chatSummaries, currentUserId]);
 
   // Fetch all participant profiles
   const { data: users = [], isLoading: isLoadingUsers } = useQuery<User[]>({
@@ -518,7 +522,9 @@ export default function ChatScreen() {
           lastMessageHasImage={lastMessageHasImage === true}
           unreadCount={getUnreadCount(item)}
           isAnonymous={isAnonymous}
-          displayName={identity.isAnonymousChat ? identity.displayName : undefined}
+          displayName={
+            identity.isAnonymousChat ? identity.displayName : undefined
+          }
           onImageLoad={index < 5 ? onItemReady : undefined}
           onBeforeNavigate={() => {
             const syntheticChat = {

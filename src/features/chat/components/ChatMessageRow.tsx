@@ -126,10 +126,10 @@ function ChatMessageRowInner({
         isCurrentUser
           ? replyQuoteStyles.containerCurrentUser
           : {
-            backgroundColor: isDark
-              ? "rgba(255,255,255,0.10)"
-              : "rgba(0,0,0,0.06)",
-          },
+              backgroundColor: isDark
+                ? "rgba(255,255,255,0.10)"
+                : "rgba(0,0,0,0.06)",
+            },
       ]}
       onPress={() => {
         if (item.reply_to_id && onReplyQuotePress) {
@@ -196,8 +196,8 @@ function ChatMessageRowInner({
             : chatDetailStyles.otherUserMessage,
           // Larger gap when the message above is from the opposite side (e.g. partner → me)
           nextMsg &&
-          nextMsg.user_id !== item.user_id &&
-          inlineTimestampStyles.messageGapAfterOtherSender,
+            nextMsg.user_id !== item.user_id &&
+            inlineTimestampStyles.messageGapAfterOtherSender,
         ]}
         onLongPress={() => onLongPress(item)}
         onPress={() => {
@@ -286,7 +286,8 @@ function ChatMessageRowInner({
                       : theme.messageBubble,
                   paddingHorizontal: scale(16),
                   paddingTop: verticalScale(6),
-                  paddingBottom: verticalScale(6),
+                  // Keep extra breathing room between message text and time label.
+                  paddingBottom: verticalScale(15),
                   // Ensure bubble is tall enough so the timestamp (absolute bottom) is never clipped
                   minHeight: verticalScale(39),
                   // Ensure bubble is wide enough for short messages (e.g. "1", "hi") + timestamp
@@ -304,8 +305,8 @@ function ChatMessageRowInner({
                   position: "relative" as const,
                 },
                 item.image_url &&
-                !showTombstone &&
-                chatDetailStyles.messageTextWrapWithImage,
+                  !showTombstone &&
+                  chatDetailStyles.messageTextWrapWithImage,
               ]}
             >
               {showTombstone ? (

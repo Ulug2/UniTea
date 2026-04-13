@@ -26,6 +26,7 @@ interface NotificationRecord {
   created_at: string;
   related_user_id?: string | null;
   related_post_id?: string | null;
+  related_chat_id?: string | null;
 }
 
 serve(async (req) => {
@@ -318,6 +319,37 @@ serve(async (req) => {
       return message.substring(0, MAX_MESSAGE_LENGTH) + "...";
     };
 
+    const resolveChatContextForUsers = async (
+      recipientUserId: string,
+      senderUserId: string,
+    ): Promise<{ chatId: string | null; isAnonymous: boolean }> => {
+      const { data: summary1 } = await supabase
+        .from("user_chats_summary")
+        .select("chat_id, is_anonymous")
+        .eq("participant_1_id", recipientUserId)
+        .eq("participant_2_id", senderUserId)
+        .maybeSingle();
+
+      if (summary1?.chat_id) {
+        return {
+          chatId: summary1.chat_id as string,
+          isAnonymous: Boolean(summary1.is_anonymous),
+        };
+      }
+
+      const { data: summary2 } = await supabase
+        .from("user_chats_summary")
+        .select("chat_id, is_anonymous")
+        .eq("participant_1_id", senderUserId)
+        .eq("participant_2_id", recipientUserId)
+        .maybeSingle();
+
+      return {
+        chatId: (summary2?.chat_id as string | undefined) ?? null,
+        isAnonymous: Boolean(summary2?.is_anonymous),
+      };
+    };
+
     // Batch lookup for notification settings, sender usernames, and badge counts.
     // This replaces sequential per-user DB calls inside the send loops.
     const chatRecipientIds = Array.from(chatNotificationsByUser.keys());
@@ -465,20 +497,47 @@ serve(async (req) => {
           continue;
         }
 
-        const senderUsername = senderUsernameById.get(senderId) ?? "Someone";
+        const senderUsername = senderId
+          ? senderUsernameById.get(senderId) ?? "Someone"
+          : "New message";
         const messageBody = truncateMessage(latestChat.message || "Sent a message");
         const unreadChatCount = unreadChatCountByUserId.get(userId) ?? 0;
+        const chatContext = senderId
+          ? await resolveChatContextForUsers(userId, senderId)
+          : { chatId: null, isAnonymous: false };
+        const relatedChatId =
+          latestChat.related_chat_id ??
+          chatContext.chatId;
+        const isAnonymousChat = chatContext.isAnonymous;
+        const pushTitle = isAnonymousChat
+          ? "From: Anonymous user"
+          : senderUsername;
+        const relatedUserId = isAnonymousChat ? null : senderId;
+
+        // Privacy hardening: for anonymous chats, scrub sender identity from
+        // stored notification rows once we have resolved chat context.
+        if (isAnonymousChat && senderId) {
+          await supabase
+            .from("notifications")
+            .update({ related_user_id: null })
+            .in("id", notificationIds)
+            .eq("type", "chat_message")
+            .eq("related_user_id", senderId);
+        }
 
         const pushPayload = {
           to: pushToken,
-          title: senderUsername,
+          title: pushTitle,
           body: messageBody,
           sound: "default",
           badge: unreadChatCount, // Only chat messages increment badge
           data: {
             notificationId: latestChat.id,
             type: "chat_message",
-            relatedUserId: senderId, // So client can suppress banner when viewing this chat
+            // Preserve anonymity: do not expose sender user id for anonymous chats.
+            relatedUserId,
+            relatedChatId,
+            isAnonymousChat,
           },
         };
 

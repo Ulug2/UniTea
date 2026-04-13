@@ -10,7 +10,10 @@ import * as Notifications from "expo-notifications";
 import { useMyProfile } from "../../features/profile/hooks/useMyProfile";
 import BannedScreen from "../../components/BannedScreen";
 import { FilterProvider } from "../../context/FilterContext";
-import { usePushNotifications } from "../../hooks/usePushNotifications";
+import {
+  handleNotificationResponse,
+  usePushNotifications,
+} from "../../hooks/usePushNotifications";
 import { useGlobalUnreadCount } from "../../hooks/useGlobalUnreadCount";
 
 export default function AppLayout() {
@@ -36,13 +39,35 @@ export default function AppLayout() {
     // Only set badge when authenticated; when logged out we don't want to
     // leave a stale badge behind.
     if (!session) return;
-    Notifications.setBadgeCountAsync(count).catch(() => { });
+    Notifications.setBadgeCountAsync(count).catch(() => {});
   }, [globalUnreadCount, session]);
 
   useEffect(() => {
     if (!loading && !session) {
       router.replace("/(auth)");
     }
+  }, [session, loading]);
+
+  // Handle notification-tap cold starts (app killed -> opened via push tap).
+  // We defer slightly so navigation containers/tabs mount first, similar to
+  // existing deep-link bootstrap behavior.
+  useEffect(() => {
+    if (!session || loading) return;
+
+    const t = setTimeout(async () => {
+      try {
+        const initialResponse =
+          await Notifications.getLastNotificationResponseAsync();
+        if (!initialResponse) return;
+
+        await handleNotificationResponse(initialResponse, session.user.id);
+        await Notifications.clearLastNotificationResponseAsync();
+      } catch {
+        // Non-fatal: live listener still handles subsequent taps.
+      }
+    }, 100);
+
+    return () => clearTimeout(t);
   }, [session, loading]);
 
   // Handle deep links (deferred so tabs mount first; avoids error flash)
@@ -149,13 +174,14 @@ export default function AppLayout() {
           name="create-post"
           options={{
             headerShown: false,
-            animation:
-              Platform.OS === "android" ? "none" : "slide_from_bottom",
+            animation: Platform.OS === "android" ? "none" : "slide_from_bottom",
             // transparentModal keeps the underlying screen rendered so the
             // feed is visible behind the JS-driven slide on Android.
             // fullScreenModal on iOS is the correct native modal presentation.
             presentation:
-              Platform.OS === "android" ? "transparentModal" : "fullScreenModal",
+              Platform.OS === "android"
+                ? "transparentModal"
+                : "fullScreenModal",
           }}
         />
         <Stack.Screen
@@ -181,10 +207,11 @@ export default function AppLayout() {
                 />
               </View>
             ),
-            animation:
-              Platform.OS === "android" ? "none" : "slide_from_bottom",
+            animation: Platform.OS === "android" ? "none" : "slide_from_bottom",
             presentation:
-              Platform.OS === "android" ? "transparentModal" : "fullScreenModal",
+              Platform.OS === "android"
+                ? "transparentModal"
+                : "fullScreenModal",
           }}
         />
         <Stack.Screen
