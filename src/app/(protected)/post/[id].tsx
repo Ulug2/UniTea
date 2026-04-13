@@ -74,51 +74,29 @@ export default function PostDetailed() {
   const [commentText, setCommentText] = useState<string>("");
   const [parentCommentId, setParentCommentId] = useState<string | null>(null);
   const [replyingToUsername, setReplyingToUsername] = useState<string | null>(
-    null
+    null,
   );
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [isAnonymousMode, setIsAnonymousMode] = useState(true);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
-    null
+    null,
   );
   const inputRef = useRef<TextInput | null>(null);
   const commentsListRef = useRef<FlatList<CommentNode> | null>(null);
-  // On iOS, insets.bottom must be removed from the composer while the keyboard
-  // is visible — the keyboard already covers the home-indicator zone, and keeping
-  // the inset creates a visible 34-px dead gap above the keyboard.
-  const [iosKeyboardOpen, setIosKeyboardOpen] = useState(false);
-
-  // On Android, KeyboardAvoidingView + adjustResize are unreliable when
-  // edgeToEdgeEnabled:true is set in app.json (adjustResize is effectively
-  // ignored on API 30+ in edge-to-edge mode). We therefore lift the footer
-  // manually using Keyboard events: track the IME height and apply it as
-  // paddingBottom on the wrapper View so the composer stays above the keyboard.
+  // Remove bottom safe-area inset while keyboard is open to avoid extra gap
+  // between the keyboard and composer on both iOS and Android.
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
 
   useEffect(() => {
-    if (Platform.OS === "ios") {
-      // Use *Will* events so the padding change is synchronised with the
-      // keyboard animation rather than snapping after it finishes.
-      const show = Keyboard.addListener("keyboardWillShow", () =>
-        setIosKeyboardOpen(true)
-      );
-      const hide = Keyboard.addListener("keyboardWillHide", () =>
-        setIosKeyboardOpen(false)
-      );
-      return () => {
-        show.remove();
-        hide.remove();
-      };
-    }
-
-    // Android — Did* events are the reliable ones on this platform.
-    const show = Keyboard.addListener("keyboardDidShow", (e) =>
-      setAndroidKeyboardInset(e.endCoordinates.height)
+    if (Platform.OS !== "ios") return;
+    const show = Keyboard.addListener("keyboardWillShow", () =>
+      setKeyboardOpen(true),
     );
-    const hide = Keyboard.addListener("keyboardDidHide", () =>
-      setAndroidKeyboardInset(0)
+    const hide = Keyboard.addListener("keyboardWillHide", () =>
+      setKeyboardOpen(false),
     );
     return () => {
       show.remove();
@@ -126,9 +104,29 @@ export default function PostDetailed() {
     };
   }, []);
 
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const show = Keyboard.addListener("keyboardDidShow", (e) => {
+      // Use full IME height on Android; subtracting safe area can under-lift
+      // the composer on some devices/navigation modes.
+      const imeInset = Math.max(e.endCoordinates.height + insets.bottom, 0);
+      setAndroidKeyboardInset(imeInset);
+      setKeyboardOpen(true);
+    });
+    const hide = Keyboard.addListener("keyboardDidHide", () => {
+      setAndroidKeyboardInset(0);
+      setKeyboardOpen(false);
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+      setAndroidKeyboardInset(0);
+    };
+  }, []);
+
   const { height: screenHeight } = useWindowDimensions();
   const slideAnim = useRef(
-    new Animated.Value(Platform.OS === "android" ? screenHeight : 0)
+    new Animated.Value(Platform.OS === "android" ? screenHeight : 0),
   ).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const isExiting = useRef(false);
@@ -184,7 +182,10 @@ export default function PostDetailed() {
 
   const androidWrapperStyle =
     Platform.OS === "android"
-      ? [{ flex: 1 }, { transform: [{ translateY: slideAnim }], opacity: fadeAnim }]
+      ? [
+          { flex: 1 },
+          { transform: [{ translateY: slideAnim }], opacity: fadeAnim },
+        ]
       : { flex: 1 };
 
   // Wraps any content in the Android slide-animation container.
@@ -370,7 +371,7 @@ export default function PostDetailed() {
           style: "destructive",
           onPress: () => deletePostMutation.mutate(undefined),
         },
-      ]
+      ],
     );
   };
 
@@ -413,7 +414,7 @@ export default function PostDetailed() {
         onPress: () =>
           blockUserMutation.mutate(
             { targetUserId: detailedPost.user_id, scope },
-            { onSuccess: () => closeScreen() }
+            { onSuccess: () => closeScreen() },
           ),
       },
     ]);
@@ -509,7 +510,7 @@ export default function PostDetailed() {
       isBookmarked,
       toggleBookmark,
       isAdmin,
-    ]
+    ],
   );
 
   // Only gate on post/user loading — comments show an inline spinner via
@@ -521,7 +522,7 @@ export default function PostDetailed() {
         <View style={styles.container}>
           <ActivityIndicator size="large" color={theme.primary} />
         </View>
-      </View>
+      </View>,
     );
   }
 
@@ -554,7 +555,7 @@ export default function PostDetailed() {
             <Text style={styles.backToFeedButtonText}>Back to feed</Text>
           </Pressable>
         </View>
-      </View>
+      </View>,
     );
   }
 
@@ -576,7 +577,7 @@ export default function PostDetailed() {
             <Text style={styles.backToFeedButtonText}>Back to feed</Text>
           </Pressable>
         </View>
-      </View>
+      </View>,
     );
   }
 
@@ -584,14 +585,14 @@ export default function PostDetailed() {
   const isPostAuthorBlocked = isBlockedPost(
     blocks,
     detailedPost.user_id,
-    detailedPost.is_anonymous ?? false
+    detailedPost.is_anonymous ?? false,
   );
   // Check if reposted post's original author is blocked (scope-aware)
   const isRepostAuthorBlocked = detailedPost.original_user_id
     ? isBlockedPost(
         blocks,
         detailedPost.original_user_id,
-        detailedPost.original_is_anonymous ?? false
+        detailedPost.original_is_anonymous ?? false,
       )
     : false;
 
@@ -614,7 +615,7 @@ export default function PostDetailed() {
             <Text style={styles.backToFeedButtonText}>Back to feed</Text>
           </Pressable>
         </View>
-      </View>
+      </View>,
     );
   }
 
@@ -624,11 +625,11 @@ export default function PostDetailed() {
 
   // Determine whether the block option for this post's scope is already applied
   const postScope =
-    detailedPost?.is_anonymous ?? false ? "anonymous_only" : "profile_only";
+    (detailedPost?.is_anonymous ?? false) ? "anonymous_only" : "profile_only";
   const alreadyBlockedInScope = hasBlockForScope(
     blocks,
     detailedPost?.user_id,
-    postScope
+    postScope,
   );
 
   const commentsScreenShellStyle = {
@@ -671,9 +672,7 @@ export default function PostDetailed() {
       <CommentComposer
         ref={inputRef}
         theme={theme}
-        insetsBottom={
-          Platform.OS === "ios" && iosKeyboardOpen ? 0 : insets.bottom
-        }
+        insetsBottom={keyboardOpen ? 0 : insets.bottom}
         commentText={commentText}
         onChangeText={setCommentText}
         onSubmit={handlePostComment}
@@ -731,7 +730,7 @@ export default function PostDetailed() {
                           closeScreen();
                         },
                       },
-                    ]
+                    ],
                   );
                 }}
               >
@@ -812,7 +811,10 @@ export default function PostDetailed() {
         </KeyboardAvoidingView>
       ) : (
         <View
-          style={[commentsScreenShellStyle, { paddingBottom: androidKeyboardInset }]}
+          style={[
+            commentsScreenShellStyle,
+            { paddingBottom: androidKeyboardInset },
+          ]}
         >
           {commentsScreenBody}
         </View>
@@ -834,7 +836,7 @@ export default function PostDetailed() {
         <View style={{ flex: 1, backgroundColor: theme.background }}>
           {screenChrome}
           {content}
-        </View>
+        </View>,
       )}
     </ErrorBoundary>
   );

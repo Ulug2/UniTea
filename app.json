@@ -28,6 +28,7 @@
     "android": {
       "softwareKeyboardLayoutMode": "resize",
       "package": "com.unitea.app",
+      "googleServicesFile": "./android/app/google-services.json",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -59,7 +60,6 @@
         "foregroundImage": "./assets/android-icon.png",
         "backgroundColor": "#2FC9C1"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",

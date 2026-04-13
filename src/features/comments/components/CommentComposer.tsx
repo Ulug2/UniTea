@@ -31,7 +31,7 @@ type CommentComposerProps = {
 /** Extra space below the input row when the home inset is applied by the parent. */
 const COMPOSER_BOTTOM_GAP = verticalScale(8);
 /** When keyboard is open, `insetsBottom` is 0 — keep a modest lift above the IME. */
-const COMPOSER_BOTTOM_GAP_KEYBOARD = verticalScale(12);
+const COMPOSER_BOTTOM_GAP_KEYBOARD = verticalScale(4);
 
 export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
   function CommentComposer(
@@ -75,7 +75,11 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
                 style={styles.toggleAvatar}
               />
             ) : (
-              <Ionicons name="person" size={moderateScale(20)} color={theme.text} />
+              <Ionicons
+                name="person"
+                size={moderateScale(20)}
+                color={theme.text}
+              />
             )}
             <Text style={[styles.anonymousText, { color: theme.text }]}>
               {isAnonymousMode ? "Anonymous" : `As ${currentUserLabel}`}
@@ -139,7 +143,11 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
             {isSubmitting ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <MaterialCommunityIcons name="send" size={moderateScale(20)} color="#fff" />
+              <MaterialCommunityIcons
+                name="send"
+                size={moderateScale(20)}
+                color="#fff"
+              />
             )}
           </Pressable>
         </View>

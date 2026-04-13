@@ -20,6 +20,12 @@ Step-by-step to build your app with EAS and install updates via TestFlight.
 
 4. **App in App Store Connect** – Create the app in [App Store Connect](https://appstoreconnect.apple.com) with Bundle ID `com.unitea.app` if you haven’t already. You need this for TestFlight.
 
+5. **Android Push (FCM) setup for EAS builds**
+  - Android push notifications require Firebase Cloud Messaging (FCM).
+  - `app.json` references `android.googleServicesFile` as `./android/app/google-services.json`.
+  - If you do not commit `google-services.json`, inject it during CI/EAS build before the Android build starts.
+  - Also upload your **FCM v1 service account key** in Expo/EAS credentials so Expo push can deliver to Android devices.
+
 ---
 
 ## 1. EAS Secrets (production env for the build)
@@ -138,6 +144,22 @@ To avoid prompts when running submit, add your App Store Connect App ID to `eas.
   Double-check `eas secret:list` and that secret names match what the app reads (`EXPO_PUBLIC_SUPABASE_URL`, etc.). Rebuild after changing secrets.
 
 For ANDROID:
+
+## Android EAS prerequisites (push-safe)
+
+1. Ensure `google-services.json` is present at `./android/app/google-services.json` during build time.
+
+2. If you manage it via EAS secret file, create it once:
+
+```bash
+eas secret:create --scope project --type file --name GOOGLE_SERVICES_JSON --value ./google-services.json
+```
+
+3. In CI or prebuild hook, write the secret file to `./android/app/google-services.json` before running `eas build --platform android --profile production`.
+
+4. In Expo dashboard, configure FCM v1 credentials for this project.
+
+Without these steps, Android devices can fail to register valid Expo push tokens.
 
 Each new release
 1. Bump the marketing version (what users see)
