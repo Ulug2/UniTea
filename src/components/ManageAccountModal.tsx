@@ -11,8 +11,10 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   Platform,
+  PixelRatio,
 } from "react-native";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../context/ThemeContext";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
@@ -48,6 +50,11 @@ export default function ManageAccountModal({
   currentUsername = "",
 }: ManageAccountModalProps) {
   const { theme, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const fontScale = PixelRatio.getFontScale();
+  const rowIconSize = moderateScale(22) * fontScale;
+  const chevronIconSize = moderateScale(20) * fontScale;
+  const backIconSize = moderateScale(24) * fontScale;
   const keyboardAppearance =
     Platform.OS === "ios" ? (isDark ? "dark" : "light") : undefined;
   const [currentView, setCurrentView] = useState<ViewType>("menu");
@@ -61,10 +68,10 @@ export default function ManageAccountModal({
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const show = Keyboard.addListener("keyboardDidShow", (e) =>
-      setAndroidKeyboardInset(e.endCoordinates.height)
+      setAndroidKeyboardInset(e.endCoordinates.height),
     );
     const hide = Keyboard.addListener("keyboardDidHide", () =>
-      setAndroidKeyboardInset(0)
+      setAndroidKeyboardInset(0),
     );
     return () => {
       show.remove();
@@ -122,7 +129,7 @@ export default function ManageAccountModal({
           <View style={styles.optionLeft}>
             <MaterialCommunityIcons
               name="account-circle-outline"
-              size={moderateScale(22)}
+              size={rowIconSize}
               color={theme.text}
             />
             <Text style={[styles.optionLabel, { color: theme.text }]}>
@@ -134,7 +141,7 @@ export default function ManageAccountModal({
           ) : (
             <Ionicons
               name="chevron-forward"
-              size={moderateScale(20)}
+              size={chevronIconSize}
               color={theme.secondaryText}
             />
           )}
@@ -149,7 +156,7 @@ export default function ManageAccountModal({
           <View style={styles.optionLeft}>
             <MaterialCommunityIcons
               name="account-edit-outline"
-              size={moderateScale(22)}
+              size={rowIconSize}
               color={theme.text}
             />
             <Text style={[styles.optionLabel, { color: theme.text }]}>
@@ -158,7 +165,7 @@ export default function ManageAccountModal({
           </View>
           <Ionicons
             name="chevron-forward"
-            size={moderateScale(20)}
+            size={chevronIconSize}
             color={theme.secondaryText}
           />
         </Pressable>
@@ -172,7 +179,7 @@ export default function ManageAccountModal({
           <View style={styles.optionLeft}>
             <MaterialCommunityIcons
               name="lock-outline"
-              size={moderateScale(22)}
+              size={rowIconSize}
               color={theme.text}
             />
             <Text style={[styles.optionLabel, { color: theme.text }]}>
@@ -181,7 +188,7 @@ export default function ManageAccountModal({
           </View>
           <Ionicons
             name="chevron-forward"
-            size={moderateScale(20)}
+            size={chevronIconSize}
             color={theme.secondaryText}
           />
         </Pressable>
@@ -195,14 +202,18 @@ export default function ManageAccountModal({
           }}
         >
           <View style={styles.optionLeft}>
-            <Ionicons name="log-out-outline" size={moderateScale(22)} color={theme.text} />
+            <Ionicons
+              name="log-out-outline"
+              size={rowIconSize}
+              color={theme.text}
+            />
             <Text style={[styles.optionLabel, { color: theme.text }]}>
               Log Out
             </Text>
           </View>
           <Ionicons
             name="chevron-forward"
-            size={moderateScale(20)}
+            size={chevronIconSize}
             color={theme.secondaryText}
           />
         </Pressable>
@@ -216,7 +227,7 @@ export default function ManageAccountModal({
           <View style={styles.optionLeft}>
             <MaterialCommunityIcons
               name="account-check-outline"
-              size={moderateScale(22)}
+              size={rowIconSize}
               color={theme.text}
             />
             <Text style={[styles.optionLabel, { color: theme.text }]}>
@@ -228,7 +239,7 @@ export default function ManageAccountModal({
           ) : (
             <Ionicons
               name="chevron-forward"
-              size={moderateScale(20)}
+              size={chevronIconSize}
               color={theme.secondaryText}
             />
           )}
@@ -241,7 +252,7 @@ export default function ManageAccountModal({
           disabled={isDeleting}
         >
           <View style={styles.optionLeft}>
-            <Ionicons name="trash-outline" size={moderateScale(22)} color="#EF4444" />
+            <Ionicons name="trash-outline" size={rowIconSize} color="#EF4444" />
             <Text style={[styles.optionLabel, { color: "#EF4444" }]}>
               Delete Account
             </Text>
@@ -251,7 +262,7 @@ export default function ManageAccountModal({
           ) : (
             <Ionicons
               name="chevron-forward"
-              size={moderateScale(20)}
+              size={chevronIconSize}
               color={theme.secondaryText}
             />
           )}
@@ -267,7 +278,11 @@ export default function ManageAccountModal({
           onPress={() => setCurrentView("menu")}
           style={styles.backButton}
         >
-          <Ionicons name="chevron-back" size={moderateScale(24)} color={theme.text} />
+          <Ionicons
+            name="chevron-back"
+            size={backIconSize}
+            color={theme.text}
+          />
         </Pressable>
         <Text style={[styles.modalTitle, { color: theme.text, flex: 1 }]}>
           Change Username
@@ -329,7 +344,11 @@ export default function ManageAccountModal({
           onPress={() => setCurrentView("menu")}
           style={styles.backButton}
         >
-          <Ionicons name="chevron-back" size={moderateScale(24)} color={theme.text} />
+          <Ionicons
+            name="chevron-back"
+            size={backIconSize}
+            color={theme.text}
+          />
         </Pressable>
         <Text style={[styles.modalTitle, { color: theme.text, flex: 1 }]}>
           Change Password
@@ -380,7 +399,7 @@ export default function ManageAccountModal({
               borderColor: theme.border,
             },
           ]}
-          placeholder="Confirm new password"
+          placeholder="Confirm password"
           placeholderTextColor={theme.secondaryText}
           keyboardAppearance={keyboardAppearance}
           value={confirmPassword}
@@ -430,12 +449,20 @@ export default function ManageAccountModal({
         <Pressable
           style={[
             styles.modalOverlay,
-            Platform.OS === "android" && { paddingBottom: androidKeyboardInset },
+            Platform.OS === "android" && {
+              paddingBottom: androidKeyboardInset,
+            },
           ]}
           onPress={onClose}
         >
           <View
-            style={[styles.modalContent, { backgroundColor: theme.card }]}
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: theme.card,
+                paddingBottom: Math.max(insets.bottom, verticalScale(32)),
+              },
+            ]}
             onStartShouldSetResponder={() => true}
           >
             <View

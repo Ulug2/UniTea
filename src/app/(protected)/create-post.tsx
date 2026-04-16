@@ -17,6 +17,7 @@ import {
   Keyboard,
   Platform,
   BackHandler,
+  PixelRatio,
   useWindowDimensions,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
@@ -102,6 +103,12 @@ const SelectedImagePreview = React.memo(function SelectedImagePreview({
 
 export default function CreatePostScreen() {
   const { theme, isDark } = useTheme();
+  const fontScale = PixelRatio.getFontScale();
+  const icon16 = moderateScale(16) * fontScale;
+  const icon18 = moderateScale(18) * fontScale;
+  const icon20 = moderateScale(20) * fontScale;
+  const icon24 = moderateScale(24) * fontScale;
+  const icon28 = moderateScale(28) * fontScale;
   const keyboardAppearance =
     Platform.OS === "ios" ? (isDark ? "dark" : "light") : undefined;
   const insets = useSafeAreaInsets();
@@ -111,7 +118,7 @@ export default function CreatePostScreen() {
   }>();
   const { session } = useAuth();
   const [expandedImageUri, setExpandedImageUri] = React.useState<string | null>(
-    null
+    null,
   );
   const { originalPost, isLoadingOriginal } =
     useOriginalPostForRepost(repostId);
@@ -148,7 +155,7 @@ export default function CreatePostScreen() {
 
   const { height: screenHeight } = useWindowDimensions();
   const slideAnim = React.useRef(
-    new Animated.Value(Platform.OS === "android" ? screenHeight : 0)
+    new Animated.Value(Platform.OS === "android" ? screenHeight : 0),
   ).current;
   const fadeAnim = React.useRef(new Animated.Value(1)).current;
   const isExiting = React.useRef(false);
@@ -206,10 +213,10 @@ export default function CreatePostScreen() {
   React.useEffect(() => {
     if (Platform.OS !== "android") return;
     const show = Keyboard.addListener("keyboardDidShow", (e) =>
-      setAndroidKeyboardInset(e.endCoordinates.height)
+      setAndroidKeyboardInset(e.endCoordinates.height),
     );
     const hide = Keyboard.addListener("keyboardDidHide", () =>
-      setAndroidKeyboardInset(0)
+      setAndroidKeyboardInset(0),
     );
     return () => {
       show.remove();
@@ -222,10 +229,10 @@ export default function CreatePostScreen() {
   React.useEffect(() => {
     if (Platform.OS !== "ios") return;
     const show = Keyboard.addListener("keyboardWillShow", () =>
-      setIosKeyboardOpen(true)
+      setIosKeyboardOpen(true),
     );
     const hide = Keyboard.addListener("keyboardWillHide", () =>
-      setIosKeyboardOpen(false)
+      setIosKeyboardOpen(false),
     );
     return () => {
       show.remove();
@@ -247,7 +254,7 @@ export default function CreatePostScreen() {
     }
     // Fallback (should be rare): return to the likely originating tab.
     router.replace(
-      isLostFound ? "/(protected)/(tabs)/lostfound" : "/(protected)/(tabs)"
+      isLostFound ? "/(protected)/(tabs)/lostfound" : "/(protected)/(tabs)",
     );
   }, [reset, closeScreen, isLostFound]);
 
@@ -290,13 +297,13 @@ export default function CreatePostScreen() {
       let cleanedPollOptions: string[] | undefined = undefined;
       if (!isLostFound && isPoll) {
         const normalized = Array.from(
-          new Set(pollOptions.map((o) => o.trim()).filter((o) => o.length > 0))
+          new Set(pollOptions.map((o) => o.trim()).filter((o) => o.length > 0)),
         );
 
         if (normalized.length < 2) {
           Alert.alert(
             "Poll options required",
-            "Please provide at least two distinct poll options."
+            "Please provide at least two distinct poll options.",
           );
           return;
         }
@@ -304,7 +311,7 @@ export default function CreatePostScreen() {
         if (normalized.length > MAX_POLL_OPTIONS) {
           Alert.alert(
             "Too many poll options",
-            `You can add up to ${MAX_POLL_OPTIONS} options.`
+            `You can add up to ${MAX_POLL_OPTIONS} options.`,
           );
           return;
         }
@@ -319,14 +326,14 @@ export default function CreatePostScreen() {
           imagePaths = await mapWithConcurrency(
             images,
             MAX_CONCURRENT_UPLOADS,
-            (localUri) => uploadImage(localUri, supabase)
+            (localUri) => uploadImage(localUri, supabase),
           );
           imagePath = imagePaths[0];
         } catch (error: any) {
           logger.error("Image upload error", error as Error);
           Alert.alert(
             "Error",
-            error.message || "Failed to upload image. Please try again."
+            error.message || "Failed to upload image. Please try again.",
           );
           return;
         }
@@ -334,7 +341,7 @@ export default function CreatePostScreen() {
 
       const primaryAspectRatio =
         images.length > 0
-          ? imageAspectRatiosRef.current[images[0]] ?? null
+          ? (imageAspectRatiosRef.current[images[0]] ?? null)
           : null;
 
       createPostMutation.mutate({
@@ -388,12 +395,13 @@ export default function CreatePostScreen() {
           styles.header,
           {
             borderBottomColor: theme.border,
-            paddingTop: Math.max(insets.top, verticalScale(10)) + verticalScale(10),
+            paddingTop:
+              Math.max(insets.top, verticalScale(10)) + verticalScale(10),
           },
         ]}
       >
         <Pressable onPress={goBack} style={styles.closeButton}>
-          <AntDesign name="close" size={moderateScale(28)} color={theme.text} />
+          <AntDesign name="close" size={icon28} color={theme.text} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: theme.text }]}>
           {isRepost
@@ -464,7 +472,7 @@ export default function CreatePostScreen() {
                   >
                     <Ionicons
                       name="alert-circle"
-                      size={moderateScale(20)}
+                      size={icon20}
                       color={category === "lost" ? "#FFF" : theme.text}
                     />
                     <Text
@@ -490,7 +498,7 @@ export default function CreatePostScreen() {
                   >
                     <Ionicons
                       name="checkmark-circle"
-                      size={moderateScale(20)}
+                      size={icon20}
                       color={category === "found" ? "#FFF" : theme.text}
                     />
                     <Text
@@ -515,7 +523,8 @@ export default function CreatePostScreen() {
                 <View
                   style={[
                     styles.locationInputContainer,
-                    Platform.OS === "android" && styles.androidTitleInputContainer,
+                    Platform.OS === "android" &&
+                      styles.androidTitleInputContainer,
                     {
                       backgroundColor: theme.background,
                       borderColor: theme.border,
@@ -524,11 +533,11 @@ export default function CreatePostScreen() {
                 >
                   <Ionicons
                     name="pricetag-outline"
-                    size={moderateScale(20)}
+                    size={icon20}
                     color={theme.secondaryText}
                   />
                   <TextInput
-                    placeholder="e.g., Student ID Card, Water Bottle, Laptop"
+                    placeholder="Item name"
                     placeholderTextColor={theme.secondaryText}
                     style={[styles.locationInput, { color: theme.text }]}
                     keyboardAppearance={keyboardAppearance}
@@ -557,11 +566,11 @@ export default function CreatePostScreen() {
                 >
                   <Ionicons
                     name="location-outline"
-                    size={moderateScale(20)}
+                    size={icon20}
                     color={theme.secondaryText}
                   />
                   <TextInput
-                    placeholder="e.g., Library, Block 10, Dining Hall"
+                    placeholder="Location"
                     placeholderTextColor={theme.secondaryText}
                     style={[styles.locationInput, { color: theme.text }]}
                     keyboardAppearance={keyboardAppearance}
@@ -589,11 +598,11 @@ export default function CreatePostScreen() {
                 >
                   <Ionicons
                     name="text-outline"
-                    size={moderateScale(20)}
+                    size={icon20}
                     color={theme.secondaryText}
                   />
                   <TextInput
-                    placeholder="Add a short title"
+                    placeholder="Title (optional)"
                     placeholderTextColor={theme.secondaryText}
                     style={[
                       styles.locationInput,
@@ -655,7 +664,7 @@ export default function CreatePostScreen() {
                   >
                     <AntDesign
                       name="close"
-                      size={moderateScale(18)}
+                      size={icon18}
                       color={theme.secondaryText}
                     />
                   </Pressable>
@@ -705,7 +714,7 @@ export default function CreatePostScreen() {
                         <Pressable
                           onPress={() => {
                             const next = pollOptions.filter(
-                              (_, i) => i !== index
+                              (_, i) => i !== index,
                             );
                             setPollOptions(next.length >= 2 ? next : ["", ""]);
                           }}
@@ -713,7 +722,7 @@ export default function CreatePostScreen() {
                         >
                           <AntDesign
                             name="close"
-                            size={moderateScale(16)}
+                            size={icon16}
                             color={theme.secondaryText}
                           />
                         </Pressable>
@@ -731,7 +740,7 @@ export default function CreatePostScreen() {
                     >
                       <Feather
                         name="plus-circle"
-                        size={moderateScale(18)}
+                        size={icon18}
                         color={theme.primary}
                       />
                       <Text
@@ -851,7 +860,7 @@ export default function CreatePostScreen() {
                       ]}
                     >
                       {formatDistanceToNowStrict(
-                        new Date(originalPost.created_at!)
+                        new Date(originalPost.created_at!),
                       )}{" "}
                       ago
                     </Text>
@@ -902,12 +911,12 @@ export default function CreatePostScreen() {
                   >
                     <MaterialCommunityIcons
                       name="poll"
-                      size={moderateScale(24)}
+                      size={icon24}
                       color={theme.text}
                     />
                   </Pressable>
                   <Pressable onPress={pickImage} style={styles.footerButton}>
-                    <Feather name="image" size={moderateScale(24)} color={theme.text} />
+                    <Feather name="image" size={icon24} color={theme.text} />
                   </Pressable>
                 </View>
               </>
@@ -916,7 +925,7 @@ export default function CreatePostScreen() {
               <>
                 <View />
                 <Pressable onPress={pickImage} style={styles.footerButton}>
-                  <Feather name="image" size={moderateScale(24)} color={theme.text} />
+                  <Feather name="image" size={icon24} color={theme.text} />
                 </Pressable>
               </>
             )}
@@ -934,7 +943,10 @@ export default function CreatePostScreen() {
 
   return Platform.OS === "android" ? (
     <Animated.View
-      style={[{ flex: 1 }, { transform: [{ translateY: slideAnim }], opacity: fadeAnim }]}
+      style={[
+        { flex: 1 },
+        { transform: [{ translateY: slideAnim }], opacity: fadeAnim },
+      ]}
     >
       {main}
     </Animated.View>
@@ -1016,7 +1028,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: moderateScale(10),
-    paddingHorizontal: scale(12),
+    paddingHorizontal: scale(10),
     paddingVertical: verticalScale(12),
     borderRadius: moderateScale(12),
     borderWidth: 1,

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   NativeSyntheticEvent,
+  PixelRatio,
   Pressable,
   Text,
   TextLayoutEventData,
@@ -92,11 +93,18 @@ function _buildStyles(theme: Theme) {
       color: theme.secondaryText,
       marginTop: verticalScale(8),
     },
-    header: { flexDirection: "row", alignItems: "center" },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      minWidth: 0,
+    },
     userInfo: {
       flexDirection: "row",
       alignItems: "center",
       gap: moderateScale(8),
+      flex: 1,
+      minWidth: 0,
     },
     avatar: {
       width: scale(35),
@@ -108,11 +116,19 @@ function _buildStyles(theme: Theme) {
       fontSize: moderateScale(15),
       color: theme.text,
       fontFamily: "Poppins_500Medium",
+      flexShrink: 1,
+    },
+    timeContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginLeft: scale(8),
+      flexShrink: 0,
     },
     time: {
       fontSize: moderateScale(12),
       color: theme.secondaryText,
-      marginLeft: scale(10),
+      marginLeft: scale(4),
+      flexShrink: 0,
     },
     contentText: {
       fontSize: moderateScale(16),
@@ -129,9 +145,16 @@ function _buildStyles(theme: Theme) {
     footer: {
       flexDirection: "row",
       marginTop: verticalScale(10),
-      alignItems: "center",
+      alignItems: "flex-start",
     },
-    footerLeft: { flexDirection: "row", gap: moderateScale(16) },
+    footerLeft: {
+      flexDirection: "row",
+      gap: moderateScale(7),
+      flexWrap: "wrap",
+      alignItems: "flex-start",
+      flex: 1,
+      minWidth: 0,
+    },
     footerRight: {
       marginLeft: "auto",
       flexDirection: "row",
@@ -143,13 +166,13 @@ function _buildStyles(theme: Theme) {
       alignItems: "center",
       borderWidth: 0.5,
       borderColor: theme.border,
-      paddingHorizontal: scale(12),
-      paddingVertical: verticalScale(8),
-      borderRadius: moderateScale(20),
+      paddingHorizontal: scale(11),
+      paddingVertical: verticalScale(7),
+      borderRadius: moderateScale(19),
       backgroundColor: theme.background,
-      marginLeft: scale(-5),
-      minHeight: verticalScale(40),
-      minWidth: scale(40),
+      marginLeft: 0,
+      minHeight: verticalScale(38),
+      minWidth: scale(38),
     },
     iconText: {
       fontWeight: "500",
@@ -160,8 +183,8 @@ function _buildStyles(theme: Theme) {
     divider: {
       width: 1,
       backgroundColor: theme.border,
-      height: verticalScale(14),
-      marginHorizontal: scale(7),
+      height: verticalScale(13),
+      marginHorizontal: scale(6),
       alignSelf: "center",
     },
   });
@@ -176,7 +199,11 @@ const READ_MORE_NEWLINE_THRESHOLD = 3;
 const READ_MORE_MEASURE_CHAR_THRESHOLD = 120;
 const READ_MORE_MEASURE_NEWLINE_THRESHOLD = 2;
 
-function createTextCacheKey(postId: string, variant: string, text: string): string {
+function createTextCacheKey(
+  postId: string,
+  variant: string,
+  text: string,
+): string {
   const trimmed = text.trim();
   const prefix = trimmed.slice(0, 48);
   const suffix = trimmed.slice(-48);
@@ -389,7 +416,7 @@ const arePropsEqual = (
     prevProps.title === nextProps.title &&
     prevProps.imageUrl === nextProps.imageUrl &&
     JSON.stringify(prevProps.imageUrls ?? []) ===
-    JSON.stringify(nextProps.imageUrls ?? []) &&
+      JSON.stringify(nextProps.imageUrls ?? []) &&
     prevProps.imageAspectRatio === nextProps.imageAspectRatio &&
     prevProps.category === nextProps.category &&
     prevProps.location === nextProps.location &&
@@ -412,7 +439,7 @@ const arePropsEqual = (
     prevProps.originalTitle === nextProps.originalTitle &&
     prevProps.originalImageUrl === nextProps.originalImageUrl &&
     JSON.stringify(prevProps.originalImageUrls ?? []) ===
-    JSON.stringify(nextProps.originalImageUrls ?? []) &&
+      JSON.stringify(nextProps.originalImageUrls ?? []) &&
     prevProps.originalImageAspectRatio === nextProps.originalImageAspectRatio &&
     prevProps.originalAuthorUsername === nextProps.originalAuthorUsername &&
     prevProps.originalAuthorAvatar === nextProps.originalAuthorAvatar &&
@@ -420,7 +447,7 @@ const arePropsEqual = (
     prevProps.originalCreatedAt === nextProps.originalCreatedAt &&
     prevProps.isDetailedPost === nextProps.isDetailedPost &&
     prevProps.disableCommentInteraction ===
-    nextProps.disableCommentInteraction &&
+      nextProps.disableCommentInteraction &&
     prevProps.isBookmarked === nextProps.isBookmarked &&
     prevProps.onImagePress === nextProps.onImagePress &&
     prevProps.isAdmin === nextProps.isAdmin
@@ -466,6 +493,9 @@ const PostListItem = React.memo(function PostListItem({
 }: PostListItemProps) {
   const { theme } = useTheme();
   const { session } = useAuth();
+  const fontScale = PixelRatio.getFontScale();
+  const actionIconSize = moderateScale(21) * fontScale;
+  const smallIconSize = moderateScale(12) * fontScale;
   const currentUserId = session?.user?.id;
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -473,7 +503,8 @@ const PostListItem = React.memo(function PostListItem({
   const [repostCommentExpanded, setRepostCommentExpanded] = useState(false);
   const [originalContentExpanded, setOriginalContentExpanded] = useState(false);
   const [isContentTruncated, setIsContentTruncated] = useState(false);
-  const [isRepostCommentTruncated, setIsRepostCommentTruncated] = useState(false);
+  const [isRepostCommentTruncated, setIsRepostCommentTruncated] =
+    useState(false);
   const [isOriginalContentTruncated, setIsOriginalContentTruncated] =
     useState(false);
   const truncationCacheRef = useRef<Map<string, boolean>>(new Map());
@@ -719,35 +750,35 @@ const PostListItem = React.memo(function PostListItem({
                   />
                 )
               ) : // Show regular post author
-                isAnonymous ? (
+              isAnonymous ? (
+                <Image
+                  source={nuLogo}
+                  style={styles.avatar}
+                  onLoad={() => setAvatarLoaded(true)}
+                />
+              ) : avatarUrl ? (
+                avatarUrl.startsWith("http") ? (
                   <Image
-                    source={nuLogo}
+                    source={{ uri: avatarUrl }}
                     style={styles.avatar}
                     onLoad={() => setAvatarLoaded(true)}
                   />
-                ) : avatarUrl ? (
-                  avatarUrl.startsWith("http") ? (
-                    <Image
-                      source={{ uri: avatarUrl }}
-                      style={styles.avatar}
-                      onLoad={() => setAvatarLoaded(true)}
-                    />
-                  ) : (
-                    <SupabaseImage
-                      path={avatarUrl}
-                      bucket="avatars"
-                      style={styles.avatar}
-                      onLoad={() => setAvatarLoaded(true)}
-                    />
-                  )
                 ) : (
-                  <Image
-                    source={DEFAULT_AVATAR}
+                  <SupabaseImage
+                    path={avatarUrl}
+                    bucket="avatars"
                     style={styles.avatar}
                     onLoad={() => setAvatarLoaded(true)}
                   />
-                )}
-              <Text style={styles.username}>
+                )
+              ) : (
+                <Image
+                  source={DEFAULT_AVATAR}
+                  style={styles.avatar}
+                  onLoad={() => setAvatarLoaded(true)}
+                />
+              )}
+              <Text style={styles.username} numberOfLines={1}>
                 {isAnonymous
                   ? userId === currentUserId
                     ? "You"
@@ -755,21 +786,25 @@ const PostListItem = React.memo(function PostListItem({
                   : username}
               </Text>
             </Pressable>
-            <Text style={styles.time}>
+            <View style={styles.timeContainer}>
               <AntDesign
                 name="clock-circle"
-                size={moderateScale(12)}
+                size={smallIconSize}
                 color={theme.secondaryText}
               />
-              <Text> {formatDistanceToNowStrict(postCreatedAt)}</Text>
-            </Text>
+              <Text style={styles.time} numberOfLines={1}>
+                {formatDistanceToNowStrict(postCreatedAt)}
+              </Text>
+            </View>
           </View>
 
           {/* REPOST USER'S CONTENT (if user added text when reposting) */}
           {isRepost && content && (
             <View>
               <Text
-                numberOfLines={isDetailedPost || repostCommentExpanded ? undefined : 4}
+                numberOfLines={
+                  isDetailedPost || repostCommentExpanded ? undefined : 4
+                }
                 onTextLayout={
                   repostCommentKey &&
                   !isDetailedPost &&
@@ -792,25 +827,25 @@ const PostListItem = React.memo(function PostListItem({
                   isMeasuredTruncated:
                     isRepostCommentTruncated || cachedRepostCommentTruncated,
                 }) && (
-                <Pressable
-                  onPress={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setRepostCommentExpanded((prev) => !prev);
-                  }}
-                  style={{ marginTop: 4 }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 15,
-                      fontFamily: "Poppins_500Medium",
-                      color: theme.primary,
+                  <Pressable
+                    onPress={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setRepostCommentExpanded((prev) => !prev);
                     }}
+                    style={{ marginTop: 4 }}
                   >
-                    {repostCommentExpanded ? "show less" : "... read more"}
-                  </Text>
-                </Pressable>
-              )}
+                    <Text
+                      style={{
+                        fontSize: 15,
+                        fontFamily: "Poppins_500Medium",
+                        color: theme.primary,
+                      }}
+                    >
+                      {repostCommentExpanded ? "show less" : "... read more"}
+                    </Text>
+                  </Pressable>
+                )}
             </View>
           )}
 
@@ -1049,7 +1084,7 @@ const PostListItem = React.memo(function PostListItem({
                         ? "arrow-up-bold"
                         : "arrow-up-bold-outline"
                     }
-                    size={moderateScale(22)}
+                    size={actionIconSize}
                     color={userVote === "upvote" ? theme.primary : theme.text}
                   />
                 </Pressable>
@@ -1069,7 +1104,7 @@ const PostListItem = React.memo(function PostListItem({
                         ? "arrow-down-bold"
                         : "arrow-down-bold-outline"
                     }
-                    size={moderateScale(22)}
+                    size={actionIconSize}
                     color={userVote === "downvote" ? theme.primary : theme.text}
                   />
                 </Pressable>
@@ -1088,7 +1123,7 @@ const PostListItem = React.memo(function PostListItem({
               >
                 <MaterialCommunityIcons
                   name="comment-outline"
-                  size={moderateScale(22)}
+                  size={actionIconSize}
                   color={theme.text}
                 />
                 <Text style={styles.iconText}>{commentCount || 0}</Text>
@@ -1101,7 +1136,11 @@ const PostListItem = React.memo(function PostListItem({
                 }}
                 style={styles.iconBox}
               >
-                <Ionicons name="repeat-outline" size={moderateScale(22)} color={theme.text} />
+                <Ionicons
+                  name="repeat-outline"
+                  size={actionIconSize}
+                  color={theme.text}
+                />
                 <Text style={styles.iconText}>{repostCount}</Text>
               </Pressable>
               <Pressable
@@ -1112,18 +1151,32 @@ const PostListItem = React.memo(function PostListItem({
                 }}
                 style={styles.iconBox}
               >
-                <Ionicons name="share-outline" size={moderateScale(22)} color={theme.text} />
+                <Ionicons
+                  name="share-outline"
+                  size={actionIconSize}
+                  color={theme.text}
+                />
               </Pressable>
               {userId !== currentUserId && (
                 <Pressable
                   onPress={handleAnonChatPress}
-                  style={[styles.iconBox, anonChatMutation.isPending && { opacity: 0.5 }]}
+                  style={[
+                    styles.iconBox,
+                    anonChatMutation.isPending && { opacity: 0.5 },
+                  ]}
                   disabled={anonChatMutation.isPending}
                 >
                   {anonChatMutation.isPending ? (
-                    <ActivityIndicator size={moderateScale(18)} color={theme.text} />
+                    <ActivityIndicator
+                      size={actionIconSize}
+                      color={theme.text}
+                    />
                   ) : (
-                    <Ionicons name="paper-plane-outline" size={moderateScale(20)} color={theme.text} />
+                    <Ionicons
+                      name="paper-plane-outline"
+                      size={actionIconSize}
+                      color={theme.text}
+                    />
                   )}
                 </Pressable>
               )}
@@ -1138,7 +1191,7 @@ const PostListItem = React.memo(function PostListItem({
                 >
                   <MaterialCommunityIcons
                     name={isBookmarked ? "bookmark" : "bookmark-outline"}
-                    size={moderateScale(22)}
+                    size={actionIconSize}
                     color={theme.text}
                   />
                 </Pressable>

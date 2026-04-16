@@ -97,6 +97,8 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      gap: moderateScale(8),
+      minWidth: 0,
       marginBottom: verticalScale(16),
     },
     userLeft: {
@@ -104,6 +106,7 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
       alignItems: "center",
       gap: moderateScale(12),
       flex: 1,
+      minWidth: 0,
     },
     avatarCircle: {
       width: scale(46),
@@ -123,21 +126,24 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
       height: verticalScale(46),
       borderRadius: moderateScale(23),
     },
-    userDetails: { gap: 1 },
+    userDetails: { gap: 1, flex: 1, minWidth: 0 },
     username: {
       fontSize: moderateScale(15),
       color: theme.text,
       fontFamily: "Poppins_600SemiBold",
+      flexShrink: 1,
     },
     timeRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: moderateScale(4),
+      flexShrink: 0,
     },
     time: {
       fontSize: moderateScale(13),
       color: theme.secondaryText,
       fontFamily: "Poppins_400Regular",
+      flexShrink: 0,
     },
 
     // Title
@@ -611,7 +617,9 @@ export default function LostFoundPostDetailed() {
                       size={moderateScale(12)}
                       color={theme.secondaryText}
                     />
-                    <Text style={styles.time}>{timeAgo}</Text>
+                    <Text style={styles.time} numberOfLines={1}>
+                      {timeAgo}
+                    </Text>
                   </View>
                 )}
               </View>
@@ -701,9 +709,7 @@ export default function LostFoundPostDetailed() {
                       key={`${uri}-${index}`}
                       uri={uri}
                       isLast={index === displayImageUrls.length - 1}
-                      onPress={() =>
-                        setFullscreenUri(resolvePostImageUri(uri))
-                      }
+                      onPress={() => setFullscreenUri(resolvePostImageUri(uri))}
                     />
                   ))}
                 </ScrollView>

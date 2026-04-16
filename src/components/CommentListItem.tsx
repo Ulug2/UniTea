@@ -4,6 +4,7 @@ import {
   Text,
   Image,
   FlatList,
+  PixelRatio,
   Pressable,
   StyleSheet,
   LayoutAnimation,
@@ -82,21 +83,31 @@ const CommentListItem = ({
   isAdmin = false,
 }: CommentListItemProps) => {
   const { theme } = useTheme();
+  const fontScale = PixelRatio.getFontScale();
+  const actionIconSize = moderateScale(22) * fontScale;
+  const menuIconSize = moderateScale(20) * fontScale;
+  const threeDotsIconSize = moderateScale(15) * fontScale;
+  const inlineIconSize = moderateScale(12) * fontScale;
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const isCommentOwner = currentUserId === comment.user_id;
   const canDelete = isCommentOwner || isAdmin;
 
   const { data: blocks = [] } = useBlocks();
-  const commentScope = (comment.is_anonymous ?? false) ? "anonymous_only" : "profile_only";
-  const alreadyBlockedInScope = hasBlockForScope(blocks, comment.user_id, commentScope);
+  const commentScope =
+    (comment.is_anonymous ?? false) ? "anonymous_only" : "profile_only";
+  const alreadyBlockedInScope = hasBlockForScope(
+    blocks,
+    comment.user_id,
+    commentScope,
+  );
 
   const hasReplies = comment.replies && comment.replies.length > 0;
   const replyCount = comment.replies?.length || 0;
 
   // Auto-show replies if there are 3 or fewer
   const [showReplies, setShowReplies] = useState(
-    replyCount <= 3 && replyCount > 0
+    replyCount <= 3 && replyCount > 0,
   );
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -142,7 +153,7 @@ const CommentListItem = ({
         {
           text: "Cancel",
           style: "cancel",
-          onPress: () => { },
+          onPress: () => {},
         },
         {
           text: "Delete",
@@ -152,7 +163,7 @@ const CommentListItem = ({
             deleteCommentMutation.mutate();
           },
         },
-      ]
+      ],
     );
   };
 
@@ -238,8 +249,7 @@ const CommentListItem = ({
 
   // Only first reply level gets extra indent; deeper replies use no extra padding
   // so they align with their parent (avoids negative margin and layout gaps).
-  const containerIndentStyle =
-    depth >= 2 ? { paddingLeft: 0 } : undefined;
+  const containerIndentStyle = depth >= 2 ? { paddingLeft: 0 } : undefined;
 
   // When this comment has visible nested replies, drop bottom padding so the next
   // sibling (e.g. another reply to the same parent) doesn't get an extra gap.
@@ -264,12 +274,20 @@ const CommentListItem = ({
             style={styles.userInfo}
             onPress={() => {
               // Only show modal for other users (not current user) and non-anonymous users
-              if (!comment.is_anonymous && comment.user_id && comment.user_id !== currentUserId) {
+              if (
+                !comment.is_anonymous &&
+                comment.user_id &&
+                comment.user_id !== currentUserId
+              ) {
                 setSelectedUserId(comment.user_id);
                 setProfileModalVisible(true);
               }
             }}
-            disabled={comment.is_anonymous || !comment.user_id || comment.user_id === currentUserId}
+            disabled={
+              comment.is_anonymous ||
+              !comment.user_id ||
+              comment.user_id === currentUserId
+            }
           >
             {comment.is_anonymous ? (
               <Image source={nuLogo} style={styles.avatar} />
@@ -289,7 +307,10 @@ const CommentListItem = ({
             ) : (
               <Image source={DEFAULT_AVATAR} style={styles.avatar} />
             )}
-            <Text style={[styles.username, { color: theme.text }]}>
+            <Text
+              style={[styles.username, { color: theme.text }]}
+              numberOfLines={1}
+            >
               {displayName}
             </Text>
           </Pressable>
@@ -310,32 +331,42 @@ const CommentListItem = ({
                 !parentUser.id ||
                 parentUser.id === currentUserId
               }
-              style={{ flexDirection: "row", alignItems: "center" }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                flex: 1,
+                minWidth: 0,
+              }}
             >
               <MaterialCommunityIcons
                 name="play"
-                size={moderateScale(12)}
+                size={inlineIconSize}
                 color={theme.secondaryText}
                 style={{ marginLeft: scale(4) }}
               />
               <Text
                 style={[styles.replyToUsername, { color: theme.secondaryText }]}
+                numberOfLines={1}
               >
                 {parentDisplayName}
               </Text>
             </Pressable>
           )}
-          <Text style={[styles.dot, { color: theme.secondaryText }]}>•</Text>
-          <Text style={[styles.time, { color: theme.secondaryText }]}>
-            {comment.created_at
-              ? formatDistanceToNowStrict(new Date(comment.created_at))
-              : "Recently"}
-          </Text>
+          <View style={styles.timeContainer}>
+            <Text
+              style={[styles.time, { color: theme.secondaryText }]}
+              numberOfLines={1}
+            >
+              {comment.created_at
+                ? formatDistanceToNowStrict(new Date(comment.created_at))
+                : "Recently"}
+            </Text>
+          </View>
         </View>
         <Pressable style={styles.threeDots} onPress={() => setShowMenu(true)}>
           <Entypo
             name="dots-three-horizontal"
-            size={moderateScale(15)}
+            size={threeDotsIconSize}
             color={theme.secondaryText}
           />
         </Pressable>
@@ -357,7 +388,7 @@ const CommentListItem = ({
               <Pressable style={styles.menuItem} onPress={handleDeleteComment}>
                 <MaterialCommunityIcons
                   name="delete"
-                  size={moderateScale(20)}
+                  size={menuIconSize}
                   color="#EF4444"
                 />
                 <Text style={[styles.menuText, { color: "#EF4444" }]}>
@@ -375,7 +406,7 @@ const CommentListItem = ({
               >
                 <MaterialCommunityIcons
                   name="flag"
-                  size={moderateScale(20)}
+                  size={menuIconSize}
                   color={theme.text}
                 />
                 <Text style={[styles.menuText, { color: theme.text }]}>
@@ -393,7 +424,7 @@ const CommentListItem = ({
               >
                 <MaterialCommunityIcons
                   name="block-helper"
-                  size={moderateScale(20)}
+                  size={menuIconSize}
                   color={theme.text}
                 />
                 <Text style={[styles.menuText, { color: theme.text }]}>
@@ -425,7 +456,11 @@ const CommentListItem = ({
           onPress={() => handleReplyPress(comment.id)}
           style={styles.actionButton}
         >
-          <Octicons name="reply" size={moderateScale(16)} color={theme.secondaryText} />
+          <Octicons
+            name="reply"
+            size={actionIconSize}
+            color={theme.secondaryText}
+          />
           <Text style={[styles.actionText, { color: theme.secondaryText }]}>
             Reply
           </Text>
@@ -438,7 +473,7 @@ const CommentListItem = ({
                   ? "arrow-up-bold"
                   : "arrow-up-bold-outline"
               }
-              size={moderateScale(20)}
+              size={actionIconSize}
               color={
                 userVote === "upvote" ? theme.primary : theme.secondaryText
               }
@@ -454,7 +489,7 @@ const CommentListItem = ({
                   ? "arrow-down-bold"
                   : "arrow-down-bold-outline"
               }
-              size={moderateScale(20)}
+              size={actionIconSize}
               color={
                 userVote === "downvote" ? theme.primary : theme.secondaryText
               }
@@ -569,13 +604,16 @@ const styles = StyleSheet.create({
   userInfoRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: moderateScale(4),
+    gap: moderateScale(3),
     flex: 1,
+    minWidth: 0,
   },
   userInfo: {
     flexDirection: "row",
     alignItems: "center",
-    gap: moderateScale(3),
+    gap: moderateScale(2),
+    flex: 1,
+    minWidth: 0,
   },
   avatar: {
     width: scale(28),
@@ -587,21 +625,27 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: moderateScale(13),
     fontFamily: "Poppins_500Medium",
+    flexShrink: 1,
   },
   replyToUsername: {
     fontSize: moderateScale(12),
     fontFamily: "Poppins_400Regular",
     marginLeft: scale(2),
-  },
-  dot: {
-    fontSize: moderateScale(13),
+    flexShrink: 1,
   },
   threeDots: {
+    marginLeft: scale(10),
     marginRight: scale(15),
+    flexShrink: 0,
+  },
+  timeContainer: {
+    flexShrink: 0,
+    marginLeft: scale(6),
   },
   time: {
     fontSize: moderateScale(13),
     fontFamily: "Poppins_400Regular",
+    flexShrink: 0,
   },
   content: {
     fontSize: moderateScale(15),
@@ -611,14 +655,15 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginRight: scale(15), // Consistent right margin for all comments
+    justifyContent: "flex-start",
+    alignItems: "flex-start",
+    gap: moderateScale(10),
+    flexWrap: "wrap",
   },
   actionButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: moderateScale(5),
+    gap: moderateScale(4),
   },
   actionText: {
     fontSize: moderateScale(14),
@@ -626,8 +671,9 @@ const styles = StyleSheet.create({
   },
   votes: {
     flexDirection: "row",
-    gap: moderateScale(5),
+    gap: moderateScale(4),
     alignItems: "center",
+    flexShrink: 0,
   },
   voteCount: {
     fontWeight: "500",
@@ -712,7 +758,8 @@ function arePropsEqual(
     prev.comment.score === next.comment.score &&
     prev.comment.is_deleted === next.comment.is_deleted &&
     prev.comment.is_anonymous === next.comment.is_anonymous &&
-    (prev.comment.replies?.length ?? 0) === (next.comment.replies?.length ?? 0) &&
+    (prev.comment.replies?.length ?? 0) ===
+      (next.comment.replies?.length ?? 0) &&
     prev.handleReplyPress === next.handleReplyPress &&
     prev.onDeleteStart === next.onDeleteStart &&
     prev.onDeleteEnd === next.onDeleteEnd &&

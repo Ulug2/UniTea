@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  PixelRatio,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import LostFoundListItem, {
@@ -44,6 +45,8 @@ const POSTS_PER_PAGE = 10;
 
 export default function LostFoundScreen() {
   const { theme } = useTheme();
+  const fontScale = PixelRatio.getFontScale();
+  const fabIconSize = moderateScale(28) * fontScale;
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const [selectedPost, setSelectedPost] = useState<LostFoundPostForMenu | null>(
@@ -331,7 +334,7 @@ export default function LostFoundScreen() {
           ListHeaderComponent={
             <View style={styles.searchHeader}>
               <CustomInput
-                placeholder="Search by item, location, lost or found..."
+                placeholder="Search items..."
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 leftIcon={{ type: "font-awesome", name: "search" }}
@@ -464,7 +467,7 @@ export default function LostFoundScreen() {
         onPress={() => router.push("/create-post?type=lost_found")}
         style={[styles.fab, { backgroundColor: theme.primary }]}
       >
-        <FontAwesome name="plus" size={moderateScale(28)} color="#fff" />
+        <FontAwesome name="plus" size={fabIconSize} color="#fff" />
       </Pressable>
 
       {/* Loading overlay while a lost&found post is being submitted */}
@@ -523,9 +526,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: verticalScale(20),
     right: scale(20),
-    width: scale(60),
-    height: verticalScale(60),
-    borderRadius: moderateScale(30),
+    minWidth: scale(60),
+    minHeight: verticalScale(60),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(10),
+    borderRadius: moderateScale(999),
     justifyContent: "center",
     alignItems: "center",
     elevation: 5,

@@ -1,6 +1,7 @@
 import React from "react";
 import {
   Modal,
+  PixelRatio,
   Pressable,
   ScrollView,
   Switch,
@@ -9,6 +10,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Theme } from "../../../context/ThemeContext";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
@@ -39,6 +41,11 @@ export function ProfileSettingsModal({
   onPressManageAccount,
   onPressContactSupport,
 }: ProfileSettingsModalProps) {
+  const insets = useSafeAreaInsets();
+  const fontScale = PixelRatio.getFontScale();
+  const rowIconSize = moderateScale(22) * fontScale;
+  const chevronIconSize = moderateScale(20) * fontScale;
+
   return (
     <Modal
       visible={visible}
@@ -50,7 +57,13 @@ export function ProfileSettingsModal({
     >
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <View
-          style={[styles.modalContent, { backgroundColor: theme.card }]}
+          style={[
+            styles.modalContent,
+            {
+              backgroundColor: theme.card,
+              paddingBottom: Math.max(insets.bottom, verticalScale(24)),
+            },
+          ]}
           onStartShouldSetResponder={() => true}
         >
           <View
@@ -66,7 +79,11 @@ export function ProfileSettingsModal({
               style={[styles.settingRow, { borderBottomColor: theme.border }]}
             >
               <View style={styles.settingLeft}>
-                <Ionicons name="moon-outline" size={moderateScale(22)} color={theme.text} />
+                <Ionicons
+                  name="moon-outline"
+                  size={rowIconSize}
+                  color={theme.text}
+                />
                 <View>
                   <Text style={[styles.settingLabel, { color: theme.text }]}>
                     Dark Mode
@@ -99,7 +116,7 @@ export function ProfileSettingsModal({
               <View style={styles.settingLeft}>
                 <Ionicons
                   name="notifications-outline"
-                  size={moderateScale(22)}
+                  size={rowIconSize}
                   color={theme.text}
                 />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
@@ -108,7 +125,7 @@ export function ProfileSettingsModal({
               </View>
               <Ionicons
                 name="chevron-forward"
-                size={moderateScale(20)}
+                size={chevronIconSize}
                 color={theme.secondaryText}
               />
             </Pressable>
@@ -119,14 +136,18 @@ export function ProfileSettingsModal({
               onPress={onPressContactSupport}
             >
               <View style={styles.settingLeft}>
-                <Ionicons name="mail-outline" size={moderateScale(22)} color={theme.text} />
+                <Ionicons
+                  name="mail-outline"
+                  size={rowIconSize}
+                  color={theme.text}
+                />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
                   Contact Support
                 </Text>
               </View>
               <Ionicons
                 name="chevron-forward"
-                size={moderateScale(20)}
+                size={chevronIconSize}
                 color={theme.secondaryText}
               />
             </Pressable>
@@ -139,7 +160,7 @@ export function ProfileSettingsModal({
               <View style={styles.settingLeft}>
                 <Ionicons
                   name="document-text-outline"
-                  size={moderateScale(22)}
+                  size={rowIconSize}
                   color={theme.text}
                 />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
@@ -148,7 +169,7 @@ export function ProfileSettingsModal({
               </View>
               <Ionicons
                 name="chevron-forward"
-                size={moderateScale(20)}
+                size={chevronIconSize}
                 color={theme.secondaryText}
               />
             </Pressable>
@@ -161,7 +182,7 @@ export function ProfileSettingsModal({
               <View style={styles.settingLeft}>
                 <Ionicons
                   name="shield-checkmark-outline"
-                  size={moderateScale(22)}
+                  size={rowIconSize}
                   color={theme.text}
                 />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
@@ -170,7 +191,7 @@ export function ProfileSettingsModal({
               </View>
               <Ionicons
                 name="chevron-forward"
-                size={moderateScale(20)}
+                size={chevronIconSize}
                 color={theme.secondaryText}
               />
             </Pressable>
@@ -183,7 +204,7 @@ export function ProfileSettingsModal({
               <View style={styles.settingLeft}>
                 <MaterialCommunityIcons
                   name="account-cog"
-                  size={moderateScale(22)}
+                  size={rowIconSize}
                   color={theme.text}
                 />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
@@ -192,7 +213,7 @@ export function ProfileSettingsModal({
               </View>
               <Ionicons
                 name="chevron-forward"
-                size={moderateScale(20)}
+                size={chevronIconSize}
                 color={theme.secondaryText}
               />
             </Pressable>

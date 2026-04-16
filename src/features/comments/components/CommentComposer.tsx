@@ -1,6 +1,7 @@
 import React, { forwardRef } from "react";
 import {
   ActivityIndicator,
+  PixelRatio,
   Pressable,
   StyleSheet,
   Text,
@@ -50,6 +51,10 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
     },
     ref,
   ) {
+    const fontScale = PixelRatio.getFontScale();
+    const inlineIconSize = moderateScale(20) * fontScale;
+    const closeIconSize = moderateScale(16) * fontScale;
+
     const disabled = !commentText.trim() || isSubmitting;
 
     return (
@@ -77,7 +82,7 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
             ) : (
               <Ionicons
                 name="person"
-                size={moderateScale(20)}
+                size={inlineIconSize}
                 color={theme.text}
               />
             )}
@@ -104,7 +109,7 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
             <Pressable onPress={onCancelReply} style={styles.cancelReplyButton}>
               <MaterialCommunityIcons
                 name="close"
-                size={moderateScale(16)}
+                size={closeIconSize}
                 color={theme.secondaryText}
               />
             </Pressable>
@@ -120,11 +125,7 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
                 color: theme.text,
               },
             ]}
-            placeholder={
-              replyingToUsername
-                ? `Reply to ${replyingToUsername}...`
-                : "Comment..."
-            }
+            placeholder={replyingToUsername ? "Reply..." : "Comment..."}
             placeholderTextColor={theme.secondaryText}
             value={commentText}
             onChangeText={onChangeText}
@@ -145,7 +146,7 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
             ) : (
               <MaterialCommunityIcons
                 name="send"
-                size={moderateScale(20)}
+                size={inlineIconSize}
                 color="#fff"
               />
             )}
@@ -237,8 +238,8 @@ const styles = StyleSheet.create({
     marginLeft: scale(5),
   },
   replyButton: {
-    width: scale(40),
-    height: verticalScale(40),
+    minWidth: scale(40),
+    minHeight: verticalScale(40),
     borderRadius: moderateScale(20),
     justifyContent: "center",
     alignItems: "center",

@@ -12,6 +12,7 @@ import {
   Animated,
   Platform,
   Keyboard,
+  PixelRatio,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from "react-native";
@@ -66,6 +67,8 @@ function FeedPageContent({
   onSearchSubmit: () => void;
 }) {
   const { theme } = useTheme();
+  const fontScale = PixelRatio.getFontScale();
+  const searchActionIconSize = moderateScale(24) * fontScale;
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const { hiddenPostIds } = useFilterContext();
@@ -348,10 +351,13 @@ function FeedPageContent({
               autoCorrect={false}
               style={styles.searchInput}
               rightElement={
-                <Pressable onPress={handleSearchSubmit} hitSlop={moderateScale(8)}>
+                <Pressable
+                  onPress={handleSearchSubmit}
+                  hitSlop={moderateScale(8)}
+                >
                   <Feather
                     name="arrow-right-circle"
-                    size={moderateScale(24)}
+                    size={searchActionIconSize}
                     color={theme.primary}
                   />
                 </Pressable>
@@ -399,7 +405,9 @@ function FeedPageContent({
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
-                {activeSearchQuery ? "No results for your search" : "No posts yet"}
+                {activeSearchQuery
+                  ? "No results for your search"
+                  : "No posts yet"}
               </Text>
             </View>
           }
@@ -435,6 +443,8 @@ function FeedPageContent({
 // Main feed screen: native pager (Instagram-style) – content slides with your finger
 export default function FeedScreen() {
   const { theme } = useTheme();
+  const fontScale = PixelRatio.getFontScale();
+  const fabIconSize = moderateScale(28) * fontScale;
   const { selectedFilter, setSelectedFilter } = useFilterContext();
   const queryClient = useQueryClient();
   const pagerRef = useRef<ScrollView>(null);
@@ -442,7 +452,9 @@ export default function FeedScreen() {
     FEED_FILTER_ORDER.indexOf(selectedFilter as FeedFilterType),
     0,
   );
-  const [activePageIndex, setActivePageIndex] = useState(resolvedInitialPageIndex);
+  const [activePageIndex, setActivePageIndex] = useState(
+    resolvedInitialPageIndex,
+  );
   const [searchQueryByFilter, setSearchQueryByFilter] = useState<
     Record<FeedFilterType, string>
   >({
@@ -557,12 +569,16 @@ export default function FeedScreen() {
                   onSearchSubmit={() => {
                     setActiveSearchByFilter((prev) => ({
                       ...prev,
-                      [filter]: searchQueryByFilter[filter].trim().toLowerCase(),
+                      [filter]: searchQueryByFilter[filter]
+                        .trim()
+                        .toLowerCase(),
                     }));
                   }}
                 />
               ) : (
-                <View style={[styles.page, { backgroundColor: theme.background }]} />
+                <View
+                  style={[styles.page, { backgroundColor: theme.background }]}
+                />
               )}
             </View>
           ))}
@@ -571,7 +587,7 @@ export default function FeedScreen() {
           onPress={() => router.push("/create-post")}
           style={[styles.fab, { backgroundColor: theme.primary }]}
         >
-          <FontAwesome name="plus" size={moderateScale(28)} color="#fff" />
+          <FontAwesome name="plus" size={fabIconSize} color="#fff" />
         </Pressable>
       </View>
       <Modal
@@ -579,7 +595,7 @@ export default function FeedScreen() {
         transparent
         animationType="none"
         statusBarTranslucent
-        onRequestClose={() => { }}
+        onRequestClose={() => {}}
       >
         <View
           style={[
@@ -643,9 +659,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: verticalScale(20),
     right: scale(20),
-    width: scale(60),
-    height: verticalScale(60),
-    borderRadius: moderateScale(30),
+    minWidth: scale(60),
+    minHeight: verticalScale(60),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(10),
+    borderRadius: moderateScale(999),
     justifyContent: "center",
     alignItems: "center",
     elevation: 5,

@@ -9,7 +9,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { useAuth } from "../context/AuthContext";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
-type Profile = Database['public']['Tables']['profiles']['Row'];
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 type ChatListItemProps = {
   chatId: string;
@@ -32,7 +32,10 @@ type ChatListItemProps = {
 // onBeforeNavigate is intentionally excluded — it's a stable function whose
 // closure captures the current item, so re-renders driven by data changes
 // (which DO appear in the other checked props) keep it up to date.
-const arePropsEqual = (prevProps: ChatListItemProps, nextProps: ChatListItemProps) => {
+const arePropsEqual = (
+  prevProps: ChatListItemProps,
+  nextProps: ChatListItemProps,
+) => {
   return (
     prevProps.chatId === nextProps.chatId &&
     prevProps.lastMessageAt === nextProps.lastMessageAt &&
@@ -99,7 +102,9 @@ const ChatListItem = React.memo(function ChatListItem({
 
     // formatDistanceToNowStrict with addSuffix: false gives "5 minutes", "2 hours"
     // We manually abbreviate to "5m", "2h" and ensure "ago" is not included.
-    const distance = formatDistanceToNowStrict(new Date(dateString), { addSuffix: false });
+    const distance = formatDistanceToNowStrict(new Date(dateString), {
+      addSuffix: false,
+    });
 
     return distance
       .replace(" seconds", "s")
@@ -171,21 +176,30 @@ const ChatListItem = React.memo(function ChatListItem({
       flex: 1,
       justifyContent: "center",
       gap: moderateScale(4),
+      minWidth: 0,
     },
     header: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
+      gap: moderateScale(8),
+      minWidth: 0,
     },
     username: {
       fontSize: moderateScale(16),
       fontFamily: "Poppins_600SemiBold",
       color: theme.text,
+      flexShrink: 1,
     },
     time: {
       fontSize: moderateScale(12),
       fontFamily: "Poppins_400Regular",
       color: theme.secondaryText,
+      flexShrink: 0,
+    },
+    timeContainer: {
+      flexShrink: 0,
+      marginLeft: scale(6),
     },
     lastMessage: {
       fontSize: moderateScale(14),
@@ -238,7 +252,9 @@ const ChatListItem = React.memo(function ChatListItem({
         <View style={styles.contentContainer}>
           <View style={styles.header}>
             {getDisplayName() !== null ? (
-              <Text style={styles.username}>{getDisplayName()}</Text>
+              <Text style={styles.username} numberOfLines={1}>
+                {getDisplayName()}
+              </Text>
             ) : (
               // Profile still loading — show a neutral pill instead of "Unknown User"
               <View
@@ -251,9 +267,11 @@ const ChatListItem = React.memo(function ChatListItem({
                 }}
               />
             )}
-            <Text style={styles.time}>
-              {lastMessageAt ? formatTime(lastMessageAt) : ""}
-            </Text>
+            <View style={styles.timeContainer}>
+              <Text style={styles.time} numberOfLines={1}>
+                {lastMessageAt ? formatTime(lastMessageAt) : ""}
+              </Text>
+            </View>
           </View>
           <Text style={styles.lastMessage} numberOfLines={1}>
             {lastMessageHasImage
