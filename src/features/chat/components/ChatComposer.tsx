@@ -6,6 +6,7 @@ import {
   Pressable,
   TouchableOpacity,
   StyleSheet,
+  PixelRatio,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
@@ -66,6 +67,12 @@ export function ChatComposer({
   styles: styleSet,
   paddingBottom = 0,
 }: ChatComposerProps) {
+  const fontScale = PixelRatio.getFontScale();
+  const closeIconSize = moderateScale(18) * fontScale;
+  const removeImageIconSize = moderateScale(24) * fontScale;
+  const composerIconSize = moderateScale(24) * fontScale;
+  const sendIconSize = moderateScale(20) * fontScale;
+
   // Derive preview content label
   const replyContentLabel = replyingTo
     ? replyingTo.message.image_url && !replyingTo.message.content
@@ -117,7 +124,7 @@ export function ChatComposer({
               right: scale(8),
             }}
           >
-            <Ionicons name="close" size={moderateScale(18)} color="#6B7280" />
+            <Ionicons name="close" size={closeIconSize} color="#6B7280" />
           </TouchableOpacity>
         </View>
       )}
@@ -134,7 +141,11 @@ export function ChatComposer({
             style={styleSet.imagePreview}
           />
           <Pressable style={styleSet.removeImageButton} onPress={onRemoveImage}>
-            <Ionicons name="close-circle" size={moderateScale(24)} color="#FFFFFF" />
+            <Ionicons
+              name="close-circle"
+              size={removeImageIconSize}
+              color="#FFFFFF"
+            />
           </Pressable>
         </View>
       )}
@@ -142,7 +153,11 @@ export function ChatComposer({
       {/* Input row */}
       <View style={[styleSet.inputContainer, { paddingBottom }]}>
         <Pressable style={styleSet.imagePickerButton} onPress={onPickImage}>
-          <Ionicons name="image-outline" size={moderateScale(24)} color={textColor} />
+          <Ionicons
+            name="image-outline"
+            size={composerIconSize}
+            color={textColor}
+          />
         </Pressable>
         <TextInput
           placeholder={placeholder}
@@ -161,7 +176,7 @@ export function ChatComposer({
           ]}
           disabled={disabled || isSending}
         >
-          <Ionicons name="send" size={moderateScale(20)} color="#FFFFFF" />
+          <Ionicons name="send" size={sendIconSize} color="#FFFFFF" />
         </Pressable>
       </View>
     </>

@@ -2,6 +2,7 @@ import React from "react";
 import {
   Alert,
   Modal,
+  PixelRatio,
   View,
   Text,
   Pressable,
@@ -13,6 +14,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -36,6 +38,9 @@ export default function NotificationSettingsModal({
   onClose,
 }: NotificationSettingsModalProps) {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const fontScale = PixelRatio.getFontScale();
+  const rowIconSize = moderateScale(22) * fontScale;
   const { session } = useAuth();
   const queryClient = useQueryClient();
   const userId = session?.user?.id;
@@ -92,7 +97,7 @@ export default function NotificationSettingsModal({
           user_id: userId,
           [field]: value,
         },
-        { onConflict: "user_id" }
+        { onConflict: "user_id" },
       );
 
       if (error) throw error;
@@ -113,7 +118,7 @@ export default function NotificationSettingsModal({
           {
             ...previous,
             [field]: value,
-          }
+          },
         );
       }
 
@@ -123,7 +128,7 @@ export default function NotificationSettingsModal({
       if (context?.previous) {
         queryClient.setQueryData(
           ["notification-settings", userId],
-          context.previous
+          context.previous,
         );
       }
     },
@@ -160,7 +165,7 @@ export default function NotificationSettingsModal({
                 notify_chats: false,
                 notify_upvotes: false,
               },
-              { onConflict: "user_id" }
+              { onConflict: "user_id" },
             );
             queryClient.invalidateQueries({
               queryKey: ["notification-settings", userId],
@@ -168,7 +173,7 @@ export default function NotificationSettingsModal({
 
             Alert.alert(
               "Notifications Disabled",
-              "Push notifications were denied. Enable them in your device settings to receive alerts."
+              "Push notifications were denied. Enable them in your device settings to receive alerts.",
             );
             return;
           }
@@ -181,7 +186,7 @@ export default function NotificationSettingsModal({
               notify_chats: false,
               notify_upvotes: false,
             },
-            { onConflict: "user_id" }
+            { onConflict: "user_id" },
           );
           queryClient.invalidateQueries({
             queryKey: ["notification-settings", userId],
@@ -193,7 +198,7 @@ export default function NotificationSettingsModal({
             [
               { text: "Cancel", style: "cancel" },
               { text: "Open Settings", onPress: () => Linking.openSettings() },
-            ]
+            ],
           );
           return;
         }
@@ -211,7 +216,7 @@ export default function NotificationSettingsModal({
       if (!expoProjectId) {
         Alert.alert(
           "Notifications Setup Error",
-          "Expo projectId is missing. Please check app.json/app.config."
+          "Expo projectId is missing. Please check app.json/app.config.",
         );
         queryClient.invalidateQueries({
           queryKey: ["notification-settings", userId],
@@ -238,14 +243,15 @@ export default function NotificationSettingsModal({
             user_id: userId!,
             push_token: token.data,
             notify_chats: field === "notify_chats" ? true : prevNotifyChats,
-            notify_upvotes: field === "notify_upvotes" ? true : prevNotifyUpvotes,
+            notify_upvotes:
+              field === "notify_upvotes" ? true : prevNotifyUpvotes,
           },
-          { onConflict: "user_id" }
+          { onConflict: "user_id" },
         );
       } catch (e) {
         console.warn(
           "Failed to get or register Expo push token; notification toggles remain on.",
-          e
+          e,
         );
       }
 
@@ -274,7 +280,13 @@ export default function NotificationSettingsModal({
     >
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <View
-          style={[styles.modalContent, { backgroundColor: theme.card }]}
+          style={[
+            styles.modalContent,
+            {
+              backgroundColor: theme.card,
+              paddingBottom: Math.max(insets.bottom, verticalScale(32)),
+            },
+          ]}
           onStartShouldSetResponder={() => true}
         >
           <View
@@ -300,7 +312,7 @@ export default function NotificationSettingsModal({
             <View style={styles.optionLeft}>
               <Ionicons
                 name="chatbubble-outline"
-                size={moderateScale(22)}
+                size={rowIconSize}
                 color={theme.text}
               />
               <Text style={[styles.optionLabel, { color: theme.text }]}>
@@ -319,7 +331,7 @@ export default function NotificationSettingsModal({
             <View style={styles.optionLeft}>
               <MaterialCommunityIcons
                 name="arrow-up-bold-outline"
-                size={moderateScale(22)}
+                size={rowIconSize}
                 color={theme.text}
               />
               <Text style={[styles.optionLabel, { color: theme.text }]}>

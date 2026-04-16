@@ -2,7 +2,13 @@ import { Tabs } from "expo-router";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import { useTheme } from "../../../context/ThemeContext";
 import React from "react";
-import { View, Pressable, StyleSheet, Platform } from "react-native";
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  Platform,
+  PixelRatio,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { useFilterContext } from "../../../context/FilterContext";
@@ -11,6 +17,8 @@ import { useGlobalUnreadCount } from "../../../hooks/useGlobalUnreadCount";
 function FilterButtons() {
   const { theme } = useTheme();
   const { selectedFilter, setSelectedFilter } = useFilterContext();
+  const fontScale = PixelRatio.getFontScale();
+  const filterIconSize = moderateScale(18) * fontScale;
 
   return (
     <View style={styles.filterButtons}>
@@ -23,7 +31,7 @@ function FilterButtons() {
       >
         <FontAwesome
           name="fire"
-          size={moderateScale(18)}
+          size={filterIconSize}
           color={selectedFilter === "hot" ? theme.primary : theme.secondaryText}
         />
       </Pressable>
@@ -36,7 +44,7 @@ function FilterButtons() {
       >
         <FontAwesome
           name="clock-o"
-          size={moderateScale(18)}
+          size={filterIconSize}
           color={selectedFilter === "new" ? theme.primary : theme.secondaryText}
         />
       </Pressable>
@@ -49,7 +57,7 @@ function FilterButtons() {
       >
         <FontAwesome
           name="trophy"
-          size={moderateScale(18)}
+          size={filterIconSize}
           color={selectedFilter === "top" ? theme.primary : theme.secondaryText}
         />
       </Pressable>
@@ -62,10 +70,10 @@ export default function TabLayout() {
   const globalUnreadCount = useGlobalUnreadCount();
   const insets = useSafeAreaInsets();
   const isAndroid = Platform.OS === "android";
+  const fontScale = PixelRatio.getFontScale();
+  const tabIconSize = moderateScale(24) * fontScale;
   const baseTabHeight = verticalScale(56);
-  const androidBottomInset = isAndroid
-    ? Math.max(insets.bottom, verticalScale(56))
-    : 0;
+  const androidBottomInset = isAndroid ? insets.bottom : 0;
 
   return (
     <>
@@ -107,11 +115,7 @@ export default function TabLayout() {
             },
             headerRight: () => <FilterButtons />,
             tabBarIcon: ({ color }) => (
-              <Ionicons
-                name="home-outline"
-                size={moderateScale(24)}
-                color={color}
-              />
+              <Ionicons name="home-outline" size={tabIconSize} color={color} />
             ),
           }}
         />
@@ -128,7 +132,7 @@ export default function TabLayout() {
             tabBarIcon: ({ color }) => (
               <Ionicons
                 name="chatbubble-ellipses-outline"
-                size={moderateScale(24)}
+                size={tabIconSize}
                 color={color}
               />
             ),
@@ -153,11 +157,7 @@ export default function TabLayout() {
               color: theme.text,
             },
             tabBarIcon: ({ color }) => (
-              <Ionicons
-                name="bag-outline"
-                size={moderateScale(24)}
-                color={color}
-              />
+              <Ionicons name="bag-outline" size={tabIconSize} color={color} />
             ),
           }}
         />
@@ -174,7 +174,7 @@ export default function TabLayout() {
             tabBarIcon: ({ color }) => (
               <Ionicons
                 name="person-outline"
-                size={moderateScale(24)}
+                size={tabIconSize}
                 color={color}
               />
             ),
@@ -193,8 +193,10 @@ const styles = StyleSheet.create({
     marginRight: scale(16),
   },
   filterBtn: {
-    width: scale(36),
-    height: verticalScale(36),
+    minWidth: scale(36),
+    minHeight: verticalScale(36),
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(6),
     borderRadius: moderateScale(18),
     alignItems: "center",
     justifyContent: "center",

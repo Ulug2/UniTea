@@ -24,6 +24,7 @@ import {
   Alert,
   Modal,
   BackHandler,
+  PixelRatio,
   useWindowDimensions,
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -66,6 +67,9 @@ export default function PostDetailed() {
   const postId = typeof id === "string" ? id : id?.[0];
   const isFromDeeplink = fromDeeplink === "1";
   const insets = useSafeAreaInsets();
+  const fontScale = PixelRatio.getFontScale();
+  const headerIconSize = moderateScale(24) * fontScale;
+  const menuIconSize = moderateScale(20) * fontScale;
   const headerHeight = useHeaderHeight();
   const { theme, isDark } = useTheme();
   const { session } = useAuth();
@@ -211,7 +215,7 @@ export default function PostDetailed() {
             <AntDesign
               style={{ marginLeft: scale(5) }}
               name="close"
-              size={moderateScale(24)}
+              size={headerIconSize}
               color="white"
               onPress={() => router.back()}
             />
@@ -220,7 +224,7 @@ export default function PostDetailed() {
             <Pressable onPress={() => setShowMenu(true)}>
               <Entypo
                 name="dots-three-horizontal"
-                size={moderateScale(24)}
+                size={headerIconSize}
                 color="white"
                 style={{ marginLeft: scale(5) }}
               />
@@ -243,14 +247,14 @@ export default function PostDetailed() {
           >
             <AntDesign
               name="close"
-              size={moderateScale(24)}
+              size={headerIconSize}
               color="white"
               onPress={closeScreen}
             />
             <Pressable onPress={() => setShowMenu(true)}>
               <Entypo
                 name="dots-three-horizontal"
-                size={moderateScale(24)}
+                size={headerIconSize}
                 color="white"
               />
             </Pressable>
@@ -704,7 +708,7 @@ export default function PostDetailed() {
               <Pressable style={styles.menuItem} onPress={handleDeletePost}>
                 <MaterialCommunityIcons
                   name="delete"
-                  size={moderateScale(20)}
+                  size={menuIconSize}
                   color="#EF4444"
                 />
                 <Text style={[styles.menuText, { color: "#EF4444" }]}>
@@ -736,7 +740,7 @@ export default function PostDetailed() {
               >
                 <MaterialCommunityIcons
                   name="eye-off-outline"
-                  size={moderateScale(20)}
+                  size={menuIconSize}
                   color={theme.text}
                 />
                 <Text style={[styles.menuText, { color: theme.text }]}>
@@ -754,7 +758,7 @@ export default function PostDetailed() {
               >
                 <MaterialCommunityIcons
                   name="flag"
-                  size={moderateScale(20)}
+                  size={menuIconSize}
                   color={theme.text}
                 />
                 <Text style={[styles.menuText, { color: theme.text }]}>
@@ -772,7 +776,7 @@ export default function PostDetailed() {
               >
                 <MaterialCommunityIcons
                   name="block-helper"
-                  size={moderateScale(20)}
+                  size={menuIconSize}
                   color={theme.text}
                 />
                 <Text style={[styles.menuText, { color: theme.text }]}>
@@ -914,8 +918,8 @@ const styles = StyleSheet.create({
     maxHeight: verticalScale(100),
   },
   replyButton: {
-    width: scale(40),
-    height: verticalScale(40),
+    minWidth: scale(40),
+    minHeight: verticalScale(40),
     borderRadius: moderateScale(20),
     justifyContent: "center",
     alignItems: "center",

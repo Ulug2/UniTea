@@ -1,5 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, Text, Pressable, StyleSheet, Image, Alert, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  Image,
+  Alert,
+  ScrollView,
+  PixelRatio,
+} from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -120,7 +129,7 @@ const arePropsEqual = (
     prevProps.title === nextProps.title &&
     prevProps.imageUrl === nextProps.imageUrl &&
     JSON.stringify(prevProps.imageUrls ?? []) ===
-    JSON.stringify(nextProps.imageUrls ?? []) &&
+      JSON.stringify(nextProps.imageUrls ?? []) &&
     prevProps.category === nextProps.category &&
     prevProps.location === nextProps.location &&
     prevProps.isAnonymous === nextProps.isAnonymous &&
@@ -150,6 +159,9 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   onImageLoad,
 }: LostFoundListItemProps) {
   const { theme } = useTheme();
+  const fontScale = PixelRatio.getFontScale();
+  const actionIconSize = moderateScale(22) * fontScale;
+  const locationIconSize = moderateScale(14) * fontScale;
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const { data: currentUser } = useMyProfile(currentUserId);
@@ -346,11 +358,15 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      gap: moderateScale(8),
+      minWidth: 0,
     },
     userInfo: {
       flexDirection: "row",
       alignItems: "center",
       gap: moderateScale(8),
+      flex: 1,
+      minWidth: 0,
     },
     avatar: {
       width: scale(40),
@@ -374,11 +390,17 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
       fontSize: moderateScale(15),
       color: theme.text,
       fontFamily: "Poppins_500Medium",
+      flexShrink: 1,
     },
     time: {
       fontSize: moderateScale(13),
       color: theme.secondaryText,
       fontFamily: "Poppins_400Regular",
+      flexShrink: 0,
+    },
+    timeContainer: {
+      flexShrink: 0,
+      marginLeft: scale(8),
     },
     title: {
       fontSize: moderateScale(17),
@@ -403,11 +425,12 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
     },
     actionRow: {
       flexDirection: "row",
-      alignItems: "stretch",
-      justifyContent: "center",
-      gap: moderateScale(10),
+      alignItems: "flex-start",
+      justifyContent: "flex-start",
+      gap: moderateScale(8),
       marginTop: verticalScale(12),
       width: "100%",
+      flexWrap: "wrap",
     },
     chatButton: {
       flex: 1,
@@ -458,9 +481,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   };
 
   return (
-    <View
-      style={styles.card}
-    >
+    <View style={styles.card}>
       <Pressable
         onPress={() => router.push(`/lostfoundpost/${postId}`)}
         onLongPress={() =>
@@ -502,7 +523,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
                 onLoad={() => setAvatarLoaded(true)}
               />
             )}
-            <Text style={styles.username}>
+            <Text style={styles.username} numberOfLines={1}>
               {isAnonymous
                 ? currentUserId === userId
                   ? "You"
@@ -510,11 +531,13 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
                 : username || "Unknown"}
             </Text>
           </Pressable>
-          <Text style={styles.time}>
-            {createdAt
-              ? `${formatDistanceToNowStrict(new Date(createdAt))} ago`
-              : "Recently"}
-          </Text>
+          <View style={styles.timeContainer}>
+            <Text style={styles.time} numberOfLines={1}>
+              {createdAt
+                ? `${formatDistanceToNowStrict(new Date(createdAt))} ago`
+                : "Recently"}
+            </Text>
+          </View>
         </View>
 
         {/* CATEGORY AND LOCATION */}
@@ -531,7 +554,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
             <View style={styles.locationContainer}>
               <Ionicons
                 name="location-outline"
-                size={moderateScale(14)}
+                size={locationIconSize}
                 color={theme.secondaryText}
               />
               <Text style={styles.locationText}>{location}</Text>
@@ -590,7 +613,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
           >
             <MaterialCommunityIcons
               name="message-outline"
-              size={moderateScale(20)}
+              size={actionIconSize}
               color="#FFFFFF"
             />
             <Text style={styles.chatButtonText}>
@@ -606,7 +629,11 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
             sharePost(postId, "lost_found");
           }}
         >
-          <Ionicons name="share-outline" size={moderateScale(20)} color={theme.text} />
+          <Ionicons
+            name="share-outline"
+            size={actionIconSize}
+            color={theme.text}
+          />
           <Text style={[styles.shareButtonText, { color: theme.text }]}>
             Share
           </Text>
