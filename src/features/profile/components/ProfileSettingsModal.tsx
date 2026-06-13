@@ -220,7 +220,7 @@ export function ProfileSettingsModal({
           </ScrollView>
           <Text style={[styles.disclaimer, { color: theme.secondaryText }]}>
             UniTee is an independent student project and is not affiliated with,
-            endorsed by, or an official product of Nazarbayev University.
+            endorsed by, or an official product of any university.
           </Text>
         </View>
       </Pressable>

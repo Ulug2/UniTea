@@ -143,6 +143,13 @@ CREATE TABLE public.post_stats (
   CONSTRAINT post_stats_pkey PRIMARY KEY (post_id),
   CONSTRAINT post_stats_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id)
 );
+CREATE TABLE public.universities (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  domain text NOT NULL UNIQUE,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT universities_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.posts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
@@ -163,9 +170,11 @@ CREATE TABLE public.posts (
   title text,
   image_urls ARRAY,
   image_aspect_ratio double precision,
+  university_id uuid NOT NULL,
   CONSTRAINT posts_pkey PRIMARY KEY (id),
   CONSTRAINT posts_reposted_from_post_id_fkey FOREIGN KEY (reposted_from_post_id) REFERENCES public.posts(id),
-  CONSTRAINT posts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT posts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT posts_university_id_fkey FOREIGN KEY (university_id) REFERENCES public.universities(id)
 );
 CREATE TABLE public.profiles (
   id uuid NOT NULL,
@@ -180,8 +189,10 @@ CREATE TABLE public.profiles (
   banned_until timestamp with time zone,
   is_permanently_banned boolean DEFAULT false,
   is_founding_member boolean NOT NULL DEFAULT false,
+  university_id uuid NOT NULL,
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
-  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
+  CONSTRAINT profiles_university_id_fkey FOREIGN KEY (university_id) REFERENCES public.universities(id)
 );
 CREATE TABLE public.reports (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

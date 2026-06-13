@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet, Image } from "react-native";
 import { Database } from "../types/database.types";
 import { useTheme } from "../context/ThemeContext";
 import { router } from "expo-router";
-import SupabaseImage from "./SupabaseImage";
+import CachedAvatar from "./CachedAvatar";
 import { DEFAULT_AVATAR } from "../constants/images";
 import { formatDistanceToNowStrict } from "date-fns";
 import { useAuth } from "../context/AuthContext";
@@ -221,20 +221,11 @@ const ChatListItem = React.memo(function ChatListItem({
       >
         <View style={styles.avatarContainer}>
           {!isAnonymous && otherUser?.avatar_url ? (
-            otherUser.avatar_url.startsWith("http") ? (
-              <Image
-                source={{ uri: otherUser.avatar_url }}
-                style={styles.avatarImage}
-                onLoad={handleAvatarLoad}
-              />
-            ) : (
-              <SupabaseImage
-                path={otherUser.avatar_url}
-                bucket="avatars"
-                style={styles.avatarImage}
-                onLoad={handleAvatarLoad}
-              />
-            )
+            <CachedAvatar
+              avatarUrl={otherUser.avatar_url}
+              style={styles.avatarImage}
+              onLoad={handleAvatarLoad}
+            />
           ) : (
             <Image
               source={DEFAULT_AVATAR}

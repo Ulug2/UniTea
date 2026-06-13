@@ -20,6 +20,8 @@ const SINGLE_MAX_HEIGHT_RATIO = 0.55;
 const GALLERY_ITEM_WIDTH = scale(225);
 const GALLERY_ITEM_HEIGHT = verticalScale(300);
 
+const PUBLIC_BUCKETS = new Set(["avatars", "post-images", "chat-images"]);
+
 type ResponsiveImageProps = {
   source: string;
   bucket?: string;
@@ -68,12 +70,13 @@ export default function ResponsiveImage({
   const dynamicAspectRatio = useImageAspectRatio(measureUri, { clamp: false });
   const aspectRatio = hasKnownRatio ? knownAspectRatio : dynamicAspectRatio;
   const isDirectUri = sourceKind === "uri" || (sourceKind === "auto" && isUri(source));
+  const isKnownPublicPath = !isDirectUri && PUBLIC_BUCKETS.has(bucket);
 
-  const [isImageLoading, setIsImageLoading] = useState(true);
+  const [isImageLoading, setIsImageLoading] = useState(!isKnownPublicPath);
 
   useEffect(() => {
-    setIsImageLoading(true);
-  }, [source]);
+    setIsImageLoading(!isKnownPublicPath);
+  }, [source, isKnownPublicPath]);
 
   const handleImageLoad = useCallback(() => {
     setIsImageLoading(false);
@@ -139,6 +142,7 @@ export default function ResponsiveImage({
           contentFit={contentFit}
           contentPosition={contentPosition}
           loadingBackgroundColor={backgroundColor}
+          transition={0}
           onLoad={handleImageLoad}
         />
       )}

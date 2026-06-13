@@ -7,7 +7,7 @@ import { Database } from "../../../types/database.types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
-import { useMemo, useEffect, useRef, useCallback } from "react";
+import { useMemo, useEffect, useRef, useCallback, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { logger } from "../../../utils/logger";
 import {
@@ -104,8 +104,19 @@ export default function ChatScreen() {
     },
   });
 
-  // Removed aggressive refetch on focus - rely on cache and real-time subscriptions instead
-  // This prevents UI lag and scroll jumps when navigating back to the chat list
+  // Drive the pull-to-refresh spinner ONLY from user-initiated pulls. Binding it
+  // to `isRefetchingChats` (any background refetch, e.g. refetch-on-mount after a
+  // new chat invalidates the query) shows a programmatic RefreshControl that the
+  // user never pulled — on iOS that spinner can get stuck and shift the list down.
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const onManualRefresh = useCallback(async () => {
+    setIsManualRefreshing(true);
+    try {
+      await refetchChats();
+    } finally {
+      setIsManualRefreshing(false);
+    }
+  }, [refetchChats]);
 
   // Prevent stuck loading state: cancel refetch if it's been stuck for too long
   useEffect(() => {
@@ -593,8 +604,8 @@ export default function ChatScreen() {
           renderItem={renderChatItem}
           refreshControl={
             <RefreshControl
-              refreshing={isRefetchingChats}
-              onRefresh={refetchChats}
+              refreshing={isManualRefreshing}
+              onRefresh={onManualRefresh}
               tintColor={theme.primary}
             />
           }

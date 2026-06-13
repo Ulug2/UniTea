@@ -43,7 +43,8 @@ export function useInitiateAnonymousChat() {
           post_id: postId,
           initiator_id: currentUserId,
           is_anonymous: true,
-          last_message_at: new Date().toISOString(),
+          // Intentionally leave last_message_at null until the first message is
+          // sent, so empty chats are filtered out of the list and cleaned up.
         })
         .select("id")
         .single();

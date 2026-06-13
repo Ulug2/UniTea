@@ -43,7 +43,7 @@ function SupabaseImage({
   path,
   bucket = "post-images",
   contentFit = "cover",
-  transition = 200,
+  transition = bucket === "avatars" ? 0 : 200,
   loadingBackgroundColor = "#F0F0F0",
   loadingIndicatorColor,
   onLoad,

@@ -74,6 +74,9 @@ export default function TabLayout() {
   const tabIconSize = moderateScale(24) * fontScale;
   const baseTabHeight = verticalScale(56);
   const androidBottomInset = isAndroid ? insets.bottom : 0;
+  // Extra breathing room on Android so the tab icons/labels aren't flush against
+  // the system navigation bar (gesture pill / 3-button nav).
+  const androidTabBottomGap = isAndroid ? verticalScale(12) : 0;
 
   return (
     <>
@@ -89,10 +92,10 @@ export default function TabLayout() {
             borderTopColor: theme.border,
             borderTopWidth: 1,
             height: isAndroid
-              ? baseTabHeight + androidBottomInset
+              ? baseTabHeight + androidBottomInset + androidTabBottomGap
               : verticalScale(80),
             paddingTop: isAndroid ? verticalScale(6) : 0,
-            paddingBottom: androidBottomInset,
+            paddingBottom: androidBottomInset + androidTabBottomGap,
           },
           headerStyle: {
             backgroundColor: theme.background,

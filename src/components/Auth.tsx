@@ -235,7 +235,7 @@ export default function Auth() {
               if (showResendOption) dismissResendOption();
             }}
             value={email}
-            placeholder="name.surname@nu.edu.kz"
+            placeholder="name.surname@university.edu"
             autoCapitalize="none"
             keyboardType="email-address"
             errorMessage={emailError}
@@ -396,7 +396,7 @@ export default function Auth() {
           )}
 
           <Text style={[styles.exclusiveNote, { color: theme.secondaryText }]}>
-            Only available for Nazarbayev University students
+            Only available for supported university students
           </Text>
 
           <View style={styles.switchRow}>
@@ -437,7 +437,7 @@ export default function Auth() {
         </View>
         <Text style={[styles.disclaimer, { color: theme.secondaryText }]}>
           UniTee is an independent student project and is not affiliated with,
-          endorsed by, or an official product of Nazarbayev University.
+          endorsed by, or an official product of any university.
         </Text>
       </View>
     </SafeAreaView>

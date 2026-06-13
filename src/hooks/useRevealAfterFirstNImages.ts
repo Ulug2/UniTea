@@ -14,6 +14,11 @@ type Options = {
    * disk — there is nothing to wait for.
    */
   initialRevealed?: boolean;
+  /**
+   * When this value changes (e.g. active community id), the reveal counter resets.
+   * Cached feeds pass initialRevealed=true so switching back skips the overlay.
+   */
+  resetKey?: string | number | null;
 };
 
 /**
@@ -27,10 +32,22 @@ export function useRevealAfterFirstNImages(options: Options = {}) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const enabled = options.enabled ?? true;
   const initialRevealed = options.initialRevealed ?? false;
+  const resetKey = options.resetKey ?? "default";
 
   const [shouldReveal, setShouldReveal] = useState(initialRevealed);
   const countRef = useRef(0);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When switching to a feed that already has cached posts, reveal immediately
+  // instead of hiding the list behind the image-loading overlay again.
+  useEffect(() => {
+    countRef.current = 0;
+    if (initialRevealed) {
+      setShouldReveal(true);
+      return;
+    }
+    setShouldReveal(false);
+  }, [resetKey, initialRevealed]);
 
   const onItemReady = useCallback(() => {
     if (countRef.current >= minItems) return;

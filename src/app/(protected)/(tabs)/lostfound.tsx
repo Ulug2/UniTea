@@ -60,6 +60,7 @@ export default function LostFoundScreen() {
 
   const { data: currentUser } = useMyProfile(currentUserId);
   const isAdmin = currentUser?.is_admin === true;
+  const universityId = currentUser?.university_id;
   const isPostOwner = selectedPost && currentUserId === selectedPost.userId;
   const canDeletePost = isPostOwner || isAdmin;
 
@@ -89,17 +90,22 @@ export default function LostFoundScreen() {
     refetch,
     isRefetching,
   } = useInfiniteQuery({
-    queryKey: ["posts", "lost_found"],
+    queryKey: ["posts", "lost_found", universityId],
     queryFn: async ({ pageParam = 0 }) => {
       const from = pageParam * POSTS_PER_PAGE;
       const to = from + POSTS_PER_PAGE - 1;
 
-      // Type cast needed since view isn't in generated types
-      const { data, error } = await (supabase as any)
+      let query = (supabase as any)
         .from("posts_summary_view")
         .select("*")
         .eq("post_type", "lost_found")
-        .or("is_banned.is.null,is_banned.eq.false")
+        .or("is_banned.is.null,is_banned.eq.false");
+
+      if (universityId) {
+        query = query.eq("university_id", universityId);
+      }
+
+      const { data, error } = await query
         .order("created_at", { ascending: false })
         .range(from, to);
 

@@ -20,7 +20,7 @@ import nuLogo from "../../assets/images/nu-logo.png";
 import { DEFAULT_AVATAR } from "../constants/images";
 import { useTheme } from "../context/ThemeContext";
 import { useVote } from "../hooks/useVote";
-import SupabaseImage from "./SupabaseImage";
+import CachedAvatar from "./CachedAvatar";
 import { resolvePostImageUri } from "./FullscreenImageModal";
 import Poll from "./Poll";
 import UserProfileModal from "./UserProfileModal";
@@ -728,20 +728,11 @@ const PostListItem = React.memo(function PostListItem({
                     onLoad={() => setAvatarLoaded(true)}
                   />
                 ) : avatarUrl ? (
-                  avatarUrl.startsWith("http") ? (
-                    <Image
-                      source={{ uri: avatarUrl }}
-                      style={styles.avatar}
-                      onLoad={() => setAvatarLoaded(true)}
-                    />
-                  ) : (
-                    <SupabaseImage
-                      path={avatarUrl}
-                      bucket="avatars"
-                      style={styles.avatar}
-                      onLoad={() => setAvatarLoaded(true)}
-                    />
-                  )
+                  <CachedAvatar
+                    avatarUrl={avatarUrl}
+                    style={styles.avatar}
+                    onLoad={() => setAvatarLoaded(true)}
+                  />
                 ) : (
                   <Image
                     source={DEFAULT_AVATAR}
@@ -757,20 +748,11 @@ const PostListItem = React.memo(function PostListItem({
                   onLoad={() => setAvatarLoaded(true)}
                 />
               ) : avatarUrl ? (
-                avatarUrl.startsWith("http") ? (
-                  <Image
-                    source={{ uri: avatarUrl }}
-                    style={styles.avatar}
-                    onLoad={() => setAvatarLoaded(true)}
-                  />
-                ) : (
-                  <SupabaseImage
-                    path={avatarUrl}
-                    bucket="avatars"
-                    style={styles.avatar}
-                    onLoad={() => setAvatarLoaded(true)}
-                  />
-                )
+                <CachedAvatar
+                  avatarUrl={avatarUrl}
+                  style={styles.avatar}
+                  onLoad={() => setAvatarLoaded(true)}
+                />
               ) : (
                 <Image
                   source={DEFAULT_AVATAR}

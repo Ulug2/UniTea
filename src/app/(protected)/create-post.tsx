@@ -44,6 +44,7 @@ import { useOriginalPostForRepost } from "../../hooks/useOriginalPostForRepost";
 import { useImagePipeline } from "../../hooks/useImagePipeline";
 import { useCreatePostFormState } from "../../hooks/useCreatePostFormState";
 import { useCreatePostMutation } from "../../hooks/useCreatePostMutation";
+import { useMyProfile } from "../../features/profile/hooks/useMyProfile";
 import {
   FullscreenImageModal,
   resolvePostImageUri,
@@ -112,11 +113,19 @@ export default function CreatePostScreen() {
   const keyboardAppearance =
     Platform.OS === "ios" ? (isDark ? "dark" : "light") : undefined;
   const insets = useSafeAreaInsets();
-  const { type, repostId } = useLocalSearchParams<{
+  const { type, repostId, communityId } = useLocalSearchParams<{
     type?: string;
     repostId?: string;
+    communityId?: string;
   }>();
+  const resolvedCommunityId =
+    typeof communityId === "string"
+      ? communityId
+      : Array.isArray(communityId)
+        ? communityId[0]
+        : undefined;
   const { session } = useAuth();
+  const { data: currentUser } = useMyProfile(session?.user?.id);
   const [expandedImageUri, setExpandedImageUri] = React.useState<string | null>(
     null,
   );
@@ -279,6 +288,8 @@ export default function CreatePostScreen() {
     isLostFound,
     repostId,
     currentUserId: session?.user?.id,
+    universityId: currentUser?.university_id,
+    communityId: resolvedCommunityId,
   });
 
   const handlePost = async () => {
@@ -354,14 +365,18 @@ export default function CreatePostScreen() {
         postIsAnonymous: isAnonymous,
         postCategory: category,
         pollOptions: cleanedPollOptions,
+        communityId: resolvedCommunityId ?? null,
       });
 
-      // Immediately reset and navigate back to the originating tab; feed overlay will show while mutation completes
+      // Reset form and return to the feed that was already mounted behind this modal.
+      // Using back() preserves the active community filter and scroll position.
       reset();
       if (isLostFound) {
         router.replace("/(protected)/(tabs)/lostfound");
+      } else if (Platform.OS === "android") {
+        closeScreen();
       } else {
-        router.replace("/(protected)/(tabs)");
+        router.back();
       }
     } catch (error) {
       // Errors are already surfaced via mutation onError; nothing extra here

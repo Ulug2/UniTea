@@ -16,18 +16,14 @@ import {
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from "react-native";
-import { Feather, FontAwesome } from "@expo/vector-icons";
+import { Feather, FontAwesome, Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import PostListItem from "../../../components/PostListItem";
 import PostListSkeleton from "../../../components/PostListSkeleton";
 import CustomInput from "../../../components/CustomInput";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
-import {
-  useInfiniteQuery,
-  useQueryClient,
-  useIsMutating,
-} from "@tanstack/react-query";
+import { useQueryClient, useIsMutating } from "@tanstack/react-query";
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useFilterContext } from "../../../context/FilterContext";
@@ -38,10 +34,12 @@ import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { saveFeedToStorage } from "../../../utils/feedPersistence";
 import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
+import { useFeedPosts } from "../../../hooks/useFeedPosts";
+import CommunityFilterBar from "../../../features/communities/components/CommunityFilterBar";
+import { useMyCommunities } from "../../../features/communities/hooks/useMyCommunities";
 
 type PostSummary = PostsSummaryViewRow;
 
-const POSTS_PER_PAGE = 10;
 const ENABLE_FEED_DIAGNOSTICS = false;
 const SEARCH_BAR_HEIGHT = verticalScale(64);
 const SEARCH_HIDE_SCROLL_Y = verticalScale(30);
@@ -50,6 +48,16 @@ const PULL_REVEAL_THRESHOLD = -verticalScale(80);
 const FEED_FILTER_ORDER = ["hot", "new", "top"] as const;
 type FeedFilterType = (typeof FEED_FILTER_ORDER)[number];
 
+const CAMPUS_FEED_KEY = "__campus__";
+
+function communityIdToFeedKey(communityId: string | null): string {
+  return communityId ?? CAMPUS_FEED_KEY;
+}
+
+function feedKeyToCommunityId(feedKey: string): string | null {
+  return feedKey === CAMPUS_FEED_KEY ? null : feedKey;
+}
+
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // Single feed "page" for one filter – used inside the horizontal pager
@@ -57,12 +65,14 @@ function FeedPageContent({
   filter,
   searchQuery,
   activeSearchQuery,
+  communityId,
   onSearchQueryChange,
   onSearchSubmit,
 }: {
   filter: FeedFilterType;
   searchQuery: string;
   activeSearchQuery: string;
+  communityId: string | null;
   onSearchQueryChange: (nextValue: string) => void;
   onSearchSubmit: () => void;
 }) {
@@ -79,8 +89,9 @@ function FeedPageContent({
   const { data: blocks = [] } = useBlocks();
   const { data: currentUser } = useMyProfile(currentUserId);
   const isAdmin = currentUser?.is_admin === true;
+  const universityId = currentUser?.university_id;
 
-  // Fetch posts for this filter only
+  // Fetch posts for this filter + active community (Campus Feed when null).
   const {
     data: postsData,
     fetchNextPage,
@@ -89,75 +100,11 @@ function FeedPageContent({
     isPending,
     refetch,
     isRefetching,
-  } = useInfiniteQuery({
-    queryKey: ["posts", "feed", filter, activeSearchQuery],
-    queryFn: async ({ pageParam = 0 }) => {
-      let query = (supabase as any)
-        .from("posts_summary_view")
-        .select("*")
-        .eq("post_type", "feed")
-        .not("is_banned", "is", "true");
-
-      const normalizedSearch = activeSearchQuery
-        .trim()
-        .replace(/[%*]/g, "")
-        .replace(/,/g, " ");
-      if (normalizedSearch.length > 0) {
-        const pattern = `*${normalizedSearch}*`;
-        // Priority: title match first; fallback to content when title is null/empty.
-        query = query.or(
-          `title.ilike.${pattern},and(title.is.null,content.ilike.${pattern}),and(title.eq."",content.ilike.${pattern})`,
-        );
-      }
-
-      switch (filter) {
-        case "new":
-          // Sort by newest first
-          const from = pageParam * POSTS_PER_PAGE;
-          const to = from + POSTS_PER_PAGE - 1;
-          query = query
-            .order("created_at", { ascending: false })
-            .range(from, to);
-          break;
-
-        case "top":
-          // Sort by highest votes in the last week
-          const lastWeek = new Date();
-          lastWeek.setDate(lastWeek.getDate() - 7);
-          const topFrom = pageParam * POSTS_PER_PAGE;
-          const topTo = topFrom + POSTS_PER_PAGE - 1;
-          query = query
-            .gte("created_at", lastWeek.toISOString())
-            .order("vote_score", { ascending: false })
-            .range(topFrom, topTo);
-          break;
-
-        case "hot":
-          // Sort server-side on dynamic hot_score from posts_summary_view.
-          // 10 rows per page — same as the other filters.
-          const last7Days = new Date();
-          last7Days.setDate(last7Days.getDate() - 7);
-          const hotFrom = pageParam * POSTS_PER_PAGE;
-          const hotTo = hotFrom + POSTS_PER_PAGE - 1;
-          query = query
-            .gte("created_at", last7Days.toISOString())
-            .order("hot_score", { ascending: false })
-            .range(hotFrom, hotTo);
-          break;
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data || []) as PostSummary[];
-    },
-    getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.length === POSTS_PER_PAGE) return allPages.length;
-      return undefined;
-    },
-    initialPageParam: 0,
-    staleTime: 1000 * 60 * 2,
-    gcTime: 1000 * 60 * 30,
-    retry: 2,
+  } = useFeedPosts({
+    filter,
+    activeSearchQuery,
+    universityId,
+    communityId,
   });
 
   // Flatten pages into single array, remove duplicates, filter blocked users, and sort by engagement for "hot"
@@ -215,21 +162,29 @@ function FeedPageContent({
   // Persist the first page to AsyncStorage after every successful fetch so the
   // next cold start can seed the RQ cache before the splash screen hides.
   useEffect(() => {
-    if (postsData?.pages?.length) {
+    // Only persist the Campus Feed for cold-start seeding; community feeds
+    // must not overwrite the cached campus posts.
+    if (communityId === null && postsData?.pages?.length) {
       saveFeedToStorage(filter, postsData.pages as PostSummary[][]);
     }
-  }, [postsData, filter]);
+  }, [postsData, filter, communityId]);
 
   const keyExtractor = useCallback((item: PostSummary) => item.post_id, []);
 
+  const hasCachedPosts = (postsData?.pages?.length ?? 0) > 0;
+
   // Skip the reveal-overlay when data is already in cache (seeded from
-  // AsyncStorage). Images are served from expo-image's disk cache so there is
-  // nothing to wait for.
+  // AsyncStorage or a prior community visit). Images are served from
+  // expo-image's disk cache so there is nothing to wait for.
   const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
     minItems: 3,
     timeoutMs: 2500,
-    initialRevealed: !!postsData,
+    initialRevealed: hasCachedPosts,
+    resetKey: communityId ?? "campus",
   });
+  // Cached feeds must never hide behind the skeleton overlay for a frame while
+  // the reveal hook catches up after a community switch.
+  const effectiveShouldReveal = hasCachedPosts || shouldReveal;
 
   const renderItem = useCallback(
     ({ item, index }: { item: PostSummary; index: number }) => (
@@ -304,7 +259,7 @@ function FeedPageContent({
     [searchVisible],
   );
 
-  if (isPending) {
+  if (isPending && !postsData) {
     return (
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <ScrollView
@@ -322,8 +277,8 @@ function FeedPageContent({
       <View
         style={{
           flex: 1,
-          opacity: shouldReveal ? 1 : 0,
-          pointerEvents: shouldReveal ? "auto" : "none",
+          opacity: effectiveShouldReveal ? 1 : 0,
+          pointerEvents: effectiveShouldReveal ? "auto" : "none",
         }}
       >
         <Animated.View
@@ -414,7 +369,7 @@ function FeedPageContent({
           contentInsetAdjustmentBehavior="automatic"
         />
       </View>
-      {!shouldReveal && (
+      {!effectiveShouldReveal && (
         <View
           style={[
             StyleSheet.absoluteFill,
@@ -440,13 +395,30 @@ function FeedPageContent({
   );
 }
 
-// Main feed screen: native pager (Instagram-style) – content slides with your finger
-export default function FeedScreen() {
+type CommunityFeedPagerProps = {
+  communityId: string | null;
+  selectedFilter: string;
+  setSelectedFilter: (filter: string) => void;
+  searchQueryByFilter: Record<FeedFilterType, string>;
+  setSearchQueryByFilter: React.Dispatch<
+    React.SetStateAction<Record<FeedFilterType, string>>
+  >;
+  activeSearchByFilter: Record<FeedFilterType, string>;
+  setActiveSearchByFilter: React.Dispatch<
+    React.SetStateAction<Record<FeedFilterType, string>>
+  >;
+};
+
+function CommunityFeedPager({
+  communityId,
+  selectedFilter,
+  setSelectedFilter,
+  searchQueryByFilter,
+  setSearchQueryByFilter,
+  activeSearchByFilter,
+  setActiveSearchByFilter,
+}: CommunityFeedPagerProps) {
   const { theme } = useTheme();
-  const fontScale = PixelRatio.getFontScale();
-  const fabIconSize = moderateScale(28) * fontScale;
-  const { selectedFilter, setSelectedFilter } = useFilterContext();
-  const queryClient = useQueryClient();
   const pagerRef = useRef<ScrollView>(null);
   const resolvedInitialPageIndex = Math.max(
     FEED_FILTER_ORDER.indexOf(selectedFilter as FeedFilterType),
@@ -455,24 +427,7 @@ export default function FeedScreen() {
   const [activePageIndex, setActivePageIndex] = useState(
     resolvedInitialPageIndex,
   );
-  const [searchQueryByFilter, setSearchQueryByFilter] = useState<
-    Record<FeedFilterType, string>
-  >({
-    hot: "",
-    new: "",
-    top: "",
-  });
-  const [activeSearchByFilter, setActiveSearchByFilter] = useState<
-    Record<FeedFilterType, string>
-  >({
-    hot: "",
-    new: "",
-    top: "",
-  });
 
-  const isCreatingPost = useIsMutating({ mutationKey: ["create-post"] }) > 0;
-
-  // When user taps a filter pill, scroll to the corresponding page
   useEffect(() => {
     const pageIndex = FEED_FILTER_ORDER.indexOf(
       selectedFilter as FeedFilterType,
@@ -499,6 +454,125 @@ export default function FeedScreen() {
     },
     [setSelectedFilter],
   );
+
+  return (
+    <ScrollView
+      ref={pagerRef}
+      horizontal
+      pagingEnabled
+      showsHorizontalScrollIndicator={false}
+      scrollEventThrottle={16}
+      onMomentumScrollEnd={handlePageSelected}
+      contentOffset={{
+        x: Math.max(0, resolvedInitialPageIndex) * SCREEN_WIDTH,
+        y: 0,
+      }}
+      style={styles.pager}
+    >
+      {FEED_FILTER_ORDER.map((filter, index) => (
+        <View key={filter} style={styles.pageWrapper}>
+          {Math.abs(index - activePageIndex) <= 1 ? (
+            <FeedPageContent
+              filter={filter}
+              searchQuery={searchQueryByFilter[filter]}
+              activeSearchQuery={activeSearchByFilter[filter]}
+              communityId={communityId}
+              onSearchQueryChange={(nextValue) => {
+                setSearchQueryByFilter((previous) => ({
+                  ...previous,
+                  [filter]: nextValue,
+                }));
+                if (nextValue.trim() === "") {
+                  setActiveSearchByFilter((prev) => ({
+                    ...prev,
+                    [filter]: "",
+                  }));
+                }
+              }}
+              onSearchSubmit={() => {
+                setActiveSearchByFilter((prev) => ({
+                  ...prev,
+                  [filter]: searchQueryByFilter[filter].trim().toLowerCase(),
+                }));
+              }}
+            />
+          ) : (
+            <View
+              style={[styles.page, { backgroundColor: theme.background }]}
+            />
+          )}
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+// Main feed screen: native pager (Instagram-style) – content slides with your finger
+export default function FeedScreen() {
+  const { theme } = useTheme();
+  const fontScale = PixelRatio.getFontScale();
+  const fabIconSize = moderateScale(28) * fontScale;
+  const { selectedFilter, setSelectedFilter } = useFilterContext();
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id;
+  const queryClient = useQueryClient();
+
+  // null === Campus Feed (community_id IS NULL); otherwise the active community.
+  const [activeCommunityId, setActiveCommunityId] = useState<string | null>(
+    null,
+  );
+  const activeFeedKey = communityIdToFeedKey(activeCommunityId);
+  const [mountedFeedKeys, setMountedFeedKeys] = useState<Set<string>>(
+    () => new Set([CAMPUS_FEED_KEY]),
+  );
+
+  // Keep each visited community feed mounted so switching back does not remount
+  // FlatList cells and replay image loading transitions.
+  useEffect(() => {
+    setMountedFeedKeys((previous) => {
+      if (previous.has(activeFeedKey)) return previous;
+      const next = new Set(previous);
+      next.add(activeFeedKey);
+      return next;
+    });
+  }, [activeFeedKey]);
+  const { joinedIds, communities, isPending: myCommunitiesPending } =
+    useMyCommunities();
+  const activeCommunity = useMemo(
+    () => communities.find((c) => c.id === activeCommunityId) ?? null,
+    [communities, activeCommunityId],
+  );
+  const isCommunityOwner =
+    !!activeCommunity && activeCommunity.created_by === currentUserId;
+
+  // If the active community is left or deleted, fall back to the Campus Feed so
+  // the user is never stuck on an empty/orphaned feed.
+  useEffect(() => {
+    if (
+      activeCommunityId !== null &&
+      !myCommunitiesPending &&
+      !joinedIds.has(activeCommunityId)
+    ) {
+      setActiveCommunityId(null);
+    }
+  }, [activeCommunityId, joinedIds, myCommunitiesPending]);
+
+  const [searchQueryByFilter, setSearchQueryByFilter] = useState<
+    Record<FeedFilterType, string>
+  >({
+    hot: "",
+    new: "",
+    top: "",
+  });
+  const [activeSearchByFilter, setActiveSearchByFilter] = useState<
+    Record<FeedFilterType, string>
+  >({
+    hot: "",
+    new: "",
+    top: "",
+  });
+
+  const isCreatingPost = useIsMutating({ mutationKey: ["create-post"] }) > 0;
 
   useEffect(() => {
     let isMounted = true;
@@ -529,62 +603,73 @@ export default function FeedScreen() {
     };
   }, [queryClient]);
 
-  const initialPageIndex = resolvedInitialPageIndex;
+  const mountedFeedKeyList = useMemo(
+    () => Array.from(mountedFeedKeys),
+    [mountedFeedKeys],
+  );
 
   return (
     <>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <ScrollView
-          ref={pagerRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onMomentumScrollEnd={handlePageSelected}
-          contentOffset={{
-            x: Math.max(0, initialPageIndex) * SCREEN_WIDTH,
-            y: 0,
-          }}
-          style={styles.pager}
-        >
-          {FEED_FILTER_ORDER.map((filter, index) => (
-            <View key={filter} style={styles.pageWrapper}>
-              {Math.abs(index - activePageIndex) <= 1 ? (
-                <FeedPageContent
-                  filter={filter}
-                  searchQuery={searchQueryByFilter[filter]}
-                  activeSearchQuery={activeSearchByFilter[filter]}
-                  onSearchQueryChange={(nextValue) => {
-                    setSearchQueryByFilter((previous) => ({
-                      ...previous,
-                      [filter]: nextValue,
-                    }));
-                    if (nextValue.trim() === "") {
-                      setActiveSearchByFilter((prev) => ({
-                        ...prev,
-                        [filter]: "",
-                      }));
-                    }
-                  }}
-                  onSearchSubmit={() => {
-                    setActiveSearchByFilter((prev) => ({
-                      ...prev,
-                      [filter]: searchQueryByFilter[filter]
-                        .trim()
-                        .toLowerCase(),
-                    }));
-                  }}
+        <CommunityFilterBar
+          activeCommunityId={activeCommunityId}
+          onSelect={setActiveCommunityId}
+          onDiscover={() => router.push("/communities")}
+        />
+        <View style={styles.feedStack}>
+          {mountedFeedKeyList.map((feedKey) => {
+            const isActive = feedKey === activeFeedKey;
+            return (
+              <View
+                key={feedKey}
+                style={[
+                  styles.feedLayer,
+                  !isActive && styles.feedLayerHidden,
+                ]}
+                pointerEvents={isActive ? "auto" : "none"}
+              >
+                <CommunityFeedPager
+                  communityId={feedKeyToCommunityId(feedKey)}
+                  selectedFilter={selectedFilter}
+                  setSelectedFilter={setSelectedFilter}
+                  searchQueryByFilter={searchQueryByFilter}
+                  setSearchQueryByFilter={setSearchQueryByFilter}
+                  activeSearchByFilter={activeSearchByFilter}
+                  setActiveSearchByFilter={setActiveSearchByFilter}
                 />
-              ) : (
-                <View
-                  style={[styles.page, { backgroundColor: theme.background }]}
-                />
-              )}
-            </View>
-          ))}
-        </ScrollView>
+              </View>
+            );
+          })}
+        </View>
+        {isCommunityOwner && activeCommunityId && (
+          <Pressable
+            onPress={() =>
+              router.push(`/communities/${activeCommunityId}/manage`)
+            }
+            style={[
+              styles.fab,
+              styles.settingsFab,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+              },
+            ]}
+          >
+            <Ionicons
+              name="settings-outline"
+              size={fabIconSize}
+              color={theme.text}
+            />
+          </Pressable>
+        )}
         <Pressable
-          onPress={() => router.push("/create-post")}
+          onPress={() =>
+            router.push(
+              activeCommunityId
+                ? `/create-post?communityId=${activeCommunityId}`
+                : "/create-post",
+            )
+          }
           style={[styles.fab, { backgroundColor: theme.primary }]}
         >
           <FontAwesome name="plus" size={fabIconSize} color="#fff" />
@@ -618,6 +703,16 @@ export default function FeedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  feedStack: {
+    flex: 1,
+    position: "relative",
+  },
+  feedLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  feedLayerHidden: {
+    display: "none",
   },
   pager: {
     flex: 1,
@@ -674,5 +769,9 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.3,
     shadowRadius: moderateScale(4.65),
+  },
+  settingsFab: {
+    bottom: verticalScale(92),
+    borderWidth: 1,
   },
 });
