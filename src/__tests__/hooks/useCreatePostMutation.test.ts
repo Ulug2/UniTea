@@ -16,7 +16,10 @@ import { renderHook, act, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 import { useCreatePostMutation } from '../../hooks/useCreatePostMutation';
+import { feedKeys } from '../../features/communities/data/queryKeys';
 import { supabase } from '../../lib/supabase';
+
+const DEFAULT_FEED_CACHE_KEY = feedKeys.list('new', '', undefined, null);
 
 const mockGetSession = supabase.auth.getSession as jest.Mock;
 
@@ -331,7 +334,7 @@ describe('useCreatePostMutation', () => {
 
       // Find the optimistic setQueryData call for ['posts','feed','new']
       const optimisticCall = capturedCalls.find(
-        (c) => JSON.stringify(c.key) === JSON.stringify(['posts', 'feed', 'new'])
+        (c) => JSON.stringify(c.key) === JSON.stringify(DEFAULT_FEED_CACHE_KEY)
       );
       expect(optimisticCall).toBeDefined();
 
@@ -377,7 +380,7 @@ describe('useCreatePostMutation', () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
       const optimisticCall = capturedCalls.find(
-        (c) => JSON.stringify(c.key) === JSON.stringify(['posts', 'feed', 'new'])
+        (c) => JSON.stringify(c.key) === JSON.stringify(DEFAULT_FEED_CACHE_KEY)
       );
       expect(optimisticCall).toBeDefined();
 
@@ -419,7 +422,7 @@ describe('useCreatePostMutation', () => {
         await new Promise((r) => setTimeout(r, 10));
       });
 
-      const cache = queryClient.getQueryData(['posts', 'feed', 'new']);
+      const cache = queryClient.getQueryData(DEFAULT_FEED_CACHE_KEY);
       expect(cache).toBeUndefined();
     });
   });
@@ -431,7 +434,7 @@ describe('useCreatePostMutation', () => {
         pages: [[{ post_id: 'old-post', content: 'Old' }]],
         pageParams: [0],
       };
-      queryClient.setQueryData(['posts', 'feed', 'new'], previousPosts);
+      queryClient.setQueryData(DEFAULT_FEED_CACHE_KEY, previousPosts);
 
       // Spy to capture ALL setQueryData calls (including the rollback from onError)
       const capturedCalls: Array<{ key: unknown; value: unknown }> = [];
@@ -459,7 +462,7 @@ describe('useCreatePostMutation', () => {
 
       // onError calls setQueryData with the previousData captured during onMutate
       const feedNewCalls = capturedCalls.filter(
-        (c) => JSON.stringify(c.key) === JSON.stringify(['posts', 'feed', 'new'])
+        (c) => JSON.stringify(c.key) === JSON.stringify(DEFAULT_FEED_CACHE_KEY)
       );
       // Last call should be the rollback value (previousPosts)
       const rollbackCall = feedNewCalls[feedNewCalls.length - 1];

@@ -19,17 +19,7 @@ const AVATAR_WIDTH = scale(120);
 const AVATAR_HEIGHT = verticalScale(120);
 const AVATAR_RADIUS = moderateScale(60);
 const SWIPE_THRESHOLD = scale(30);
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-
-/**
- * Returns a fully-qualified URL for the avatar, constructing the public
- * storage URL synchronously for Supabase storage paths. This bypasses
- * SupabaseImage's async state so there is never a loading spinner.
- */
-function getAvatarUri(avatarUrl: string): string {
-  if (avatarUrl.startsWith("http")) return avatarUrl;
-  return `${SUPABASE_URL}/storage/v1/object/public/avatars/${avatarUrl}`;
-}
+import { getAvatarUri } from "../../../utils/avatarUri";
 
 export function FlippableAvatar({
   currentUser,

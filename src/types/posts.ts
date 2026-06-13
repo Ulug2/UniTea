@@ -13,6 +13,8 @@ export type PostsSummaryViewRow = {
   category: string | null;
   location: string | null;
   post_type: string;
+  university_id: string;
+  community_id: string | null;
   is_anonymous: boolean | null;
   is_deleted: boolean | null;
   is_edited: boolean | null;

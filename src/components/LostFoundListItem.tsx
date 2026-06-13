@@ -286,7 +286,8 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
             participant_1_id: currentUserId,
             participant_2_id: userId,
             post_id: postId,
-            last_message_at: new Date().toISOString(),
+            // Leave last_message_at null until the first message is sent so empty
+            // chats stay hidden and are cleaned up if abandoned.
           })
           .select("id")
           .single();

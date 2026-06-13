@@ -317,6 +317,84 @@ export type Database = {
           },
         ]
       }
+      communities: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          name: string
+          university_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          name: string
+          university_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          name?: string
+          university_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "communities_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communities_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: false
+            referencedRelation: "universities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      community_members: {
+        Row: {
+          community_id: string
+          joined_at: string
+          user_id: string
+        }
+        Insert: {
+          community_id: string
+          joined_at?: string
+          user_id: string
+        }
+        Update: {
+          community_id?: string
+          joined_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_members_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_settings: {
         Row: {
           created_at: string
@@ -589,6 +667,7 @@ export type Database = {
       posts: {
         Row: {
           category: string | null
+          community_id: string | null
           content: string
           created_at: string | null
           edited_at: string | null
@@ -604,12 +683,14 @@ export type Database = {
           repost_comment: string | null
           reposted_from_post_id: string | null
           title: string | null
+          university_id: string
           updated_at: string | null
           user_id: string
           view_count: number | null
         }
         Insert: {
           category?: string | null
+          community_id?: string | null
           content: string
           created_at?: string | null
           edited_at?: string | null
@@ -625,12 +706,14 @@ export type Database = {
           repost_comment?: string | null
           reposted_from_post_id?: string | null
           title?: string | null
+          university_id: string
           updated_at?: string | null
           user_id: string
           view_count?: number | null
         }
         Update: {
           category?: string | null
+          community_id?: string | null
           content?: string
           created_at?: string | null
           edited_at?: string | null
@@ -646,11 +729,19 @@ export type Database = {
           repost_comment?: string | null
           reposted_from_post_id?: string | null
           title?: string | null
+          university_id?: string
           updated_at?: string | null
           user_id?: string
           view_count?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "posts_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "posts_reposted_from_post_id_fkey"
             columns: ["reposted_from_post_id"]
@@ -672,6 +763,13 @@ export type Database = {
             referencedRelation: "posts_summary_view"
             referencedColumns: ["post_id"]
           },
+          {
+            foreignKeyName: "posts_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: false
+            referencedRelation: "universities"
+            referencedColumns: ["id"]
+          },
         ]
       }
       profiles: {
@@ -686,6 +784,7 @@ export type Database = {
           is_founding_member: boolean
           is_permanently_banned: boolean | null
           is_verified: boolean | null
+          university_id: string
           updated_at: string | null
           username: string
         }
@@ -700,6 +799,7 @@ export type Database = {
           is_founding_member?: boolean
           is_permanently_banned?: boolean | null
           is_verified?: boolean | null
+          university_id: string
           updated_at?: string | null
           username: string
         }
@@ -714,10 +814,19 @@ export type Database = {
           is_founding_member?: boolean
           is_permanently_banned?: boolean | null
           is_verified?: boolean | null
+          university_id?: string
           updated_at?: string | null
           username?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: false
+            referencedRelation: "universities"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reports: {
         Row: {
@@ -790,6 +899,27 @@ export type Database = {
             referencedColumns: ["post_id"]
           },
         ]
+      }
+      universities: {
+        Row: {
+          created_at: string
+          domain: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          domain: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          domain?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
       }
       votes: {
         Row: {
@@ -915,6 +1045,7 @@ export type Database = {
           avatar_url: string | null
           category: string | null
           comment_count: number | null
+          community_id: string | null
           content: string | null
           created_at: string | null
           edited_at: string | null
@@ -945,6 +1076,7 @@ export type Database = {
           repost_count: number | null
           reposted_from_post_id: string | null
           title: string | null
+          university_id: string | null
           updated_at: string | null
           user_id: string | null
           user_vote: string | null
@@ -953,6 +1085,13 @@ export type Database = {
           vote_score: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "posts_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "posts_reposted_from_post_id_fkey"
             columns: ["reposted_from_post_id"]
@@ -973,6 +1112,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "posts_summary_view"
             referencedColumns: ["post_id"]
+          },
+          {
+            foreignKeyName: "posts_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: false
+            referencedRelation: "universities"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1061,7 +1207,12 @@ export type Database = {
         Returns: boolean
       }
       delete_user_account: { Args: never; Returns: undefined }
+      get_community_university_id: {
+        Args: { p_community_id: string }
+        Returns: string
+      }
       get_my_is_admin: { Args: never; Returns: boolean }
+      get_my_university_id: { Args: never; Returns: string }
       get_repost_count: { Args: { post_id: string }; Returns: number }
     }
     Enums: {

@@ -70,6 +70,7 @@ serve(async (req: Request) => {
       is_anonymous,
       location,
       category,
+      community_id,
       reposted_from_post_id,
       // Optional poll fields (feed posts only)
       poll_options,
@@ -97,7 +98,7 @@ serve(async (req: Request) => {
       }
 
       // 3b. Smart Contextual Moderation using GPT-4o-mini
-      const systemPrompt = `You are an AI moderator for an anonymous social app for Nazarbayev University students. 
+      const systemPrompt = `You are an AI moderator for an anonymous social app for university students. 
 Analyze the user's text. The text may be in English, Russian, Kazakh, or Latin-transliterated Russian/Kazakh (e.g., "krasavchik", "zhasap", "pizdec").
 
 Evaluate for two violations:
@@ -177,7 +178,7 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
                 content: [
                   {
                     type: "text",
-                    text: `You are an AI moderator for a university social app. Analyze this image carefully. Pay close attention to BOTH the visual imagery AND any text, memes, or screenshots of chats embedded in the image. Text may be in English, Russian, Kazakh, or Latin-transliterated slang.
+                    text: `You are an AI moderator for an anonymous university social app. Analyze this image carefully. Pay close attention to BOTH the visual imagery AND any text, memes, or screenshots of chats embedded in the image. Text may be in English, Russian, Kazakh, or Latin-transliterated slang.
 
 Evaluate for three violations:
 1. visual_explicit: true if the image contains explicit nudity or visual pornography.
@@ -252,6 +253,10 @@ Output JSON ONLY: {"visual_explicit": boolean, "private_name": boolean, "explici
     }
     if (category) {
       postData.category = category;
+    }
+    if (community_id) {
+      // Membership/university is enforced by the posts INSERT RLS policy.
+      postData.community_id = community_id;
     }
     if (reposted_from_post_id) {
       postData.reposted_from_post_id = reposted_from_post_id;

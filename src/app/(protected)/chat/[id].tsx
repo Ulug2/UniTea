@@ -25,7 +25,7 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
 import ChatDetailSkeleton from "../../../components/ChatDetailSkeleton";
-import SupabaseImage from "../../../components/SupabaseImage";
+import CachedAvatar from "../../../components/CachedAvatar";
 import { logger } from "../../../utils/logger";
 import { pickChatImage } from "../../../features/chat/utils/imagePicker";
 import UserProfileModal from "../../../components/UserProfileModal";
@@ -278,6 +278,55 @@ export default function ChatDetailScreen() {
     () => selectMessages(messagesData, blocks),
     [messagesData, blocks],
   );
+
+  // Clean up abandoned empty chats: a chat created by tapping "contact" but never
+  // used (no message sent) has a null last_message_at. If the user leaves such a
+  // chat without sending anything, delete the row so it is neither stored nor
+  // shown. The `.is("last_message_at", null)` guard makes this race-safe — if a
+  // message lands between leaving and the delete, last_message_at is set and the
+  // delete no-ops.
+  const emptyChatCleanupRef = useRef<{
+    chatId: string | null;
+    isEmpty: boolean;
+    userId: string | null;
+  }>({ chatId: null, isEmpty: false, userId: null });
+  emptyChatCleanupRef.current = {
+    chatId: id ?? null,
+    // Only empty when the chat is loaded, has never had a message, and none are
+    // currently rendered. last_message_at is authoritative (set on every send).
+    isEmpty:
+      Boolean(chat) &&
+      chat?.last_message_at == null &&
+      !isLoadingMessages &&
+      messages.length === 0,
+    userId: currentUserId ?? null,
+  };
+  useEffect(() => {
+    return () => {
+      const { chatId, isEmpty, userId } = emptyChatCleanupRef.current;
+      if (!isEmpty || !chatId || !userId) return;
+
+      supabase
+        .from("chats")
+        .delete()
+        .eq("id", chatId)
+        .is("last_message_at", null)
+        .then(({ error }) => {
+          if (error) {
+            logger.warn("Failed to clean up empty chat", {
+              chatId,
+              userId,
+              component: "ChatDetailScreen",
+              error: error.message,
+            });
+          }
+        });
+
+      queryClient.setQueryData<any[]>(["chat-summaries", userId], (old) =>
+        old ? old.filter((s) => s?.chat_id !== chatId) : old,
+      );
+    };
+  }, [queryClient]);
 
   const unreadCountInThisChat = useMemo(() => {
     if (!id || !currentUserId || !chatSummaries) return 0;
@@ -1080,18 +1129,10 @@ export default function ChatDetailScreen() {
 
   const headerAvatar =
     !isChatAnonymous && otherUser?.avatar_url ? (
-      otherUser.avatar_url.startsWith("http") ? (
-        <Image
-          source={{ uri: otherUser.avatar_url }}
-          style={dynamicStyles.avatarImage}
-        />
-      ) : (
-        <SupabaseImage
-          path={otherUser.avatar_url}
-          bucket="avatars"
-          style={dynamicStyles.avatarImage}
-        />
-      )
+      <CachedAvatar
+        avatarUrl={otherUser.avatar_url}
+        style={dynamicStyles.avatarImage}
+      />
     ) : (
       <Image source={DEFAULT_AVATAR} style={dynamicStyles.avatarImage} />
     );

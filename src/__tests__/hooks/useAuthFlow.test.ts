@@ -21,6 +21,11 @@ jest.mock('../../lib/supabase', () => ({
       resend: jest.fn(),
     },
     functions: { invoke: jest.fn() },
+    from: jest.fn().mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        data: [{ domain: 'nu.edu.kz' }, { domain: 'stu.sdu.edu.kz' }],
+      }),
+    }),
   },
 }));
 jest.mock('../../utils/logger', () => ({
@@ -48,7 +53,7 @@ const mockResend = supabase.auth.resend as jest.Mock;
 const mockFunctionsInvoke = supabase.functions.invoke as jest.Mock;
 
 // ----- constants ----------------------------------------------------------
-const CONFIG = { timeoutMs: 5000, rateLimitCooldownMs: 30000, minPasswordLength: 6 };
+const CONFIG = { timeoutMs: 5000, rateLimitCooldownMs: 30000, minPasswordLength: 6, emailRequestCooldownSeconds: 60 };
 
 // --------------------------------------------------------------------------
 
@@ -100,7 +105,7 @@ describe('useAuthFlow', () => {
       const { result } = renderHook(() => useAuthFlow(CONFIG));
       act(() => result.current.setMode('signup'));
       expect(result.current.headline).toBe('Create your account');
-      expect(result.current.helper).toBe('Join UniTee with your @nu.edu.kz address.');
+      expect(result.current.helper).toBe('Join UniTee with your university email address.');
     });
 
     it('returns correct strings in "forgot" mode', () => {

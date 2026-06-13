@@ -2,6 +2,7 @@ import { useMutation, UseMutationResult, useQueryClient } from "@tanstack/react-
 import { supabase } from "../lib/supabase";
 import { logger } from "../utils/logger";
 import { Alert } from "react-native";
+import { feedKeys } from "../features/communities/data/queryKeys";
 
 type CreatePostVariables = {
   imagePath: string | undefined;
@@ -13,16 +14,21 @@ type CreatePostVariables = {
   postIsAnonymous: boolean;
   postCategory: "lost" | "found";
   pollOptions?: string[];
+  /** Resolved at submit time so community posts never miss their target feed. */
+  communityId?: string | null;
 };
 
 type CreatePostOptions = {
   isLostFound: boolean;
   repostId?: string | string[];
   currentUserId: string | null | undefined;
+  universityId?: string | null;
+  /** Fallback when communityId is not passed in mutate() variables. */
+  communityId?: string | null;
 };
 
 export function useCreatePostMutation(options: CreatePostOptions): UseMutationResult<any, unknown, CreatePostVariables> {
-  const { isLostFound, repostId, currentUserId } = options;
+  const { isLostFound, repostId, currentUserId, universityId, communityId: defaultCommunityId } = options;
   const queryClient = useQueryClient();
 
   const resolvedRepostId =
@@ -45,8 +51,11 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         imagePath,
         imagePaths,
         imageAspectRatio,
+        communityId: submitCommunityId,
       } =
         variables;
+
+      const effectiveCommunityId = submitCommunityId ?? defaultCommunityId ?? null;
 
       const normalizedImagePaths = (imagePaths ?? []).filter(
         (path): path is string => Boolean(path?.trim()),
@@ -74,6 +83,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
           category: postCategory,
           location: postLocation.trim(),
         }),
+        ...(effectiveCommunityId && { community_id: effectiveCommunityId }),
         ...(resolvedRepostId && {
           reposted_from_post_id: resolvedRepostId,
         }),
@@ -126,8 +136,17 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
     onMutate: async (variables) => {
       if (isLostFound) return;
 
+      const effectiveCommunityId =
+        variables.communityId ?? defaultCommunityId ?? null;
+      const feedCacheKey = feedKeys.list(
+        "new",
+        "",
+        universityId ?? undefined,
+        effectiveCommunityId,
+      );
+
       await queryClient.cancelQueries({ queryKey: ["posts", "feed"] });
-      const previousData = queryClient.getQueryData(["posts", "feed", "new"]);
+      const previousData = queryClient.getQueryData(feedCacheKey);
 
       const tempId = `temp-${Date.now()}`;
       const now = new Date().toISOString();
@@ -148,6 +167,8 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         category: null,
         location: null,
         post_type: "feed",
+        community_id: effectiveCommunityId,
+        university_id: universityId ?? "",
         is_anonymous: variables.postIsAnonymous,
         is_deleted: false,
         is_edited: false,
@@ -175,7 +196,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         original_created_at: null,
       };
 
-      queryClient.setQueryData(["posts", "feed", "new"], (oldData: any) => {
+      queryClient.setQueryData(feedCacheKey, (oldData: any) => {
         if (!oldData) {
           return {
             pages: [[optimisticPost]],
@@ -194,12 +215,12 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         };
       });
 
-      return { previousData, tempId };
+      return { previousData, tempId, feedCacheKey };
     },
     onError: (error, _variables, context) => {
       logger.error("Error creating post", error as Error);
-      if (context?.previousData) {
-        queryClient.setQueryData(["posts", "feed", "new"], context.previousData);
+      if (context?.previousData && context.feedCacheKey) {
+        queryClient.setQueryData(context.feedCacheKey, context.previousData);
       }
 
       const message =

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "react-native";
 import { supabase } from "../lib/supabase";
 import { logger } from "../utils/logger";
@@ -86,11 +86,28 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     return mode === "login" ? "Sign in" : "Create your account";
   }, [mode]);
 
+  const allowedDomainsRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from("universities")
+      .select("domain")
+      .then(({ data }) => {
+        if (!cancelled && data) {
+          allowedDomainsRef.current = data.map((u) => u.domain);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const helper = useMemo(() => {
     if (mode === "forgot") return "Enter your email to receive a reset link.";
     return mode === "login"
       ? "Sign in to your account."
-      : "Join UniTee with your @nu.edu.kz address.";
+      : "Join UniTee with your university email address.";
   }, [mode]);
 
   const sanitizeEmail = useCallback((value: string): string => {
@@ -98,7 +115,10 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
   }, []);
 
   const isAllowedDomain = useCallback((sanitizedEmail: string): boolean => {
-    return sanitizedEmail.endsWith("@nu.edu.kz");
+    const domain = sanitizedEmail.split("@")[1];
+    if (!domain) return false;
+    if (allowedDomainsRef.current.length === 0) return true;
+    return allowedDomainsRef.current.includes(domain);
   }, []);
 
   const logAuthEvent = useCallback(
@@ -437,7 +457,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       return;
     }
     if (!isAllowedDomain(sanitizedEmail)) {
-      setEmailError("Only @nu.edu.kz email addresses are allowed.");
+      setEmailError("This university is not supported yet.");
       return;
     }
     if (!password) {
@@ -525,6 +545,13 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
 
         if (error) {
           logAuthEvent("signup_failed", { error: error.message });
+          if (
+            error.message?.includes("University not supported") ||
+            error.message?.includes("check_violation")
+          ) {
+            setEmailError("This university is not supported yet.");
+            throw error;
+          }
           const { message } = applyAuthError(error);
           if (message.toLowerCase().includes("email") || message.toLowerCase().includes("account")) {
             setEmailError(message);

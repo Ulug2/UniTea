@@ -64,31 +64,59 @@ const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 // Prefetch initial data for authenticated users
 async function prefetchInitialData(userId: string, queryClient: any) {
   try {
-    // Prefetch feed posts (default "new" filter)
-    const feedQuery = (supabase as any)
+    // Fetch profile first so we can scope the feed query by university
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("*, university:universities(name, domain)")
+      .eq("id", userId)
+      .single();
+
+    if (profileData) {
+      queryClient.setQueryData(["profile", userId], profileData);
+      queryClient.setQueryData(["current-user-profile", userId], profileData);
+    }
+
+    const universityId = profileData?.university_id;
+
+    // Prefetch feed posts (default "new" filter), scoped to university
+    let feedQuery = (supabase as any)
       .from("posts_summary_view")
       .select("*")
       .eq("post_type", "feed")
-      .or("is_banned.is.null,is_banned.eq.false")
+      .or("is_banned.is.null,is_banned.eq.false");
+
+    if (universityId) {
+      feedQuery = feedQuery.eq("university_id", universityId);
+    }
+
+    feedQuery = feedQuery
       .order("created_at", { ascending: false })
       .range(0, POSTS_PER_PAGE - 1);
 
     const { data: feedData } = await feedQuery;
 
     if (feedData) {
-      // Seed "new" with fresh data (full staleTime applies).
-      queryClient.setQueryData(["posts", "feed", "new"], {
-        pages: [feedData],
-        pageParams: [0],
-      });
+      // Campus Feed key includes communityId === null (see feedKeys.list).
+      queryClient.setQueryData(
+        ["posts", "feed", "new", "", universityId, null],
+        {
+          pages: [feedData],
+          pageParams: [0],
+        }
+      );
 
-      // Seed "hot" with the same data marked stale (updatedAt:0) so the default
-      // visible tab never shows a skeleton. The "hot" useInfiniteQuery sees data
-      // (isPending=false) and immediately fires a background refetch with the
-      // proper 7-day / 100-post query, replacing the placeholder seamlessly.
-      if (!queryClient.getQueryData(["posts", "feed", "hot"])) {
+      if (
+        !queryClient.getQueryData([
+          "posts",
+          "feed",
+          "hot",
+          "",
+          universityId,
+          null,
+        ])
+      ) {
         queryClient.setQueryData(
-          ["posts", "feed", "hot"],
+          ["posts", "feed", "hot", "", universityId, null],
           { pages: [feedData], pageParams: [0] },
           { updatedAt: 0 }
         );
@@ -102,27 +130,14 @@ async function prefetchInitialData(userId: string, queryClient: any) {
     ]);
 
     const blockedUserIds = new Set<string>();
-    blockedByMe.data?.forEach((b) => blockedUserIds.add(b.blocked_id));
-    blockedMe.data?.forEach((b) => blockedUserIds.add(b.blocker_id));
+    blockedByMe.data?.forEach((b: any) => blockedUserIds.add(b.blocked_id));
+    blockedMe.data?.forEach((b: any) => blockedUserIds.add(b.blocker_id));
 
     queryClient.setQueryData(["blocks", userId], Array.from(blockedUserIds));
 
-    // Prefetch user profile
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
-
-    if (profileData) {
-      queryClient.setQueryData(["profile", userId], profileData);
-    }
-
-    // Return profile so the caller can persist it and warm the avatar disk cache.
     return profileData ?? null;
   } catch (error) {
     logger.error("[Prefetch] Error prefetching initial data", error as Error);
-    // Don't throw - prefetch failures shouldn't block app startup
     return null;
   }
 }
