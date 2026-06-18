@@ -28,6 +28,16 @@ import { supabase } from "../../../lib/supabase";
 import { uploadImage } from "../../../utils/supabaseImages";
 import { useImagePipeline } from "../../../hooks/useImagePipeline";
 import { useCreateCommunity } from "../../../features/communities/hooks/useCommunityMutations";
+import {
+  COMMUNITY_DESCRIPTION_MAX_LENGTH,
+  COMMUNITY_NAME_MAX_LENGTH,
+  COMMUNITY_NAME_MIN_LENGTH,
+} from "../../../constants/validationConstants";
+import {
+  validateCommunityDescription,
+  validateCommunityName,
+} from "../../../utils/communityValidation";
+import CharacterCounter from "../../../components/CharacterCounter";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 export default function CreateCommunityScreen() {
@@ -54,7 +64,10 @@ export default function CreateCommunityScreen() {
   });
   const createCommunity = useCreateCommunity();
 
-  const canSubmit = name.trim().length >= 2 && !isSubmitting;
+  const canSubmit =
+    name.trim().length >= COMMUNITY_NAME_MIN_LENGTH &&
+    name.trim().length <= COMMUNITY_NAME_MAX_LENGTH &&
+    !isSubmitting;
 
   const closeScreen = useCallback(() => {
     if (Platform.OS !== "android") {
@@ -124,6 +137,14 @@ export default function CreateCommunityScreen() {
 
   const handleCreate = async () => {
     if (!canSubmit) return;
+
+    const nameError = validateCommunityName(name);
+    const descriptionError = validateCommunityDescription(description);
+    if (nameError || descriptionError) {
+      Alert.alert("Invalid input", nameError ?? descriptionError ?? "");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       let avatarPath: string | null = null;
@@ -240,7 +261,15 @@ export default function CreateCommunityScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={[styles.label, { color: theme.text }]}>Name *</Text>
+              <View style={styles.labelRow}>
+                <Text style={[styles.label, { color: theme.text }]}>Name *</Text>
+                <CharacterCounter
+                  current={name.length}
+                  max={COMMUNITY_NAME_MAX_LENGTH}
+                  color={theme.secondaryText}
+                  warningColor={theme.error}
+                />
+              </View>
               <View
                 style={[
                   styles.inputContainer,
@@ -254,16 +283,24 @@ export default function CreateCommunityScreen() {
                   keyboardAppearance={keyboardAppearance}
                   value={name}
                   onChangeText={setName}
-                  maxLength={60}
+                  maxLength={COMMUNITY_NAME_MAX_LENGTH}
                   autoFocus
                 />
               </View>
             </View>
 
             <View style={styles.field}>
-              <Text style={[styles.label, { color: theme.text }]}>
-                Description
-              </Text>
+              <View style={styles.labelRow}>
+                <Text style={[styles.label, { color: theme.text }]}>
+                  Description
+                </Text>
+                <CharacterCounter
+                  current={description.length}
+                  max={COMMUNITY_DESCRIPTION_MAX_LENGTH}
+                  color={theme.secondaryText}
+                  warningColor={theme.error}
+                />
+              </View>
               <View
                 style={[
                   styles.inputContainer,
@@ -283,7 +320,7 @@ export default function CreateCommunityScreen() {
                   value={description}
                   onChangeText={setDescription}
                   multiline
-                  maxLength={300}
+                  maxLength={COMMUNITY_DESCRIPTION_MAX_LENGTH}
                   textAlignVertical="top"
                 />
               </View>
@@ -374,10 +411,15 @@ const styles = StyleSheet.create({
   field: {
     marginBottom: verticalScale(18),
   },
+  labelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: verticalScale(8),
+  },
   label: {
     fontSize: moderateScale(14),
     fontFamily: "Poppins_600SemiBold",
-    marginBottom: verticalScale(8),
   },
   inputContainer: {
     borderWidth: 1,

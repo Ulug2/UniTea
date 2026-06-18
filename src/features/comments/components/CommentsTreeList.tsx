@@ -10,6 +10,7 @@ import {
 import CommentListItem from "../../../components/CommentListItem";
 import type { CommentNode } from "../utils/tree";
 import { useTheme } from "../../../context/ThemeContext";
+import type { PostAuthorContext } from "../../../utils/entityDisplay";
 import { verticalScale } from "../../../utils/scaling";
 
 type CommentsTreeListProps = {
@@ -25,6 +26,7 @@ type CommentsTreeListProps = {
   isAdmin?: boolean;
   /** Shows an inline spinner when there are no cached comments yet. */
   isLoading?: boolean;
+  postAuthorContext: PostAuthorContext;
 };
 
 function CommentsTreeListBase({
@@ -39,6 +41,7 @@ function CommentsTreeListBase({
   headerComponent,
   isAdmin = false,
   isLoading = false,
+  postAuthorContext,
 }: CommentsTreeListProps) {
   const { theme } = useTheme();
 
@@ -51,9 +54,10 @@ function CommentsTreeListBase({
         onDeleteStart={onDeleteStart}
         onDeleteEnd={onDeleteEnd}
         isAdmin={isAdmin}
+        postAuthorContext={postAuthorContext}
       />
     ),
-    [onReply, onDeleteStart, onDeleteEnd, isAdmin],
+    [onReply, onDeleteStart, onDeleteEnd, isAdmin, postAuthorContext],
   );
 
   const keyExtractor = useCallback((item: CommentNode) => item.id, []);

@@ -24,6 +24,16 @@ import {
   useUpdateCommunity,
   useDeleteCommunity,
 } from "../../../../features/communities/hooks/useCommunityMutations";
+import {
+  COMMUNITY_DESCRIPTION_MAX_LENGTH,
+  COMMUNITY_NAME_MAX_LENGTH,
+  COMMUNITY_NAME_MIN_LENGTH,
+} from "../../../../constants/validationConstants";
+import {
+  validateCommunityDescription,
+  validateCommunityName,
+} from "../../../../utils/communityValidation";
+import CharacterCounter from "../../../../components/CharacterCounter";
 import { moderateScale, scale, verticalScale } from "../../../../utils/scaling";
 
 export default function ManageCommunityScreen() {
@@ -58,7 +68,10 @@ export default function ManageCommunityScreen() {
   });
 
   const isOwner = !!community && community.created_by === currentUserId;
-  const canSave = name.trim().length >= 2 && !isSaving;
+  const canSave =
+    name.trim().length >= COMMUNITY_NAME_MIN_LENGTH &&
+    name.trim().length <= COMMUNITY_NAME_MAX_LENGTH &&
+    !isSaving;
 
   const pickAvatar = async () => {
     const selected = await pickAndPrepareImages();
@@ -67,6 +80,14 @@ export default function ManageCommunityScreen() {
 
   const handleSave = async () => {
     if (!canSave || !communityId) return;
+
+    const nameError = validateCommunityName(name);
+    const descriptionError = validateCommunityDescription(description);
+    if (nameError || descriptionError) {
+      Alert.alert("Invalid input", nameError ?? descriptionError ?? "");
+      return;
+    }
+
     setIsSaving(true);
     try {
       let avatarPath = community?.avatar_url ?? null;
@@ -228,7 +249,15 @@ export default function ManageCommunityScreen() {
         </View>
 
         <View style={styles.field}>
-          <Text style={[styles.label, { color: theme.text }]}>Name *</Text>
+          <View style={styles.labelRow}>
+            <Text style={[styles.label, { color: theme.text }]}>Name *</Text>
+            <CharacterCounter
+              current={name.length}
+              max={COMMUNITY_NAME_MAX_LENGTH}
+              color={theme.secondaryText}
+              warningColor={theme.error}
+            />
+          </View>
           <View
             style={[
               styles.inputContainer,
@@ -241,13 +270,21 @@ export default function ManageCommunityScreen() {
               keyboardAppearance={keyboardAppearance}
               value={name}
               onChangeText={setName}
-              maxLength={60}
+              maxLength={COMMUNITY_NAME_MAX_LENGTH}
             />
           </View>
         </View>
 
         <View style={styles.field}>
-          <Text style={[styles.label, { color: theme.text }]}>Description</Text>
+          <View style={styles.labelRow}>
+            <Text style={[styles.label, { color: theme.text }]}>Description</Text>
+            <CharacterCounter
+              current={description.length}
+              max={COMMUNITY_DESCRIPTION_MAX_LENGTH}
+              color={theme.secondaryText}
+              warningColor={theme.error}
+            />
+          </View>
           <View
             style={[
               styles.inputContainer,
@@ -262,7 +299,7 @@ export default function ManageCommunityScreen() {
               value={description}
               onChangeText={setDescription}
               multiline
-              maxLength={300}
+              maxLength={COMMUNITY_DESCRIPTION_MAX_LENGTH}
               textAlignVertical="top"
             />
           </View>
@@ -361,10 +398,15 @@ const styles = StyleSheet.create({
   field: {
     marginBottom: verticalScale(18),
   },
+  labelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: verticalScale(8),
+  },
   label: {
     fontSize: moderateScale(14),
     fontFamily: "Poppins_600SemiBold",
-    marginBottom: verticalScale(8),
   },
   inputContainer: {
     borderWidth: 1,

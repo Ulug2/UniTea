@@ -17,6 +17,8 @@ const PROFILE_CACHE_KEY = "@unitee:profile_cache";
 export type CachedProfile = {
   avatar_url: string | null;
   username: string | null;
+  university_domain: string | null;
+  university_name: string | null;
 };
 
 type AuthContextValue = {

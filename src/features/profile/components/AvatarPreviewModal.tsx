@@ -7,7 +7,8 @@ import {
   StyleSheet,
 } from "react-native";
 import SupabaseImage from "../../../components/SupabaseImage";
-import { DEFAULT_AVATAR } from "../../../constants/images";
+import EntityAvatar from "../../../components/EntityAvatar";
+import { getAvatarForEntity } from "../../../utils/entityDisplay";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type AvatarPreviewModalProps = {
@@ -41,7 +42,10 @@ export function AvatarPreviewModal({
               />
             )
           ) : (
-            <Image source={DEFAULT_AVATAR} style={styles.avatarPreview} />
+            <EntityAvatar
+              descriptor={getAvatarForEntity("student", {})}
+              style={styles.avatarPreview}
+            />
           )}
         </Pressable>
       </Pressable>
@@ -62,4 +66,3 @@ const styles = StyleSheet.create({
     borderRadius: moderateScale(110),
   },
 });
-

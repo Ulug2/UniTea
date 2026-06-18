@@ -2,9 +2,10 @@ import React, { useEffect, useRef } from "react";
 import { Animated, Image, PanResponder, StyleSheet, View } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import {
-  DEFAULT_AVATAR,
   FOUNDING_FATHER_BADGE,
 } from "../../../constants/images";
+import EntityAvatar from "../../../components/EntityAvatar";
+import { getAvatarForEntity } from "../../../utils/entityDisplay";
 import type { Database } from "../../../types/database.types";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
@@ -98,7 +99,13 @@ export function FlippableAvatar({
       style={styles.faceImage}
     />
   ) : (
-    <Image source={DEFAULT_AVATAR} style={styles.faceImage} />
+    <EntityAvatar
+      descriptor={getAvatarForEntity("student", {
+        avatarUrl: currentUser?.avatar_url,
+        username: currentUser?.username,
+      })}
+      style={styles.faceImage}
+    />
   );
 
   return (

@@ -30,7 +30,8 @@ import { logger } from "../../../utils/logger";
 import { pickChatImage } from "../../../features/chat/utils/imagePicker";
 import UserProfileModal from "../../../components/UserProfileModal";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
-import { DEFAULT_AVATAR } from "../../../constants/images";
+import EntityAvatar from "../../../components/EntityAvatar";
+import { getAvatarForEntity } from "../../../utils/entityDisplay";
 import { useBlocks } from "../../../hooks/useBlocks";
 import { setCurrentViewedChatPartnerId } from "../../../hooks/usePushNotifications";
 import { hashStringToNumber } from "../../../features/chat/utils/anon";
@@ -1134,7 +1135,10 @@ export default function ChatDetailScreen() {
         style={dynamicStyles.avatarImage}
       />
     ) : (
-      <Image source={DEFAULT_AVATAR} style={dynamicStyles.avatarImage} />
+      <EntityAvatar
+        descriptor={getAvatarForEntity("student", {})}
+        style={dynamicStyles.avatarImage}
+      />
     );
 
   return (

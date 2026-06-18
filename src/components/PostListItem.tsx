@@ -16,11 +16,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNowStrict } from "date-fns";
 import { Link, router } from "expo-router";
 import { AntDesign } from "@expo/vector-icons";
-import nuLogo from "../../assets/images/nu-logo.png";
-import { DEFAULT_AVATAR } from "../constants/images";
+import EntityAvatar from "./EntityAvatar";
+import {
+  buildPostAuthorContext,
+  resolvePostAuthorDisplay,
+} from "../utils/entityDisplay";
 import { useTheme } from "../context/ThemeContext";
 import { useVote } from "../hooks/useVote";
-import CachedAvatar from "./CachedAvatar";
 import { resolvePostImageUri } from "./FullscreenImageModal";
 import Poll from "./Poll";
 import UserProfileModal from "./UserProfileModal";
@@ -233,6 +235,10 @@ type PostListItemProps = {
   username: string;
   avatarUrl: string | null;
   isVerified: boolean | null;
+  universityDomain?: string | null;
+  communityId?: string | null;
+  communityName?: string | null;
+  communityAvatarUrl?: string | null;
 
   // Aggregated data from view
   commentCount: number;
@@ -429,6 +435,10 @@ const arePropsEqual = (
     prevProps.viewCount === nextProps.viewCount &&
     prevProps.username === nextProps.username &&
     prevProps.avatarUrl === nextProps.avatarUrl &&
+    prevProps.universityDomain === nextProps.universityDomain &&
+    prevProps.communityId === nextProps.communityId &&
+    prevProps.communityName === nextProps.communityName &&
+    prevProps.communityAvatarUrl === nextProps.communityAvatarUrl &&
     prevProps.isVerified === nextProps.isVerified &&
     prevProps.commentCount === nextProps.commentCount &&
     prevProps.voteScore === nextProps.voteScore &&
@@ -483,6 +493,10 @@ const PostListItem = React.memo(function PostListItem({
   originalAuthorAvatar,
   originalIsAnonymous,
   originalCreatedAt,
+  universityDomain,
+  communityId,
+  communityName,
+  communityAvatarUrl,
   isDetailedPost = false,
   disableCommentInteraction = false,
   isBookmarked = false,
@@ -518,8 +532,20 @@ const PostListItem = React.memo(function PostListItem({
     originalImageUrl,
     originalImageUrls,
   );
-  const hasAvatar =
-    !!(isRepost ? originalAuthorAvatar : avatarUrl) || isAnonymous;
+  const hasAvatar = true;
+  const authorDisplay = resolvePostAuthorDisplay(
+    buildPostAuthorContext({
+      isAnonymous: !!isAnonymous,
+      username,
+      avatarUrl,
+      universityDomain,
+      communityId,
+      communityName,
+      communityAvatarUrl,
+      userId,
+      currentUserId,
+    }),
+  );
   const hasImage = displayImageUrls.length > 0;
 
   useEffect(() => {
@@ -719,53 +745,13 @@ const PostListItem = React.memo(function PostListItem({
               }}
               disabled={isAnonymous || !userId || userId === currentUserId}
             >
-              {isRepost ? (
-                // Show reposter's identity
-                isAnonymous ? (
-                  <Image
-                    source={nuLogo}
-                    style={styles.avatar}
-                    onLoad={() => setAvatarLoaded(true)}
-                  />
-                ) : avatarUrl ? (
-                  <CachedAvatar
-                    avatarUrl={avatarUrl}
-                    style={styles.avatar}
-                    onLoad={() => setAvatarLoaded(true)}
-                  />
-                ) : (
-                  <Image
-                    source={DEFAULT_AVATAR}
-                    style={styles.avatar}
-                    onLoad={() => setAvatarLoaded(true)}
-                  />
-                )
-              ) : // Show regular post author
-              isAnonymous ? (
-                <Image
-                  source={nuLogo}
-                  style={styles.avatar}
-                  onLoad={() => setAvatarLoaded(true)}
-                />
-              ) : avatarUrl ? (
-                <CachedAvatar
-                  avatarUrl={avatarUrl}
-                  style={styles.avatar}
-                  onLoad={() => setAvatarLoaded(true)}
-                />
-              ) : (
-                <Image
-                  source={DEFAULT_AVATAR}
-                  style={styles.avatar}
-                  onLoad={() => setAvatarLoaded(true)}
-                />
-              )}
+              <EntityAvatar
+                descriptor={authorDisplay.avatar}
+                style={styles.avatar}
+                onLoad={() => setAvatarLoaded(true)}
+              />
               <Text style={styles.username} numberOfLines={1}>
-                {isAnonymous
-                  ? userId === currentUserId
-                    ? "You"
-                    : "Anonymous"
-                  : username}
+                {authorDisplay.displayName}
               </Text>
             </Pressable>
             <View style={styles.timeContainer}>

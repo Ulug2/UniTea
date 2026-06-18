@@ -1,10 +1,11 @@
 import React, { useEffect, useRef } from "react";
-import { View, Text, Pressable, StyleSheet, Image } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Database } from "../types/database.types";
 import { useTheme } from "../context/ThemeContext";
 import { router } from "expo-router";
 import CachedAvatar from "./CachedAvatar";
-import { DEFAULT_AVATAR } from "../constants/images";
+import EntityAvatar from "./EntityAvatar";
+import { getAvatarForEntity } from "../utils/entityDisplay";
 import { formatDistanceToNowStrict } from "date-fns";
 import { useAuth } from "../context/AuthContext";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
@@ -227,8 +228,8 @@ const ChatListItem = React.memo(function ChatListItem({
               onLoad={handleAvatarLoad}
             />
           ) : (
-            <Image
-              source={DEFAULT_AVATAR}
+            <EntityAvatar
+              descriptor={getAvatarForEntity("student", {})}
               style={styles.avatarImage}
               onLoad={handleAvatarLoad}
             />

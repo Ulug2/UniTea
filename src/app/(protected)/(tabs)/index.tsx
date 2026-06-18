@@ -207,6 +207,10 @@ function FeedPageContent({
         viewCount={item.view_count}
         username={item.username}
         avatarUrl={item.avatar_url}
+        universityDomain={item.university_domain}
+        communityId={item.community_id}
+        communityName={item.community_name}
+        communityAvatarUrl={item.community_avatar_url}
         isVerified={item.is_verified}
         commentCount={item.comment_count}
         voteScore={item.vote_score}

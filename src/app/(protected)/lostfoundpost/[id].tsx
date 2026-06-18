@@ -26,6 +26,8 @@ import {
 } from "../../../components/FullscreenImageModal";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import ResponsiveImage from "../../../components/ResponsiveImage";
+import EntityAvatar from "../../../components/EntityAvatar";
+import { getAvatarForEntity } from "../../../utils/entityDisplay";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -601,10 +603,18 @@ export default function LostFoundPostDetailed() {
                     style={styles.avatarImage}
                   />
                 )
-              ) : (
+              ) : isAnonymous ? (
                 <View style={styles.avatarCircle}>
                   <Text style={styles.avatarInitial}>{initial}</Text>
                 </View>
+              ) : (
+                <EntityAvatar
+                  descriptor={getAvatarForEntity("student", {
+                    avatarUrl: post.avatar_url,
+                    username: post.username,
+                  })}
+                  style={styles.avatarImage}
+                />
               )}
 
               <View style={styles.userDetails}>

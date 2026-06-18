@@ -5,6 +5,10 @@ import { logger } from "../../../utils/logger";
 import { communitiesTable } from "../data/client";
 import { communityKeys } from "../data/queryKeys";
 import type { Community, CommunityInsert } from "../types";
+import {
+  normalizeCommunityDescription,
+  normalizeCommunityName,
+} from "../../../utils/communityValidation";
 
 export type CreateCommunityInput = {
   name: string;
@@ -19,14 +23,6 @@ export type UpdateCommunityInput = {
   avatarUrl?: string | null;
 };
 
-function normalizeName(name: string): string {
-  const trimmed = name.trim();
-  if (trimmed.length < 2 || trimmed.length > 60) {
-    throw new Error("Community name must be between 2 and 60 characters.");
-  }
-  return trimmed;
-}
-
 /** Create a community. The DB trigger fills university_id and auto-joins the creator. */
 export function useCreateCommunity() {
   const { session } = useAuth();
@@ -36,13 +32,14 @@ export function useCreateCommunity() {
   return useMutation({
     mutationFn: async (input: CreateCommunityInput) => {
       if (!userId) throw new Error("You must be logged in.");
-      const name = normalizeName(input.name);
+      const name = normalizeCommunityName(input.name);
+      const description = normalizeCommunityDescription(input.description);
 
       // university_id is intentionally omitted: the BEFORE INSERT trigger
       // set_community_university_id() fills it from the creator's profile.
       const payload = {
         name,
-        description: input.description?.trim() || null,
+        description,
         avatar_url: input.avatarUrl || null,
         created_by: userId,
       } satisfies Omit<CommunityInsert, "university_id">;
@@ -80,12 +77,13 @@ export function useUpdateCommunity() {
 
   return useMutation({
     mutationFn: async (input: UpdateCommunityInput) => {
-      const name = normalizeName(input.name);
+      const name = normalizeCommunityName(input.name);
+      const description = normalizeCommunityDescription(input.description);
 
       const { data, error } = await communitiesTable()
         .update({
           name,
-          description: input.description?.trim() || null,
+          description,
           avatar_url: input.avatarUrl || null,
         })
         .eq("id", input.id)

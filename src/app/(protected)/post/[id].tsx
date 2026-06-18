@@ -58,6 +58,10 @@ import { CommentComposer } from "../../../features/comments/components/CommentCo
 import { PostHeaderCard } from "../../../features/posts/components/PostHeaderCard";
 import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
+import {
+  buildPostAuthorContext,
+  resolvePostAuthorDisplay,
+} from "../../../utils/entityDisplay";
 
 export default function PostDetailed() {
   const { id, fromDeeplink } = useLocalSearchParams<{
@@ -306,6 +310,32 @@ export default function PostDetailed() {
 
   const { data: currentUser } = useMyProfile(currentUserId ?? undefined);
   const isAdmin = currentUser?.is_admin === true;
+
+  const postAuthorContext = useMemo(
+    () =>
+      buildPostAuthorContext({
+        isAnonymous: !!detailedPost?.is_anonymous,
+        username: detailedPost?.username,
+        avatarUrl: detailedPost?.avatar_url,
+        universityDomain: detailedPost?.university_domain,
+        communityId: detailedPost?.community_id,
+        communityName: detailedPost?.community_name,
+        communityAvatarUrl: detailedPost?.community_avatar_url,
+        userId: detailedPost?.user_id,
+        currentUserId,
+      }),
+    [detailedPost, currentUserId],
+  );
+
+  const anonymousCommentPreview = useMemo(
+    () =>
+      resolvePostAuthorDisplay({
+        ...postAuthorContext,
+        isAnonymous: true,
+        isOwnPost: false,
+      }),
+    [postAuthorContext],
+  );
 
   // 3. Comments via shared hook (flat + tree), with blocked filtering
   const {
@@ -671,6 +701,7 @@ export default function PostDetailed() {
         style={styles.listFlex}
         isAdmin={isAdmin}
         headerComponent={postHeaderComponent}
+        postAuthorContext={postAuthorContext}
       />
 
       <CommentComposer
@@ -686,6 +717,7 @@ export default function PostDetailed() {
         replyingToUsername={replyingToUsername}
         isSubmitting={createCommentMutation.isPending}
         currentUserLabel={session?.user?.user_metadata?.username || "You"}
+        anonymousPreview={anonymousCommentPreview}
       />
     </View>
   );

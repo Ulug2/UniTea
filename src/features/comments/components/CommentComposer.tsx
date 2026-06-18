@@ -7,11 +7,12 @@ import {
   Text,
   TextInput,
   View,
-  Image,
   Switch,
 } from "react-native";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import type { Theme } from "../../../context/ThemeContext";
+import type { PostAuthorContext, PostAuthorDisplay } from "../../../utils/entityDisplay";
+import EntityAvatar from "../../../components/EntityAvatar";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type CommentComposerProps = {
@@ -27,6 +28,7 @@ type CommentComposerProps = {
   replyingToUsername: string | null;
   isSubmitting: boolean;
   currentUserLabel: string;
+  anonymousPreview?: PostAuthorDisplay | null;
 };
 
 /** Extra space below the input row when the home inset is applied by the parent. */
@@ -48,6 +50,7 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
       replyingToUsername,
       isSubmitting,
       currentUserLabel,
+      anonymousPreview,
     },
     ref,
   ) {
@@ -74,9 +77,9 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
         {/* Anonymous Toggle */}
         <View style={styles.anonymousRow}>
           <View style={styles.anonymousToggleLeft}>
-            {isAnonymousMode ? (
-              <Image
-                source={require("../../../../assets/images/nu-logo.png")}
+            {isAnonymousMode && anonymousPreview ? (
+              <EntityAvatar
+                descriptor={anonymousPreview.avatar}
                 style={styles.toggleAvatar}
               />
             ) : (

@@ -1,20 +1,20 @@
 import React from "react";
 import {
-  Image,
-  type ImageSourcePropType,
-  type StyleProp,
   type ImageStyle,
+  type StyleProp,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
-import { DEFAULT_AVATAR } from "../constants/images";
+import EntityAvatar from "./EntityAvatar";
+import { getAvatarForEntity } from "../utils/entityDisplay";
 import { getAvatarUri } from "../utils/avatarUri";
 
 type CachedAvatarProps = {
   avatarUrl?: string | null;
   style: StyleProp<ImageStyle>;
   onLoad?: () => void;
-  fallback?: ImageSourcePropType;
 };
+
+const studentFallback = getAvatarForEntity("student", {});
 
 /**
  * Avatar tuned for list screens: builds the public storage URL synchronously
@@ -25,10 +25,15 @@ function CachedAvatar({
   avatarUrl,
   style,
   onLoad,
-  fallback = DEFAULT_AVATAR,
 }: CachedAvatarProps) {
   if (!avatarUrl) {
-    return <Image source={fallback} style={style} onLoad={onLoad} />;
+    return (
+      <EntityAvatar
+        descriptor={studentFallback}
+        style={style}
+        onLoad={onLoad}
+      />
+    );
   }
 
   return (

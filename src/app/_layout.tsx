@@ -43,6 +43,7 @@ import {
   seedUserTotalVotesCacheFromStorage,
 } from "../utils/feedPersistence";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
+import { preloadUniversityAvatars } from "../config/universityBranding";
 
 // RN host components accept runtime defaultProps; typings omit it.
 (Text as any).defaultProps ??= {};
@@ -200,6 +201,11 @@ function RootLayoutContent() {
     }).start();
   };
 
+  // Warm bundled university avatars before any screen renders them.
+  useEffect(() => {
+    void preloadUniversityAvatars();
+  }, []);
+
   // App icon badge is set by (protected)/(tabs)/_layout.tsx from globalUnreadCount when logged in.
   // Do not reset badge here so the correct unread count is preserved.
 
@@ -228,6 +234,7 @@ function RootLayoutContent() {
           seedChatMessagesCacheFromStorage(queryClient, session.user.id),
           seedUserPostsCacheFromStorage(queryClient, session.user.id),
           seedUserTotalVotesCacheFromStorage(queryClient, session.user.id),
+          preloadUniversityAvatars(),
         ]);
 
         // 2. Ungate <Slot />. The Animated.View still has opacity:0 so the user
@@ -252,6 +259,8 @@ function RootLayoutContent() {
               await persistProfile({
                 avatar_url: profileData.avatar_url ?? null,
                 username: profileData.username ?? null,
+                university_domain: profileData.university?.domain ?? null,
+                university_name: profileData.university?.name ?? null,
               });
 
               if (profileData.avatar_url) {
