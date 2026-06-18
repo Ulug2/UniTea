@@ -14,7 +14,10 @@ export type PostsSummaryViewRow = {
   location: string | null;
   post_type: string;
   university_id: string;
+  university_domain: string;
   community_id: string | null;
+  community_name: string | null;
+  community_avatar_url: string | null;
   is_anonymous: boolean | null;
   is_deleted: boolean | null;
   is_edited: boolean | null;

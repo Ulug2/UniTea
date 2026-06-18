@@ -2,7 +2,6 @@ import { useState, useEffect, memo } from "react";
 import {
   View,
   Text,
-  Image,
   FlatList,
   PixelRatio,
   Pressable,
@@ -18,9 +17,12 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { useTheme } from "../context/ThemeContext";
 import { Database } from "../types/database.types";
 import { useVote } from "../hooks/useVote";
-import nuLogo from "../../assets/images/nu-logo.png";
-import { DEFAULT_AVATAR } from "../constants/images";
-import SupabaseImage from "./SupabaseImage";
+import EntityAvatar from "./EntityAvatar";
+import {
+  getAvatarForEntity,
+  resolveAnonymousCommentAvatar,
+  type PostAuthorContext,
+} from "../utils/entityDisplay";
 import { useAuth } from "../context/AuthContext";
 import { useMutation } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
@@ -56,6 +58,7 @@ type CommentListItemProps = {
   onDeleteStart?: (commentId: string) => void;
   onDeleteEnd?: () => void;
   isAdmin?: boolean;
+  postAuthorContext: PostAuthorContext;
 };
 
 // Enable LayoutAnimation once per module load on Android.
@@ -81,6 +84,7 @@ const CommentListItem = ({
   onDeleteStart,
   onDeleteEnd,
   isAdmin = false,
+  postAuthorContext,
 }: CommentListItemProps) => {
   const { theme } = useTheme();
   const fontScale = PixelRatio.getFontScale();
@@ -256,6 +260,13 @@ const CommentListItem = ({
   const containerGapFixStyle =
     hasReplies && showReplies ? { paddingBottom: 0 } : undefined;
 
+  const commentAvatar = comment.is_anonymous
+    ? resolveAnonymousCommentAvatar(postAuthorContext)
+    : getAvatarForEntity("student", {
+        avatarUrl: comment.user?.avatar_url,
+        username: comment.user?.username,
+      });
+
   return (
     <View
       style={[
@@ -289,24 +300,7 @@ const CommentListItem = ({
               comment.user_id === currentUserId
             }
           >
-            {comment.is_anonymous ? (
-              <Image source={nuLogo} style={styles.avatar} />
-            ) : comment.user?.avatar_url ? (
-              comment.user.avatar_url.startsWith("http") ? (
-                <Image
-                  source={{ uri: comment.user.avatar_url }}
-                  style={styles.avatar}
-                />
-              ) : (
-                <SupabaseImage
-                  path={comment.user.avatar_url}
-                  bucket="avatars"
-                  style={styles.avatar}
-                />
-              )
-            ) : (
-              <Image source={DEFAULT_AVATAR} style={styles.avatar} />
-            )}
+            <EntityAvatar descriptor={commentAvatar} style={styles.avatar} />
             <Text
               style={[styles.username, { color: theme.text }]}
               numberOfLines={1}
@@ -551,6 +545,8 @@ const CommentListItem = ({
                 }}
                 onDeleteStart={onDeleteStart}
                 onDeleteEnd={onDeleteEnd}
+                isAdmin={isAdmin}
+                postAuthorContext={postAuthorContext}
               />
             ))}
           {/* Show "Load More" if more than 5 replies */}
@@ -748,7 +744,8 @@ function arePropsEqual(
     prev.onDeleteStart === next.onDeleteStart &&
     prev.onDeleteEnd === next.onDeleteEnd &&
     prev.depth === next.depth &&
-    prev.isAdmin === next.isAdmin
+    prev.isAdmin === next.isAdmin &&
+    prev.postAuthorContext === next.postAuthorContext
   ) {
     return true;
   }
@@ -764,7 +761,8 @@ function arePropsEqual(
     prev.onDeleteStart === next.onDeleteStart &&
     prev.onDeleteEnd === next.onDeleteEnd &&
     prev.depth === next.depth &&
-    prev.isAdmin === next.isAdmin
+    prev.isAdmin === next.isAdmin &&
+    prev.postAuthorContext === next.postAuthorContext
   );
 }
 

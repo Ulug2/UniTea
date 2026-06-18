@@ -36,15 +36,31 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
 import { uploadImage } from "../../utils/supabaseImages";
 import { formatDistanceToNowStrict } from "date-fns";
-import nuLogo from "../../../assets/images/nu-logo.png";
-import SupabaseImage from "../../components/SupabaseImage";
-import { DEFAULT_AVATAR } from "../../constants/images";
+import EntityAvatar from "../../components/EntityAvatar";
+import { AVATAR_FALLBACK_BG } from "../../constants/avatars";
+import {
+  buildPostAuthorContext,
+  resolvePostAuthorDisplay,
+} from "../../utils/entityDisplay";
+import { useCommunity } from "../../features/communities/hooks/useCommunity";
+import { communityKeys } from "../../features/communities/data/queryKeys";
+import type { Community } from "../../features/communities/types";
+import { useResolvedAuthorProfile } from "../../hooks/useResolvedAuthorProfile";
+import CharacterCounter from "../../components/CharacterCounter";
+import {
+  POST_BODY_MAX_LENGTH,
+  POST_TITLE_MAX_LENGTH,
+} from "../../constants/validationConstants";
+import {
+  validatePostBody,
+  validatePostTitle,
+} from "../../utils/postValidation";
+import { useQueryClient } from "@tanstack/react-query";
 import { logger } from "../../utils/logger";
 import { useOriginalPostForRepost } from "../../hooks/useOriginalPostForRepost";
 import { useImagePipeline } from "../../hooks/useImagePipeline";
 import { useCreatePostFormState } from "../../hooks/useCreatePostFormState";
 import { useCreatePostMutation } from "../../hooks/useCreatePostMutation";
-import { useMyProfile } from "../../features/profile/hooks/useMyProfile";
 import {
   FullscreenImageModal,
   resolvePostImageUri,
@@ -125,7 +141,10 @@ export default function CreatePostScreen() {
         ? communityId[0]
         : undefined;
   const { session } = useAuth();
-  const { data: currentUser } = useMyProfile(session?.user?.id);
+  const queryClient = useQueryClient();
+  const { profile: currentUser, universityDomain } = useResolvedAuthorProfile(
+    session?.user?.id,
+  );
   const [expandedImageUri, setExpandedImageUri] = React.useState<string | null>(
     null,
   );
@@ -283,18 +302,79 @@ export default function CreatePostScreen() {
     }
   };
 
+  const { data: community } = useCommunity(resolvedCommunityId);
+  const communityFromCache = resolvedCommunityId
+    ? queryClient.getQueryData<Community>(
+        communityKeys.detail(resolvedCommunityId),
+      )
+    : null;
+  const effectiveCommunity = community ?? communityFromCache;
+
+  const anonymousPreviewAvatar = React.useMemo(
+    () =>
+      resolvePostAuthorDisplay(
+        buildPostAuthorContext({
+          isAnonymous: true,
+          username: currentUser?.username ?? "You",
+          avatarUrl: currentUser?.avatar_url ?? null,
+          universityDomain,
+          communityId: resolvedCommunityId ?? null,
+          communityName: effectiveCommunity?.name ?? null,
+          communityAvatarUrl: effectiveCommunity?.avatar_url ?? null,
+          userId: session?.user?.id,
+          currentUserId: session?.user?.id,
+        }),
+      ).avatar,
+    [
+      currentUser?.username,
+      currentUser?.avatar_url,
+      universityDomain,
+      resolvedCommunityId,
+      effectiveCommunity?.name,
+      effectiveCommunity?.avatar_url,
+      session?.user?.id,
+    ],
+  );
+
+  const originalPostAuthorDisplay = React.useMemo(() => {
+    if (!originalPost) return null;
+    return resolvePostAuthorDisplay(
+      buildPostAuthorContext({
+        isAnonymous: !!originalPost.is_anonymous,
+        username: originalPost.username,
+        avatarUrl: originalPost.avatar_url,
+        universityDomain: originalPost.university_domain,
+        communityId: originalPost.community_id,
+        communityName: originalPost.community_name,
+        communityAvatarUrl: originalPost.community_avatar_url,
+        userId: originalPost.user_id,
+        currentUserId: session?.user?.id,
+      }),
+    );
+  }, [originalPost, session?.user?.id]);
+
   // Create post mutation with optimistic UI updates (like Instagram/X)
   const createPostMutation = useCreatePostMutation({
     isLostFound,
     repostId,
     currentUserId: session?.user?.id,
     universityId: currentUser?.university_id,
+    universityDomain,
     communityId: resolvedCommunityId,
+    communityName: effectiveCommunity?.name ?? null,
+    communityAvatarUrl: effectiveCommunity?.avatar_url ?? null,
   });
 
   const handlePost = async () => {
     // Prevent multiple submissions
     if (isSubmitting || createPostMutation.isPending) {
+      return;
+    }
+
+    const titleError = validatePostTitle(title);
+    const bodyError = validatePostBody(content);
+    if (titleError || bodyError) {
+      Alert.alert("Invalid input", titleError ?? bodyError ?? "");
       return;
     }
 
@@ -599,9 +679,17 @@ export default function CreatePostScreen() {
             {/* TITLE INPUT (Feed posts only) */}
             {!isLostFound && (
               <View style={styles.locationSection}>
-                <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                  Title (optional)
-                </Text>
+                <View style={styles.sectionLabelRow}>
+                  <Text style={[styles.sectionLabelCompact, { color: theme.text }]}>
+                    Title (optional)
+                  </Text>
+                  <CharacterCounter
+                    current={title.length}
+                    max={POST_TITLE_MAX_LENGTH}
+                    color={theme.secondaryText}
+                    warningColor={theme.error}
+                  />
+                </View>
                 <View
                   style={[
                     styles.locationInputContainer,
@@ -628,7 +716,7 @@ export default function CreatePostScreen() {
                     onChangeText={setTitle}
                     value={title}
                     autoFocus={!isLostFound && !isRepost}
-                    maxLength={200}
+                    maxLength={POST_TITLE_MAX_LENGTH}
                   />
                 </View>
               </View>
@@ -636,16 +724,27 @@ export default function CreatePostScreen() {
 
             {/* CONTENT INPUT */}
             <View style={styles.contentSection}>
-              {isLostFound && (
-                <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                  Description *
-                </Text>
-              )}
-              {isRepost && (
-                <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                  Add your thoughts
-                </Text>
-              )}
+              <View style={styles.sectionLabelRow}>
+                {isLostFound ? (
+                  <Text style={[styles.sectionLabelCompact, { color: theme.text }]}>
+                    Description *
+                  </Text>
+                ) : isRepost ? (
+                  <Text style={[styles.sectionLabelCompact, { color: theme.text }]}>
+                    Add your thoughts
+                  </Text>
+                ) : (
+                  <Text style={[styles.sectionLabelCompact, { color: theme.text }]}>
+                    What's on your mind?
+                  </Text>
+                )}
+                <CharacterCounter
+                  current={content.length}
+                  max={POST_BODY_MAX_LENGTH}
+                  color={theme.secondaryText}
+                  warningColor={theme.error}
+                />
+              </View>
               <TextInput
                 placeholder={
                   isRepost
@@ -663,6 +762,7 @@ export default function CreatePostScreen() {
                 autoFocus={isRepost}
                 scrollEnabled
                 textAlignVertical="top"
+                maxLength={POST_BODY_MAX_LENGTH}
               />
             </View>
 
@@ -837,36 +937,18 @@ export default function CreatePostScreen() {
                   Original post
                 </Text>
                 <View style={styles.originalPostHeader}>
-                  {originalPost.is_anonymous ? (
-                    <Image source={nuLogo} style={styles.originalAvatar} />
-                  ) : originalPost.avatar_url ? (
-                    originalPost.avatar_url.startsWith("http") ? (
-                      <Image
-                        source={{ uri: originalPost.avatar_url }}
-                        style={styles.originalAvatar}
-                      />
-                    ) : (
-                      <SupabaseImage
-                        path={originalPost.avatar_url}
-                        bucket="avatars"
-                        style={styles.originalAvatar}
-                      />
-                    )
-                  ) : (
-                    <Image
-                      source={DEFAULT_AVATAR}
+                  {originalPostAuthorDisplay ? (
+                    <EntityAvatar
+                      descriptor={originalPostAuthorDisplay.avatar}
                       style={styles.originalAvatar}
                     />
-                  )}
+                  ) : null}
                   <View style={styles.originalPostHeaderText}>
                     <Text
                       style={[styles.originalAuthor, { color: theme.text }]}
                     >
-                      {originalPost.is_anonymous
-                        ? originalPost.user_id === session?.user?.id
-                          ? "You"
-                          : "Anonymous"
-                        : originalPost.username}
+                      {originalPostAuthorDisplay?.displayName ??
+                        originalPost.username}
                     </Text>
                     <Text
                       style={[
@@ -909,8 +991,22 @@ export default function CreatePostScreen() {
             {!isLostFound && (
               <>
                 <View style={styles.anonymousFooterRow}>
+                  {isAnonymous ? (
+                    <EntityAvatar
+                      descriptor={anonymousPreviewAvatar}
+                      style={styles.toggleAvatar}
+                    />
+                  ) : (
+                    <Ionicons
+                      name="person"
+                      size={icon24}
+                      color={theme.text}
+                    />
+                  )}
                   <Text style={[styles.anonymousLabel, { color: theme.text }]}>
-                    Anonymous
+                    {isAnonymous
+                      ? "Anonymous"
+                      : `As ${currentUser?.username ?? "You"}`}
                   </Text>
                   <Switch
                     value={isAnonymous}
@@ -1015,6 +1111,17 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(15),
     fontFamily: "Poppins_600SemiBold",
     marginBottom: verticalScale(10),
+  },
+  sectionLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: verticalScale(10),
+  },
+  sectionLabelCompact: {
+    fontSize: moderateScale(15),
+    fontFamily: "Poppins_600SemiBold",
+    flex: 1,
   },
   categoryButtons: {
     flexDirection: "row",
@@ -1196,6 +1303,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: moderateScale(10),
+  },
+  toggleAvatar: {
+    width: scale(30),
+    height: scale(30),
+    borderRadius: moderateScale(15),
+    overflow: "hidden",
+    backgroundColor: AVATAR_FALLBACK_BG,
   },
   footerActionsRow: {
     flexDirection: "row",

@@ -1045,7 +1045,9 @@ export type Database = {
           avatar_url: string | null
           category: string | null
           comment_count: number | null
+          community_avatar_url: string | null
           community_id: string | null
+          community_name: string | null
           content: string | null
           created_at: string | null
           edited_at: string | null
@@ -1076,6 +1078,7 @@ export type Database = {
           repost_count: number | null
           reposted_from_post_id: string | null
           title: string | null
+          university_domain: string | null
           university_id: string | null
           updated_at: string | null
           user_id: string | null

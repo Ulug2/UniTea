@@ -17,7 +17,8 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import SupabaseImage from "./SupabaseImage";
 import UserProfileModal from "./UserProfileModal";
-import { DEFAULT_AVATAR } from "../constants/images";
+import EntityAvatar from "./EntityAvatar";
+import { getAvatarForEntity } from "../utils/entityDisplay";
 import { useMyProfile } from "../features/profile/hooks/useMyProfile";
 import { sharePost } from "../utils/sharePost";
 import ResponsiveImage from "./ResponsiveImage";
@@ -187,7 +188,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
     }
   }, [onImageLoad, avatarUrl, avatarLoaded, hasImage, imageLoaded]);
 
-  // No avatar URL means we show DEFAULT_AVATAR (local) – consider loaded
+  // No avatar URL means we show the student SVG fallback – consider loaded
   useEffect(() => {
     if (!avatarUrl) setAvatarLoaded(true);
   }, [avatarUrl]);
@@ -518,8 +519,11 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
                 />
               )
             ) : (
-              <Image
-                source={DEFAULT_AVATAR}
+              <EntityAvatar
+                descriptor={getAvatarForEntity("student", {
+                  avatarUrl,
+                  username,
+                })}
                 style={styles.avatarImage}
                 onLoad={() => setAvatarLoaded(true)}
               />

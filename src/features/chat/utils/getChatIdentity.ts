@@ -1,10 +1,7 @@
 import { hashStringToNumber } from "./anon";
-import { DEFAULT_AVATAR } from "../../../constants/images";
-import type { ImageSourcePropType } from "react-native";
 
 export type ChatIdentity = {
   displayName: string;
-  avatarSource: ImageSourcePropType | null;
   isAnonymousChat: boolean;
 };
 
@@ -33,7 +30,6 @@ export function getChatDisplayIdentity(
   if (!chat.is_anonymous) {
     return {
       displayName: otherUserProfile?.username || "Unknown User",
-      avatarSource: null,
       isAnonymousChat: false,
     };
   }
@@ -41,7 +37,6 @@ export function getChatDisplayIdentity(
   if (currentUserId && currentUserId === chat.initiator_id) {
     return {
       displayName: "Them",
-      avatarSource: DEFAULT_AVATAR,
       isAnonymousChat: true,
     };
   }
@@ -59,7 +54,6 @@ export function getChatDisplayIdentity(
 
   return {
     displayName: `Anonymous User #${hash}`,
-    avatarSource: DEFAULT_AVATAR,
     isAnonymousChat: true,
   };
 }

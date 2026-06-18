@@ -1,8 +1,9 @@
 import React from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../../context/ThemeContext";
 import SupabaseImage from "../../../components/SupabaseImage";
+import EntityAvatar from "../../../components/EntityAvatar";
+import { getAvatarForEntity } from "../../../utils/entityDisplay";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import type { CommunityDirectoryEntry } from "../types";
 
@@ -43,10 +44,12 @@ function CommunityDirectoryItem({
             style={styles.avatarImage}
           />
         ) : (
-          <Ionicons
-            name="people"
-            size={moderateScale(22)}
-            color={theme.primary}
+          <EntityAvatar
+            descriptor={getAvatarForEntity("community", {
+              communityAvatarUrl: community.avatar_url,
+              communityName: community.name,
+            })}
+            style={styles.avatarImage}
           />
         )}
       </View>

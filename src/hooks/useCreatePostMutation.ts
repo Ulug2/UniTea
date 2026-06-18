@@ -3,6 +3,14 @@ import { supabase } from "../lib/supabase";
 import { logger } from "../utils/logger";
 import { Alert } from "react-native";
 import { feedKeys } from "../features/communities/data/queryKeys";
+import {
+  buildPostAuthorContext,
+  resolvePostAuthorDisplay,
+} from "../utils/entityDisplay";
+import {
+  normalizePostBody,
+  normalizePostTitle,
+} from "../utils/postValidation";
 
 type CreatePostVariables = {
   imagePath: string | undefined;
@@ -23,12 +31,24 @@ type CreatePostOptions = {
   repostId?: string | string[];
   currentUserId: string | null | undefined;
   universityId?: string | null;
+  universityDomain?: string | null;
+  communityName?: string | null;
+  communityAvatarUrl?: string | null;
   /** Fallback when communityId is not passed in mutate() variables. */
   communityId?: string | null;
 };
 
 export function useCreatePostMutation(options: CreatePostOptions): UseMutationResult<any, unknown, CreatePostVariables> {
-  const { isLostFound, repostId, currentUserId, universityId, communityId: defaultCommunityId } = options;
+  const {
+    isLostFound,
+    repostId,
+    currentUserId,
+    universityId,
+    universityDomain,
+    communityName,
+    communityAvatarUrl,
+    communityId: defaultCommunityId,
+  } = options;
   const queryClient = useQueryClient();
 
   const resolvedRepostId =
@@ -61,9 +81,10 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         (path): path is string => Boolean(path?.trim()),
       );
       const primaryImagePath = normalizedImagePaths[0] ?? imagePath;
-      const normalizedTitle = postTitle.trim();
+      const normalizedTitle = normalizePostTitle(postTitle);
+      const normalizedContent = normalizePostBody(postContent);
 
-      if (!resolvedRepostId && !postContent.trim() && !primaryImagePath) {
+      if (!resolvedRepostId && !normalizedContent && !primaryImagePath) {
         throw new Error("Content is required");
       }
 
@@ -72,13 +93,13 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
       }
 
       const postPayload = {
-        content: postContent.trim() || "",
+        content: normalizedContent,
         post_type: isLostFound ? "lost_found" : "feed",
         image_url: primaryImagePath || null,
         image_urls: normalizedImagePaths.length > 0 ? normalizedImagePaths : null,
         image_aspect_ratio: imageAspectRatio ?? null,
         is_anonymous: isLostFound ? false : postIsAnonymous,
-        ...(normalizedTitle.length > 0 && { title: normalizedTitle }),
+        ...(normalizedTitle && { title: normalizedTitle }),
         ...(isLostFound && {
           category: postCategory,
           location: postLocation.trim(),
@@ -151,6 +172,20 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
       const tempId = `temp-${Date.now()}`;
       const now = new Date().toISOString();
 
+      const authorDisplay = resolvePostAuthorDisplay(
+        buildPostAuthorContext({
+          isAnonymous: variables.postIsAnonymous,
+          username: "You",
+          avatarUrl: null,
+          universityDomain,
+          communityId: effectiveCommunityId,
+          communityName,
+          communityAvatarUrl,
+          userId: currentUserId,
+          currentUserId,
+        }),
+      );
+
       const optimisticPost = {
         post_id: tempId,
         user_id: currentUserId || "",
@@ -168,7 +203,10 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         location: null,
         post_type: "feed",
         community_id: effectiveCommunityId,
+        community_name: communityName ?? null,
+        community_avatar_url: communityAvatarUrl ?? null,
         university_id: universityId ?? "",
+        university_domain: universityDomain ?? "",
         is_anonymous: variables.postIsAnonymous,
         is_deleted: false,
         is_edited: false,
@@ -176,7 +214,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         updated_at: now,
         edited_at: null,
         view_count: 0,
-        username: variables.postIsAnonymous ? "Anonymous" : "You",
+        username: authorDisplay.displayName,
         avatar_url: null,
         is_verified: false,
         is_banned: false,

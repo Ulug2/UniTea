@@ -44,6 +44,10 @@ export function PostHeaderCard({
       viewCount={post.view_count}
       username={post.username || postUser?.username || "Unknown"}
       avatarUrl={post.avatar_url || postUser?.avatar_url || null}
+      universityDomain={post.university_domain}
+      communityId={post.community_id}
+      communityName={post.community_name}
+      communityAvatarUrl={post.community_avatar_url}
       isVerified={post.is_verified || postUser?.is_verified || null}
       commentCount={commentCount}
       voteScore={post.vote_score ?? 0}

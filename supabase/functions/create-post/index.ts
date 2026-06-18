@@ -5,6 +5,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import OpenAI from "https://esm.sh/openai@4";
+import {
+  POST_BODY_MAX_LENGTH,
+  POST_TITLE_MAX_LENGTH,
+} from "../_shared/validationConstants.ts";
 
 const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
@@ -78,8 +82,22 @@ serve(async (req: Request) => {
       poll_allow_multiple,
     } = await req.json();
 
+    const trimmedTitle = typeof title === "string" ? title.trim() : "";
+    const trimmedContent = typeof content === "string" ? content.trim() : "";
+
+    if (trimmedTitle.length > POST_TITLE_MAX_LENGTH) {
+      throw new Error(
+        `Title must be at most ${POST_TITLE_MAX_LENGTH} characters.`,
+      );
+    }
+    if (trimmedContent.length > POST_BODY_MAX_LENGTH) {
+      throw new Error(
+        `Post content must be at most ${POST_BODY_MAX_LENGTH} characters.`,
+      );
+    }
+
     // 3. Text Moderation: Context-aware name drops & sexual content
-    const textToModerate = [title?.trim(), content?.trim()].filter(Boolean).join(" ");
+    const textToModerate = [trimmedTitle, trimmedContent].filter(Boolean).join(" ");
 
     if (textToModerate) {
       // 3a. Hard safety checks (illegal/severe harm) using OpenAI Moderation API
@@ -233,7 +251,7 @@ Output JSON ONLY: {"visual_explicit": boolean, "private_name": boolean, "explici
     // 5. Prepare post data for database insertion
     const postData: any = {
       user_id: user.id,
-      content: content?.trim() || "",
+      content: trimmedContent,
       post_type: post_type || "feed",
       image_url: normalizedImageUrls[0] || null,
       image_urls: normalizedImageUrls.length > 0 ? normalizedImageUrls : null,
@@ -245,8 +263,8 @@ Output JSON ONLY: {"visual_explicit": boolean, "private_name": boolean, "explici
     };
 
     // Add optional fields if they exist
-    if (title) {
-      postData.title = title.trim();
+    if (trimmedTitle) {
+      postData.title = trimmedTitle;
     }
     if (location) {
       postData.location = location.trim();
