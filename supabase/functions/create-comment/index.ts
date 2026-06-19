@@ -5,6 +5,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import OpenAI from "https://esm.sh/openai@4";
+import {
+  checkRateLimit,
+  rateLimitExceededResponse,
+} from "../_shared/rateLimit.ts";
+
+// 10 comments per 2 minutes per user
+const COMMENT_RATE_LIMIT_MAX = 10;
+const COMMENT_RATE_LIMIT_WINDOW_SECONDS = 120;
 
 const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
@@ -63,7 +71,17 @@ serve(async (req: Request) => {
       throw new Error("Unauthorized");
     }
 
-    // 2. Parse request body
+    // 2. Rate limit check (before any expensive OpenAI calls)
+    const allowed = await checkRateLimit(
+      `comment:${user.id}`,
+      COMMENT_RATE_LIMIT_MAX,
+      COMMENT_RATE_LIMIT_WINDOW_SECONDS,
+    );
+    if (!allowed) {
+      return rateLimitExceededResponse(corsHeaders, COMMENT_RATE_LIMIT_WINDOW_SECONDS);
+    }
+
+    // 3. Parse request body
     const {
       content,
       post_id,
@@ -71,7 +89,7 @@ serve(async (req: Request) => {
       is_anonymous,
     } = await req.json();
 
-    // 3. Validate required fields
+    // 4. Validate required fields
     if (!content || !content.trim()) {
       throw new Error("Comment content is required");
     }

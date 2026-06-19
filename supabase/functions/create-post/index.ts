@@ -9,6 +9,14 @@ import {
   POST_BODY_MAX_LENGTH,
   POST_TITLE_MAX_LENGTH,
 } from "../_shared/validationConstants.ts";
+import {
+  checkRateLimit,
+  rateLimitExceededResponse,
+} from "../_shared/rateLimit.ts";
+
+// 5 posts per 10 minutes per user
+const POST_RATE_LIMIT_MAX = 5;
+const POST_RATE_LIMIT_WINDOW_SECONDS = 600;
 
 const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
@@ -63,7 +71,17 @@ serve(async (req: Request) => {
       throw new Error("Unauthorized");
     }
 
-    // 2. Parse request body
+    // 2. Rate limit check (before any expensive OpenAI calls)
+    const allowed = await checkRateLimit(
+      `post:${user.id}`,
+      POST_RATE_LIMIT_MAX,
+      POST_RATE_LIMIT_WINDOW_SECONDS,
+    );
+    if (!allowed) {
+      return rateLimitExceededResponse(corsHeaders, POST_RATE_LIMIT_WINDOW_SECONDS);
+    }
+
+    // 4. Parse request body
     const {
       content,
       title,

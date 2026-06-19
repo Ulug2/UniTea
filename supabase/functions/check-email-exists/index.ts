@@ -1,6 +1,15 @@
 // Check if an email is already registered (auth.users) and whether it's already verified.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  checkRateLimit,
+  getClientIp,
+  rateLimitExceededResponse,
+} from "../_shared/rateLimit.ts";
+
+// 10 lookups per minute per IP (this endpoint iterates all auth users — expensive)
+const EMAIL_CHECK_RATE_LIMIT_MAX = 10;
+const EMAIL_CHECK_RATE_LIMIT_WINDOW_SECONDS = 60;
 
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
@@ -30,6 +39,17 @@ serve(async (req) => {
   }
 
   try {
+    // Rate limit by IP before doing anything expensive
+    const clientIp = getClientIp(req);
+    const allowed = await checkRateLimit(
+      `email-check:${clientIp}`,
+      EMAIL_CHECK_RATE_LIMIT_MAX,
+      EMAIL_CHECK_RATE_LIMIT_WINDOW_SECONDS,
+    );
+    if (!allowed) {
+      return rateLimitExceededResponse(corsHeaders, EMAIL_CHECK_RATE_LIMIT_WINDOW_SECONDS);
+    }
+
     const { email } = (await req.json()) as { email?: string };
     const normalized = typeof email === "string" ? email.trim().toLowerCase() : "";
     if (!normalized) {
