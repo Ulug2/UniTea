@@ -37,6 +37,7 @@ import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { useFeedPosts } from "../../../hooks/useFeedPosts";
 import CommunityFilterBar from "../../../features/communities/components/CommunityFilterBar";
 import { useMyCommunities } from "../../../features/communities/hooks/useMyCommunities";
+import MatchmakingBanner from "../../../features/matchmaking/components/MatchmakingBanner";
 
 type PostSummary = PostsSummaryViewRow;
 
@@ -620,6 +621,7 @@ export default function FeedScreen() {
           onSelect={setActiveCommunityId}
           onDiscover={() => router.push("/communities")}
         />
+        <MatchmakingBanner />
         <View style={styles.feedStack}>
           {mountedFeedKeyList.map((feedKey) => {
             const isActive = feedKey === activeFeedKey;
