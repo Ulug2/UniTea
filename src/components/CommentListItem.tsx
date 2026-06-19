@@ -328,7 +328,8 @@ const CommentListItem = ({
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                flex: 1,
+                flexShrink: 1,
+                flexGrow: 0,
                 minWidth: 0,
               }}
             >
@@ -608,7 +609,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: moderateScale(2),
-    flex: 1,
+    flexShrink: 1,
+    flexGrow: 0,
     minWidth: 0,
   },
   avatar: {
@@ -636,7 +638,7 @@ const styles = StyleSheet.create({
   },
   timeContainer: {
     flexShrink: 0,
-    marginLeft: scale(6),
+    marginLeft: "auto",
   },
   time: {
     fontSize: moderateScale(13),
