@@ -58,6 +58,22 @@ const BAN_DURATIONS = [
   { label: "Permanent", value: "permanent" },
 ] as const;
 
+type EventPhase = "inactive" | "accepting" | "locked" | "revealed";
+
+const PHASE_LABELS: Record<EventPhase, string> = {
+  inactive: "Inactive",
+  accepting: "Accepting",
+  locked: "Locked",
+  revealed: "Revealed",
+};
+
+const PHASE_COLORS: Record<EventPhase, { bg: string; color: string }> = {
+  inactive: { bg: "#f5f5f5", color: "#555" },
+  accepting: { bg: "#e8f5e9", color: "#2e7d32" },
+  locked: { bg: "#fff8e1", color: "#f57f17" },
+  revealed: { bg: "#e3f2fd", color: "#1565c0" },
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -86,6 +102,15 @@ export default function DashboardPage() {
     left: number;
   } | null>(null);
   const [statusLoading, setStatusLoading] = useState<string | null>(null);
+
+  // Matchmaking state
+  const [eventPhase, setEventPhase] = useState<EventPhase | null>(null);
+  const [phaseLoading, setPhaseLoading] = useState<EventPhase | null>(null);
+  const [matchmakingRunning, setMatchmakingRunning] = useState(false);
+  const [matchmakingResult, setMatchmakingResult] = useState<{
+    matched: number;
+    summary: { university_id: string; primary: number; wingman: number; unmatched: number }[];
+  } | null>(null);
 
   const closeStatusMenu = () => {
     setStatusMenuId(null);
@@ -148,7 +173,7 @@ export default function DashboardPage() {
         return;
       }
 
-      const [profRes, repRes, logRes] = await Promise.all([
+      const [profRes, repRes, logRes, phaseRes] = await Promise.all([
         supabase
           .from("profiles")
           .select(
@@ -168,6 +193,7 @@ export default function DashboardPage() {
           )
           .order("created_at", { ascending: false })
           .limit(500),
+        (supabase as any).from("launch_event_config").select("phase").eq("id", 1).maybeSingle(),
       ]);
 
       if (cancelled) return;
@@ -184,6 +210,9 @@ export default function DashboardPage() {
       if (!logRes.error) {
         setLogs((logRes.data as AdminLog[]) ?? []);
       }
+      if (!phaseRes.error && phaseRes.data) {
+        setEventPhase(phaseRes.data.phase as EventPhase);
+      }
       setLoading(false);
     })();
 
@@ -193,13 +222,13 @@ export default function DashboardPage() {
   }, [router]);
 
   const callEdgeFunction = async (
-    name: "ban-user" | "unban-user",
-    body: Record<string, unknown>,
+    name: string,
+    body?: Record<string, unknown>,
   ) => {
     const {
       data: { session },
     } = await supabase.auth.getSession();
-    if (!session?.access_token || !supabaseUrl) return false;
+    if (!session?.access_token || !supabaseUrl) return null;
     const res = await fetch(`${supabaseUrl}/functions/v1/${name}`, {
       method: "POST",
       headers: {
@@ -207,11 +236,49 @@ export default function DashboardPage() {
         Authorization: `Bearer ${session.access_token}`,
         apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
       },
-      body: JSON.stringify(body),
+      body: body ? JSON.stringify(body) : undefined,
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error ?? res.statusText);
-    return true;
+    return data;
+  };
+
+  const handleSetPhase = async (phase: EventPhase) => {
+    setPhaseLoading(phase);
+    setMessage(null);
+    try {
+      const { error } = await (supabase as any)
+        .from("launch_event_config")
+        .update({ phase })
+        .eq("id", 1);
+      if (error) throw new Error(error.message);
+      setEventPhase(phase);
+      setMatchmakingResult(null);
+      setMessage({ type: "ok", text: `Phase set to "${PHASE_LABELS[phase]}".` });
+    } catch (e) {
+      setMessage({ type: "err", text: e instanceof Error ? e.message : "Failed to set phase" });
+    } finally {
+      setPhaseLoading(null);
+    }
+  };
+
+  const handleRunMatchmaking = async () => {
+    if (eventPhase !== "locked") {
+      setMessage({ type: "err", text: 'Phase must be "Locked" before running the algorithm.' });
+      return;
+    }
+    setMatchmakingRunning(true);
+    setMatchmakingResult(null);
+    setMessage(null);
+    try {
+      const result = await callEdgeFunction("run-matchmaking");
+      setMatchmakingResult(result);
+      setMessage({ type: "ok", text: `Done — ${result.matched} match${result.matched === 1 ? "" : "es"} created.` });
+    } catch (e) {
+      setMessage({ type: "err", text: e instanceof Error ? e.message : "Matchmaking failed" });
+    } finally {
+      setMatchmakingRunning(false);
+    }
   };
 
   const refreshLogs = async () => {
@@ -233,7 +300,7 @@ export default function DashboardPage() {
       await callEdgeFunction("ban-user", {
         user_id: banModal.userId,
         duration: banDuration,
-      });
+      } as Record<string, unknown>);
       setMessage({ type: "ok", text: "User banned." });
       setBanModal(null);
       const { data } = await supabase
@@ -263,7 +330,7 @@ export default function DashboardPage() {
     setActionLoading(userId);
     setMessage(null);
     try {
-      await callEdgeFunction("unban-user", { user_id: userId });
+      await callEdgeFunction("unban-user", { user_id: userId } as Record<string, unknown>);
       setMessage({ type: "ok", text: "User unbanned." });
       const { data } = await supabase
         .from("profiles")
@@ -416,6 +483,127 @@ export default function DashboardPage() {
           {message.text}
         </p>
       )}
+
+      {/* ── Matchmaking ── */}
+      <section style={{ marginBottom: 32 }}>
+        <h2 style={{ marginBottom: 16, fontSize: 18 }}>Launch Week Matchmaking</h2>
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: 8,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            padding: 20,
+            display: "flex",
+            flexDirection: "column",
+            gap: 20,
+          }}
+        >
+          {/* Phase control */}
+          <div>
+            <p style={{ fontSize: 13, color: "#555", marginBottom: 10, fontWeight: 600 }}>
+              Event Phase
+              {eventPhase && (
+                <span
+                  style={{
+                    marginLeft: 10,
+                    padding: "3px 10px",
+                    borderRadius: 12,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: PHASE_COLORS[eventPhase].bg,
+                    color: PHASE_COLORS[eventPhase].color,
+                  }}
+                >
+                  Current: {PHASE_LABELS[eventPhase]}
+                </span>
+              )}
+              {eventPhase === null && (
+                <span style={{ marginLeft: 10, fontSize: 12, color: "#aaa" }}>
+                  (migration not applied yet)
+                </span>
+              )}
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {(["inactive", "accepting", "locked", "revealed"] as EventPhase[]).map((phase) => {
+                const isActive = eventPhase === phase;
+                const { bg, color } = PHASE_COLORS[phase];
+                return (
+                  <button
+                    key={phase}
+                    type="button"
+                    disabled={isActive || phaseLoading !== null || eventPhase === null}
+                    onClick={() => handleSetPhase(phase)}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: 8,
+                      border: `1.5px solid ${isActive ? color : "#ddd"}`,
+                      background: isActive ? bg : "#fafafa",
+                      color: isActive ? color : "#555",
+                      fontSize: 13,
+                      fontWeight: isActive ? 700 : 500,
+                      cursor: isActive || eventPhase === null ? "default" : "pointer",
+                      opacity: phaseLoading !== null && phaseLoading !== phase ? 0.5 : 1,
+                    }}
+                  >
+                    {phaseLoading === phase ? "…" : PHASE_LABELS[phase]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Run algorithm */}
+          <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+            <p style={{ fontSize: 13, color: "#555", marginBottom: 8, fontWeight: 600 }}>
+              Run Matching Algorithm
+            </p>
+            <p style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>
+              Set phase to <strong>Locked</strong> first, then run. Writes match pairs to the
+              database. Safe to re-run — existing matches are not duplicated.
+            </p>
+            <button
+              type="button"
+              disabled={matchmakingRunning || eventPhase !== "locked"}
+              onClick={handleRunMatchmaking}
+              style={{
+                padding: "10px 20px",
+                borderRadius: 8,
+                border: "none",
+                background: eventPhase === "locked" ? "#1565c0" : "#ddd",
+                color: eventPhase === "locked" ? "#fff" : "#999",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: eventPhase === "locked" ? "pointer" : "not-allowed",
+              }}
+            >
+              {matchmakingRunning ? "Running…" : "⚡ Run Matchmaking"}
+            </button>
+
+            {matchmakingResult && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: 14,
+                  borderRadius: 8,
+                  background: "#e3f2fd",
+                  fontSize: 13,
+                  color: "#1565c0",
+                }}
+              >
+                <strong>{matchmakingResult.matched} match{matchmakingResult.matched === 1 ? "" : "es"} created.</strong>
+                {matchmakingResult.summary.map((s) => (
+                  <div key={s.university_id} style={{ marginTop: 6, color: "#1976d2" }}>
+                    University {s.university_id.slice(0, 8)}… — Primary: {s.primary}, Wingman: {s.wingman}, Unmatched: {s.unmatched}
+                  </div>
+                ))}
+                <p style={{ marginTop: 8, color: "#555" }}>
+                  Now set phase to <strong>Revealed</strong> to show results to users.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ marginBottom: 16, fontSize: 18 }}>Users</h2>
