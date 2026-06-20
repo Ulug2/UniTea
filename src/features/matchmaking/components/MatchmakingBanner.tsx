@@ -22,13 +22,13 @@ export default function MatchmakingBanner() {
   const [formVisible, setFormVisible] = useState(false);
   const [revealVisible, setRevealVisible] = useState(false);
 
-  // ── Visibility logic ────────────────────────────────────────
+  // ── Visibility logic (matches the spec state machine exactly) ──
   if (!phase || phase === 'inactive' || phase === 'locked') return null;
   if (phase === 'accepting' && submission) return null;
+  // In the revealed phase, only participants (who submitted) can see their match.
+  // Non-participants and users whose 24h window has expired both see nothing.
+  if (phase === 'revealed' && !submission) return null;
   if (phase === 'revealed' && windowStatus.isExpired) return null;
-  // Only show the revealed banner once the window has been set up
-  // (i.e. user has already recorded their view). Before first view,
-  // always show it so they can open the reveal.
 
   const isAccepting = phase === 'accepting';
   const isRevealed = phase === 'revealed';
