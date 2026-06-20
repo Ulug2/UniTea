@@ -395,6 +395,160 @@ export type Database = {
           },
         ]
       }
+      launch_event_config: {
+        Row: {
+          id: number
+          phase: string
+        }
+        Insert: {
+          id?: number
+          phase: string
+        }
+        Update: {
+          id?: number
+          phase?: string
+        }
+        Relationships: []
+      }
+      launch_event_matches: {
+        Row: {
+          compatibility_score: number
+          created_at: string
+          id: string
+          match_type: string
+          university_id: string
+          user_a_id: string
+          user_b_id: string
+        }
+        Insert: {
+          compatibility_score: number
+          created_at?: string
+          id?: string
+          match_type: string
+          university_id: string
+          user_a_id: string
+          user_b_id: string
+        }
+        Update: {
+          compatibility_score?: number
+          created_at?: string
+          id?: string
+          match_type?: string
+          university_id?: string
+          user_a_id?: string
+          user_b_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "launch_event_matches_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: false
+            referencedRelation: "universities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "launch_event_matches_user_a_id_fkey"
+            columns: ["user_a_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "launch_event_matches_user_b_id_fkey"
+            columns: ["user_b_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      launch_event_message_windows: {
+        Row: {
+          match_id: string
+          user_id: string
+          viewed_at: string
+          window_expires_at: string
+        }
+        Insert: {
+          match_id: string
+          user_id: string
+          viewed_at?: string
+          window_expires_at: string
+        }
+        Update: {
+          match_id?: string
+          user_id?: string
+          viewed_at?: string
+          window_expires_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "launch_event_message_windows_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "launch_event_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "launch_event_message_windows_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      launch_event_profiles: {
+        Row: {
+          answers: Json
+          demographics_purged_at: string | null
+          display_name: string
+          gender: string
+          id: string
+          major: string
+          submitted_at: string
+          university_id: string
+          user_id: string
+        }
+        Insert: {
+          answers: Json
+          demographics_purged_at?: string | null
+          display_name: string
+          gender: string
+          id?: string
+          major: string
+          submitted_at?: string
+          university_id: string
+          user_id: string
+        }
+        Update: {
+          answers?: Json
+          demographics_purged_at?: string | null
+          display_name?: string
+          gender?: string
+          id?: string
+          major?: string
+          submitted_at?: string
+          university_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "launch_event_profiles_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: false
+            referencedRelation: "universities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "launch_event_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_settings: {
         Row: {
           created_at: string
@@ -828,6 +982,24 @@ export type Database = {
           },
         ]
       }
+      rate_limits: {
+        Row: {
+          hit_at: string
+          id: number
+          key: string
+        }
+        Insert: {
+          hit_at?: string
+          id?: number
+          key: string
+        }
+        Update: {
+          hit_at?: string
+          id?: number
+          key?: string
+        }
+        Relationships: []
+      }
       reports: {
         Row: {
           comment_id: string | null
@@ -1209,12 +1381,21 @@ export type Database = {
         }
         Returns: boolean
       }
+      check_rate_limit: {
+        Args: {
+          p_key: string
+          p_max_requests: number
+          p_window_seconds: number
+        }
+        Returns: boolean
+      }
       delete_user_account: { Args: never; Returns: undefined }
       get_community_university_id: {
         Args: { p_community_id: string }
         Returns: string
       }
       get_my_is_admin: { Args: never; Returns: boolean }
+      get_my_match: { Args: never; Returns: Json }
       get_my_university_id: { Args: never; Returns: string }
       get_repost_count: { Args: { post_id: string }; Returns: number }
     }
