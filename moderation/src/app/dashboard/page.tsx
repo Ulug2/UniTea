@@ -111,6 +111,7 @@ export default function DashboardPage() {
     matched: number;
     summary: { university_id: string; primary: number; wingman: number; unmatched: number }[];
   } | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
 
   const closeStatusMenu = () => {
     setStatusMenuId(null);
@@ -278,6 +279,25 @@ export default function DashboardPage() {
       setMessage({ type: "err", text: e instanceof Error ? e.message : "Matchmaking failed" });
     } finally {
       setMatchmakingRunning(false);
+    }
+  };
+
+  const handleResetMatchmaking = async () => {
+    const confirmed = window.confirm(
+      "⚠️ RESET MATCHMAKING?\n\nThis will permanently delete:\n• All match pairs\n• All submitted profiles\n• All message windows\n• Phase → Inactive\n\nThis cannot be undone. Proceed?",
+    );
+    if (!confirmed) return;
+    setResetLoading(true);
+    setMessage(null);
+    try {
+      await callEdgeFunction("reset-matchmaking");
+      setEventPhase("inactive");
+      setMatchmakingResult(null);
+      setMessage({ type: "ok", text: "Matchmaking data cleared. Phase reset to Inactive." });
+    } catch (e) {
+      setMessage({ type: "err", text: e instanceof Error ? e.message : "Reset failed" });
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -601,6 +621,35 @@ export default function DashboardPage() {
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Reset (yearly cleanup) */}
+          <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+            <p style={{ fontSize: 13, color: "#c62828", marginBottom: 8, fontWeight: 600 }}>
+              ⚠️ Reset Event
+            </p>
+            <p style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>
+              Deletes all profiles, match pairs, and message windows. Resets phase to{" "}
+              <strong>Inactive</strong>. Use for yearly resets or clearing test data.
+            </p>
+            <button
+              type="button"
+              disabled={resetLoading || eventPhase === null}
+              onClick={handleResetMatchmaking}
+              style={{
+                padding: "10px 20px",
+                borderRadius: 8,
+                border: "1.5px solid #c62828",
+                background: resetLoading ? "#ffebee" : "#fff",
+                color: "#c62828",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: resetLoading || eventPhase === null ? "not-allowed" : "pointer",
+                opacity: eventPhase === null ? 0.5 : 1,
+              }}
+            >
+              {resetLoading ? "Resetting…" : "🗑️ Reset All Matchmaking Data"}
+            </button>
           </div>
         </div>
       </section>

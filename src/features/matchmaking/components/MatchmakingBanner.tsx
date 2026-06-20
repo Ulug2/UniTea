@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../context/ThemeContext';
 import { moderateScale, scale, verticalScale } from '../../../utils/scaling';
@@ -21,6 +22,38 @@ export default function MatchmakingBanner() {
 
   const [formVisible, setFormVisible] = useState(false);
   const [revealVisible, setRevealVisible] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  // Keyed by viewed_at so it auto-resets for next year's event (different timestamp)
+  const dismissKey = userId && windowStatus.viewed_at
+    ? `@mm_banner_dismissed_${userId}_${windowStatus.viewed_at}`
+    : null;
+
+  useEffect(() => {
+    if (!dismissKey) return;
+    AsyncStorage.getItem(dismissKey).then((val) => {
+      if (val === 'true') setDismissed(true);
+    });
+  }, [dismissKey]);
+
+  const handleDismiss = useCallback(() => {
+    if (!dismissKey) return;
+    Alert.alert(
+      'Remove match banner?',
+      "You won't see your match notification anymore. If you haven't messaged them yet, you'll lose the chance once the window closes.",
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Dismiss',
+          style: 'destructive',
+          onPress: async () => {
+            await AsyncStorage.setItem(dismissKey, 'true');
+            setDismissed(true);
+          },
+        },
+      ],
+    );
+  }, [dismissKey]);
 
   // ── Visibility logic (matches the spec state machine exactly) ──
   if (!phase || phase === 'inactive' || phase === 'locked') return null;
@@ -29,9 +62,12 @@ export default function MatchmakingBanner() {
   // Non-participants and users whose 24h window has expired both see nothing.
   if (phase === 'revealed' && !submission) return null;
   if (phase === 'revealed' && windowStatus.isExpired) return null;
+  if (phase === 'revealed' && dismissed) return null;
 
   const isAccepting = phase === 'accepting';
   const isRevealed = phase === 'revealed';
+  // Dismiss X shows once the user has viewed their match (viewed_at is set)
+  const canDismiss = isRevealed && !!windowStatus.viewed_at;
 
   return (
     <>
@@ -65,6 +101,23 @@ export default function MatchmakingBanner() {
             color="#FFFFFF"
           />
         </View>
+
+        {canDismiss && (
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              handleDismiss();
+            }}
+            hitSlop={8}
+            style={styles.dismissBtn}
+          >
+            <MaterialCommunityIcons
+              name="close"
+              size={moderateScale(18)}
+              color={theme.secondaryText}
+            />
+          </Pressable>
+        )}
       </Pressable>
 
       <MatchmakingFormModal
@@ -129,5 +182,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: moderateScale(13),
     fontFamily: 'Poppins_600SemiBold',
+  },
+  dismissBtn: {
+    padding: scale(4),
+    marginRight: scale(2),
+    flexShrink: 0,
   },
 });
