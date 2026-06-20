@@ -32,6 +32,7 @@ import { useBlocks, hasBlockForScope } from "../hooks/useBlocks";
 import ReportModal from "./ReportModal";
 import UserProfileModal from "./UserProfileModal";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
+import { isRateLimitError } from "../utils/clientRateLimit";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Comment = Database["public"]["Tables"]["comments"]["Row"];
@@ -192,6 +193,10 @@ const CommentListItem = ({
       setShowMenu(false);
     },
     onError: (error: any) => {
+      if (isRateLimitError(error)) {
+        Alert.alert("Slow down", "You're submitting reports too quickly. Please wait a moment.");
+        return;
+      }
       Alert.alert("Error", error.message || "Failed to submit report");
     },
   });

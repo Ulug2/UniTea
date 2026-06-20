@@ -2,6 +2,7 @@ import { Alert } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
+import { checkClientRateLimit, isRateLimitError } from "../../../utils/clientRateLimit";
 import type { Database } from "../../../types/database.types";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -19,6 +20,8 @@ export function useUpdateProfile() {
     mutationFn: async (updates: UpdateProfileInput) => {
       const currentUserId = session?.user?.id;
       if (!currentUserId) throw new Error("User ID missing");
+
+      await checkClientRateLimit(`profile:update:${currentUserId}`, 10, 3600);
 
       const { error } = await supabase
         .from("profiles")
@@ -77,6 +80,10 @@ export function useUpdateProfile() {
         );
       }
 
+      if (isRateLimitError(error)) {
+        Alert.alert("Slow down", "You're updating your profile too quickly. Please wait a moment.");
+        return;
+      }
       const message =
         error instanceof Error
           ? error.message

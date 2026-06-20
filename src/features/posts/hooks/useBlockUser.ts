@@ -1,6 +1,7 @@
 import { Alert } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
+import { checkClientRateLimit, isRateLimitError } from "../../../utils/clientRateLimit";
 import type { BlockScope } from "../../../hooks/useBlocks";
 
 type BlockUserParams = {
@@ -14,6 +15,8 @@ export function useBlockUser(viewerId: string | null) {
   return useMutation({
     mutationFn: async ({ targetUserId, scope }: BlockUserParams) => {
       if (!viewerId) throw new Error("User ID missing");
+
+      await checkClientRateLimit(`block:${viewerId}`, 20, 3600);
 
       const { error } = await supabase.from("blocks").insert({
         blocker_id: viewerId,
@@ -44,6 +47,10 @@ export function useBlockUser(viewerId: string | null) {
       queryClient.invalidateQueries({ queryKey: ["global-unread-count", viewerId] });
     },
     onError: (error: unknown) => {
+      if (isRateLimitError(error)) {
+        Alert.alert("Slow down", "You're blocking users too quickly. Please wait a moment.");
+        return;
+      }
       const message =
         error instanceof Error
           ? error.message
