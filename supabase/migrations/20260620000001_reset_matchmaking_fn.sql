@@ -12,12 +12,10 @@ BEGIN
     RAISE EXCEPTION 'forbidden';
   END IF;
 
-  -- TRUNCATE avoids the "DELETE requires WHERE clause" safety check in the
-  -- Supabase SQL editor and is faster than row-by-row DELETE.
-  -- FK-safe order: windows first (references matches + profiles), then matches, then profiles.
-  TRUNCATE launch_event_message_windows;
-  TRUNCATE launch_event_matches;
-  TRUNCATE launch_event_profiles;
+  -- Single-statement TRUNCATE: Postgres resolves FK constraints atomically
+  -- when all related tables are listed together, avoiding the
+  -- "referenced in a foreign key constraint" error from sequential TRUNCATEs.
+  TRUNCATE launch_event_message_windows, launch_event_matches, launch_event_profiles;
   UPDATE launch_event_config SET phase = 'inactive' WHERE id = 1;
 
   RETURN jsonb_build_object('ok', true);
