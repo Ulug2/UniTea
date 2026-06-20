@@ -99,11 +99,12 @@ export default function MatchRevealModal({ visible, onClose }: Props) {
 
           {!matchLoading && !match && (
             <View style={styles.centerContent}>
+              <Text style={styles.expiredEmoji}>⏳</Text>
               <Text style={[styles.noMatchTitle, { color: theme.text }]}>
-                No match yet
+                Calculating your match…
               </Text>
               <Text style={[styles.noMatchSub, { color: theme.secondaryText }]}>
-                Check back after Day 14.
+                Results are being processed. Check back in a few minutes.
               </Text>
             </View>
           )}
