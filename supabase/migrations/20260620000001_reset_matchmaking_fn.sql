@@ -6,7 +6,7 @@ RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $$ 
 BEGIN
   IF NOT get_my_is_admin() THEN
     RAISE EXCEPTION 'forbidden';
