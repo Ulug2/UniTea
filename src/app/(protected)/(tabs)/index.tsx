@@ -45,6 +45,8 @@ const ENABLE_FEED_DIAGNOSTICS = false;
 const SEARCH_BAR_HEIGHT = verticalScale(64);
 const SEARCH_HIDE_SCROLL_Y = verticalScale(30);
 const PULL_REVEAL_THRESHOLD = -verticalScale(80);
+const BANNER_MAX_HEIGHT = verticalScale(100);
+const BANNER_HIDE_THRESHOLD = verticalScale(30);
 
 const FEED_FILTER_ORDER = ["hot", "new", "top"] as const;
 type FeedFilterType = (typeof FEED_FILTER_ORDER)[number];
@@ -69,6 +71,7 @@ function FeedPageContent({
   communityId,
   onSearchQueryChange,
   onSearchSubmit,
+  onScrollOffset,
 }: {
   filter: FeedFilterType;
   searchQuery: string;
@@ -76,6 +79,7 @@ function FeedPageContent({
   communityId: string | null;
   onSearchQueryChange: (nextValue: string) => void;
   onSearchSubmit: () => void;
+  onScrollOffset?: (y: number) => void;
 }) {
   const { theme } = useTheme();
   const fontScale = PixelRatio.getFontScale();
@@ -252,6 +256,7 @@ function FeedPageContent({
   const handleListScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetY = event.nativeEvent.contentOffset.y;
+      onScrollOffset?.(offsetY);
       if (!searchVisible && offsetY < PULL_REVEAL_THRESHOLD) {
         setSearchVisible(true);
         return;
@@ -261,7 +266,7 @@ function FeedPageContent({
         setSearchVisible(false);
       }
     },
-    [searchVisible],
+    [searchVisible, onScrollOffset],
   );
 
   if (isPending && !postsData) {
@@ -412,6 +417,7 @@ type CommunityFeedPagerProps = {
   setActiveSearchByFilter: React.Dispatch<
     React.SetStateAction<Record<FeedFilterType, string>>
   >;
+  onScrollOffset?: (y: number) => void;
 };
 
 function CommunityFeedPager({
@@ -422,6 +428,7 @@ function CommunityFeedPager({
   setSearchQueryByFilter,
   activeSearchByFilter,
   setActiveSearchByFilter,
+  onScrollOffset,
 }: CommunityFeedPagerProps) {
   const { theme } = useTheme();
   const pagerRef = useRef<ScrollView>(null);
@@ -482,6 +489,7 @@ function CommunityFeedPager({
               searchQuery={searchQueryByFilter[filter]}
               activeSearchQuery={activeSearchByFilter[filter]}
               communityId={communityId}
+              onScrollOffset={onScrollOffset}
               onSearchQueryChange={(nextValue) => {
                 setSearchQueryByFilter((previous) => ({
                   ...previous,
@@ -521,6 +529,23 @@ export default function FeedScreen() {
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const queryClient = useQueryClient();
+
+  const bannerAnim = useRef(new Animated.Value(1)).current;
+  const bannerHiddenRef = useRef(false);
+
+  const handleBannerScroll = useCallback(
+    (offsetY: number) => {
+      const shouldHide = offsetY > BANNER_HIDE_THRESHOLD;
+      if (shouldHide === bannerHiddenRef.current) return;
+      bannerHiddenRef.current = shouldHide;
+      Animated.timing(bannerAnim, {
+        toValue: shouldHide ? 0 : 1,
+        duration: 200,
+        useNativeDriver: false,
+      }).start();
+    },
+    [bannerAnim],
+  );
 
   // null === Campus Feed (community_id IS NULL); otherwise the active community.
   const [activeCommunityId, setActiveCommunityId] = useState<string | null>(
@@ -621,7 +646,18 @@ export default function FeedScreen() {
           onSelect={setActiveCommunityId}
           onDiscover={() => router.push("/communities")}
         />
-        <MatchmakingBanner />
+        <Animated.View
+          style={{
+            maxHeight: bannerAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, BANNER_MAX_HEIGHT],
+            }),
+            opacity: bannerAnim,
+            overflow: "hidden",
+          }}
+        >
+          <MatchmakingBanner />
+        </Animated.View>
         <View style={styles.feedStack}>
           {mountedFeedKeyList.map((feedKey) => {
             const isActive = feedKey === activeFeedKey;
@@ -642,6 +678,7 @@ export default function FeedScreen() {
                   setSearchQueryByFilter={setSearchQueryByFilter}
                   activeSearchByFilter={activeSearchByFilter}
                   setActiveSearchByFilter={setActiveSearchByFilter}
+                  onScrollOffset={isActive ? handleBannerScroll : undefined}
                 />
               </View>
             );
