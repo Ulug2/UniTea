@@ -290,7 +290,8 @@ export default function DashboardPage() {
     setResetLoading(true);
     setMessage(null);
     try {
-      await callEdgeFunction("reset-matchmaking");
+      const { error } = await (supabase as any).rpc("reset_matchmaking_event");
+      if (error) throw new Error(error.message);
       setEventPhase("inactive");
       setMatchmakingResult(null);
       setMessage({ type: "ok", text: "Matchmaking data cleared. Phase reset to Inactive." });
