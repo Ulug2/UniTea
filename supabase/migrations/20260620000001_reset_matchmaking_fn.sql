@@ -12,9 +12,12 @@ BEGIN
     RAISE EXCEPTION 'forbidden';
   END IF;
 
-  DELETE FROM launch_event_message_windows;
-  DELETE FROM launch_event_matches;
-  DELETE FROM launch_event_profiles;
+  -- TRUNCATE avoids the "DELETE requires WHERE clause" safety check in the
+  -- Supabase SQL editor and is faster than row-by-row DELETE.
+  -- FK-safe order: windows first (references matches + profiles), then matches, then profiles.
+  TRUNCATE launch_event_message_windows;
+  TRUNCATE launch_event_matches;
+  TRUNCATE launch_event_profiles;
   UPDATE launch_event_config SET phase = 'inactive' WHERE id = 1;
 
   RETURN jsonb_build_object('ok', true);

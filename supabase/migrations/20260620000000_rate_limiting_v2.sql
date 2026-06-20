@@ -8,7 +8,9 @@
 -- Wrapper with the exact signature expected by useChatSendMessage.ts so that
 -- the server-side message rate check actually works (the RPC was coded but the
 -- function was never deployed).
-CREATE OR REPLACE FUNCTION check_message_rate_limit(
+-- DROP first: CREATE OR REPLACE cannot change existing parameter defaults.
+DROP FUNCTION IF EXISTS check_message_rate_limit(uuid, uuid, integer, integer);
+CREATE FUNCTION check_message_rate_limit(
   p_user_id            UUID,
   p_chat_id            UUID,
   p_max_messages       INT,
