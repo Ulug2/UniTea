@@ -128,8 +128,28 @@ CREATE TABLE public.launch_event_message_windows (
   user_id           uuid        PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
   match_id          uuid        NOT NULL REFERENCES public.launch_event_matches(id) ON DELETE CASCADE,
   viewed_at         timestamptz NOT NULL DEFAULT now(),
-  window_expires_at timestamptz NOT NULL GENERATED ALWAYS AS (viewed_at + interval '24 hours') STORED
+  window_expires_at timestamptz NOT NULL
 );
+
+-- Compute window_expires_at server-side on INSERT so it cannot be tampered with.
+-- Equivalent to GENERATED ALWAYS AS (viewed_at + interval '24 hours') but works
+-- because timestamptz + interval is not considered immutable by Postgres.
+CREATE OR REPLACE FUNCTION public.set_message_window_expiry()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.viewed_at IS NULL THEN
+    NEW.viewed_at := now();
+  END IF;
+  NEW.window_expires_at := NEW.viewed_at + interval '24 hours';
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_set_message_window_expiry
+  BEFORE INSERT ON public.launch_event_message_windows
+  FOR EACH ROW EXECUTE FUNCTION public.set_message_window_expiry();
 
 ALTER TABLE public.launch_event_message_windows ENABLE ROW LEVEL SECURITY;
 
