@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../context/ThemeContext';
@@ -36,10 +36,23 @@ export default function MatchmakingBanner() {
     });
   }, [dismissKey]);
 
-  const handleDismiss = useCallback(async () => {
+  const handleDismiss = useCallback(() => {
     if (!dismissKey) return;
-    await AsyncStorage.setItem(dismissKey, 'true');
-    setDismissed(true);
+    Alert.alert(
+      'Remove match banner?',
+      "You won't see your match notification anymore. If you haven't messaged them yet, you'll lose the chance once the window closes.",
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Dismiss',
+          style: 'destructive',
+          onPress: async () => {
+            await AsyncStorage.setItem(dismissKey, 'true');
+            setDismissed(true);
+          },
+        },
+      ],
+    );
   }, [dismissKey]);
 
   // ── Visibility logic (matches the spec state machine exactly) ──
