@@ -4,6 +4,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { logger } from "../../../utils/logger";
 import { communitiesTable } from "../data/client";
 import { communityKeys } from "../data/queryKeys";
+import { isRateLimitError } from "../../../utils/clientRateLimit";
 import type { Community, CommunityInsert } from "../types";
 import {
   normalizeCommunityDescription,
@@ -60,6 +61,10 @@ export function useCreateCommunity() {
     },
     onError: (error) => {
       logger.error("Failed to create community", error as Error);
+      if (isRateLimitError(error)) {
+        Alert.alert("Slow down", "You're creating communities too quickly. Please wait before trying again.");
+        return;
+      }
       const message =
         error instanceof Error && error.message.includes("duplicate key")
           ? "A community with this name already exists at your university."

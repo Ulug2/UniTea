@@ -11,6 +11,7 @@ import {
   PixelRatio,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
+import { isRateLimitError } from "../../../utils/clientRateLimit";
 import LostFoundListItem, {
   type LostFoundPostForMenu,
 } from "../../../components/LostFoundListItem";
@@ -223,6 +224,10 @@ export default function LostFoundScreen() {
       setShowMenu(false);
     },
     onError: (error: unknown) => {
+      if (isRateLimitError(error)) {
+        Alert.alert("Slow down", "You're submitting reports too quickly. Please wait a moment.");
+        return;
+      }
       Alert.alert(
         "Error",
         (error as Error)?.message ?? "Failed to submit report",

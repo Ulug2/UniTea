@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Alert } from "react-native";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
+import { isRateLimitError } from "../../../utils/clientRateLimit";
 import { logger } from "../../../utils/logger";
 
 type InitiateParams = {
@@ -77,6 +79,9 @@ export function useInitiateAnonymousChat() {
         userId: currentUserId,
         component: "useInitiateAnonymousChat",
       });
+      if (isRateLimitError(error)) {
+        Alert.alert("Slow down", "You're starting too many chats. Please wait a moment before trying again.");
+      }
     },
   });
 }

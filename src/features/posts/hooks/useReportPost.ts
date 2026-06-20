@@ -1,6 +1,7 @@
 import { Alert } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
+import { isRateLimitError } from "../../../utils/clientRateLimit";
 
 type UseReportPostOptions = {
   postId: string | null | undefined;
@@ -24,6 +25,10 @@ export function useReportPost({ postId, viewerId }: UseReportPostOptions) {
       if (error) throw error;
     },
     onError: (error: unknown) => {
+      if (isRateLimitError(error)) {
+        Alert.alert("Slow down", "You're submitting reports too quickly. Please wait a moment.");
+        return;
+      }
       const message =
         error instanceof Error
           ? error.message

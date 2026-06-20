@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Alert } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
+import { isRateLimitError } from '../../../utils/clientRateLimit';
 
 type InitiateMatchChatResult = { chatId: string };
 
@@ -71,6 +73,11 @@ export function useInitiateMatchChat() {
         queryKey: ['chat-summaries', currentUserId],
         refetchType: 'none',
       });
+    },
+    onError: (error) => {
+      if (isRateLimitError(error)) {
+        Alert.alert("Slow down", "You're starting too many chats. Please wait a moment before trying again.");
+      }
     },
   });
 }
