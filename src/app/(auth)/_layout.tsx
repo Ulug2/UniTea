@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { router } from "expo-router";
 import { useEffect } from "react";
+import { consumePendingDeepLink } from "../../utils/pendingDeepLink";
 
 export default function AuthLayout() {
   const { theme } = useTheme();
@@ -11,7 +12,12 @@ export default function AuthLayout() {
 
   useEffect(() => {
     if (!loading && session) {
-      router.replace("/(protected)/(tabs)");
+      const pending = consumePendingDeepLink();
+      if (pending) {
+        router.replace(pending as Parameters<typeof router.replace>[0]);
+      } else {
+        router.replace("/(protected)/(tabs)");
+      }
     }
   }, [session, loading]);
 

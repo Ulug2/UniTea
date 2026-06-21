@@ -1,5 +1,5 @@
 import { AntDesign, Entypo, MaterialIcons } from "@expo/vector-icons";
-import { Stack, router } from "expo-router";
+import { Stack, router, usePathname } from "expo-router";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { Platform, View } from "react-native";
@@ -14,10 +14,12 @@ import {
   usePushNotifications,
 } from "../../hooks/usePushNotifications";
 import { useGlobalUnreadCount } from "../../hooks/useGlobalUnreadCount";
+import { setPendingDeepLink } from "../../utils/pendingDeepLink";
 
 export default function AppLayout() {
   const { theme } = useTheme();
   const { session, loading } = useAuth();
+  const pathname = usePathname();
   const globalUnreadCount = useGlobalUnreadCount();
   const { data: profile, isLoading: profileLoading } = useMyProfile(
     session?.user?.id,
@@ -43,8 +45,14 @@ export default function AppLayout() {
 
   useEffect(() => {
     if (!loading && !session) {
+      // Preserve deep link destination so the auth flow can navigate there
+      // after login instead of dropping the user at the feed.
+      if (pathname.startsWith("/post/") || pathname.startsWith("/lostfoundpost/")) {
+        setPendingDeepLink(pathname);
+      }
       router.replace("/(auth)");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, loading]);
 
   // Handle notification-tap cold starts (app killed -> opened via push tap).
