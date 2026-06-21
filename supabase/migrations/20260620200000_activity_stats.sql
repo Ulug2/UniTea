@@ -34,16 +34,22 @@ CREATE POLICY "Admins can read all events"
 -- ── 2. daily_stats_snapshots ─────────────────────────────────────────────────
 
 CREATE TABLE public.daily_stats_snapshots (
-  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  snapshot_date date        NOT NULL,
-  university_id uuid        REFERENCES public.universities(id) ON DELETE CASCADE,
+  id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  snapshot_date       date        NOT NULL,
+  university_id       uuid        REFERENCES public.universities(id) ON DELETE CASCADE,
   -- NULL university_id = platform-wide aggregate
 
-  dau_basic     int         NOT NULL DEFAULT 0,
-  dau_engaged   int         NOT NULL DEFAULT 0,
-  dau_action    int         NOT NULL DEFAULT 0,
-  posts_created int         NOT NULL DEFAULT 0,
-  computed_at   timestamptz NOT NULL DEFAULT now()
+  -- DAU tiers (unique users with ≥1 matching event on this date)
+  dau_basic           int         NOT NULL DEFAULT 0,
+  dau_engaged         int         NOT NULL DEFAULT 0,
+  dau_action          int         NOT NULL DEFAULT 0,
+
+  -- Content created on this date (raw counts, not unique users)
+  posts_created       int         NOT NULL DEFAULT 0,
+  comments_created    int         NOT NULL DEFAULT 0,
+  communities_created int         NOT NULL DEFAULT 0,
+
+  computed_at         timestamptz NOT NULL DEFAULT now()
   -- No table-level UNIQUE: PG 14 treats NULLs as distinct in unique constraints,
   -- breaking ON CONFLICT for the platform-wide row. Two partial indexes below
   -- enforce uniqueness correctly for each case.
@@ -81,23 +87,24 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_university_id uuid;
-  v_dau_basic     int;
-  v_dau_engaged   int;
-  v_dau_action    int;
-  v_posts         int;
-  v_count         int := 0;
+  v_university_id     uuid;
+  v_dau_basic         int;
+  v_dau_engaged       int;
+  v_dau_action        int;
+  v_posts             int;
+  v_comments          int;
+  v_communities       int;
+  v_count             int := 0;
 BEGIN
-  -- Platform-wide (NULL university_id)
+  -- ── Platform-wide (NULL university_id) ──────────────────────────────────
+
   SELECT COUNT(DISTINCT user_id) INTO v_dau_basic
   FROM user_activity_events
-  WHERE event_type = 'session_start'
-    AND occurred_at::date = target_date;
+  WHERE event_type = 'session_start' AND occurred_at::date = target_date;
 
   SELECT COUNT(DISTINCT user_id) INTO v_dau_engaged
   FROM user_activity_events
-  WHERE event_type = 'engaged_session'
-    AND occurred_at::date = target_date;
+  WHERE event_type = 'engaged_session' AND occurred_at::date = target_date;
 
   SELECT COUNT(DISTINCT user_id) INTO v_dau_action
   FROM user_activity_events
@@ -109,22 +116,38 @@ BEGIN
   WHERE created_at::date = target_date
     AND (is_deleted IS NULL OR is_deleted = false);
 
-  -- ON CONFLICT targeting the partial index for the global (NULL) row
+  -- comments has no university_id; join not needed for platform-wide count
+  SELECT COUNT(*) INTO v_comments
+  FROM comments
+  WHERE created_at::date = target_date
+    AND (is_deleted IS NULL OR is_deleted = false);
+
+  SELECT COUNT(*) INTO v_communities
+  FROM communities
+  WHERE created_at::date = target_date;
+
   INSERT INTO daily_stats_snapshots
-    (snapshot_date, university_id, dau_basic, dau_engaged, dau_action, posts_created)
+    (snapshot_date, university_id,
+     dau_basic, dau_engaged, dau_action,
+     posts_created, comments_created, communities_created)
   VALUES
-    (target_date, NULL, v_dau_basic, v_dau_engaged, v_dau_action, v_posts)
+    (target_date, NULL,
+     v_dau_basic, v_dau_engaged, v_dau_action,
+     v_posts, v_comments, v_communities)
   ON CONFLICT (snapshot_date) WHERE university_id IS NULL
   DO UPDATE SET
-    dau_basic     = EXCLUDED.dau_basic,
-    dau_engaged   = EXCLUDED.dau_engaged,
-    dau_action    = EXCLUDED.dau_action,
-    posts_created = EXCLUDED.posts_created,
-    computed_at   = now();
+    dau_basic           = EXCLUDED.dau_basic,
+    dau_engaged         = EXCLUDED.dau_engaged,
+    dau_action          = EXCLUDED.dau_action,
+    posts_created       = EXCLUDED.posts_created,
+    comments_created    = EXCLUDED.comments_created,
+    communities_created = EXCLUDED.communities_created,
+    computed_at         = now();
 
   v_count := 1;
 
-  -- Per-university
+  -- ── Per-university ───────────────────────────────────────────────────────
+
   FOR v_university_id IN SELECT id FROM universities
   LOOP
     SELECT COUNT(DISTINCT user_id) INTO v_dau_basic
@@ -151,18 +174,36 @@ BEGIN
       AND (is_deleted IS NULL OR is_deleted = false)
       AND university_id = v_university_id;
 
-    -- ON CONFLICT targeting the partial index for non-NULL university rows
+    -- Join comments → posts to scope by university
+    SELECT COUNT(*) INTO v_comments
+    FROM comments c
+    JOIN posts p ON c.post_id = p.id
+    WHERE c.created_at::date = target_date
+      AND (c.is_deleted IS NULL OR c.is_deleted = false)
+      AND p.university_id = v_university_id;
+
+    SELECT COUNT(*) INTO v_communities
+    FROM communities
+    WHERE created_at::date = target_date
+      AND university_id = v_university_id;
+
     INSERT INTO daily_stats_snapshots
-      (snapshot_date, university_id, dau_basic, dau_engaged, dau_action, posts_created)
+      (snapshot_date, university_id,
+       dau_basic, dau_engaged, dau_action,
+       posts_created, comments_created, communities_created)
     VALUES
-      (target_date, v_university_id, v_dau_basic, v_dau_engaged, v_dau_action, v_posts)
+      (target_date, v_university_id,
+       v_dau_basic, v_dau_engaged, v_dau_action,
+       v_posts, v_comments, v_communities)
     ON CONFLICT (snapshot_date, university_id) WHERE university_id IS NOT NULL
     DO UPDATE SET
-      dau_basic     = EXCLUDED.dau_basic,
-      dau_engaged   = EXCLUDED.dau_engaged,
-      dau_action    = EXCLUDED.dau_action,
-      posts_created = EXCLUDED.posts_created,
-      computed_at   = now();
+      dau_basic           = EXCLUDED.dau_basic,
+      dau_engaged         = EXCLUDED.dau_engaged,
+      dau_action          = EXCLUDED.dau_action,
+      posts_created       = EXCLUDED.posts_created,
+      comments_created    = EXCLUDED.comments_created,
+      communities_created = EXCLUDED.communities_created,
+      computed_at         = now();
 
     v_count := v_count + 1;
   END LOOP;
@@ -215,3 +256,18 @@ AS $$
   WHERE occurred_at >= p_since
     AND event_type = 'session_start';
 $$;
+
+-- ── 5. Schedule via pg_cron ──────────────────────────────────────────────────
+-- Run this block AFTER enabling pg_cron in:
+--   Supabase Dashboard → Database → Extensions → search "pg_cron" → Enable
+--
+-- Then paste the SELECT below into the SQL Editor and run it once:
+--
+--   SELECT cron.schedule(
+--     'compute-daily-stats',
+--     '5 0 * * *',
+--     $$SELECT public.compute_daily_stats((CURRENT_DATE - INTERVAL '1 day')::date)$$
+--   );
+--
+-- To verify the job was registered:  SELECT * FROM cron.job;
+-- To remove it later:                SELECT cron.unschedule('compute-daily-stats');
