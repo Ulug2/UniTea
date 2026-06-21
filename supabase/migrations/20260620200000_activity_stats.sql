@@ -265,9 +265,12 @@ $$;
 --
 --   SELECT cron.schedule(
 --     'compute-daily-stats',
---     '5 0 * * *',
+--     '5 5 * * *',
 --     $$SELECT public.compute_daily_stats((CURRENT_DATE - INTERVAL '1 day')::date)$$
 --   );
+--
+-- '5 5 * * *' = 05:05 UTC = 00:05 EST (winter) / 01:05 EDT (summer, UTC-4).
+-- pg_cron runs in UTC and has no DST awareness — this stays closest to midnight ET.
 --
 -- To verify the job was registered:  SELECT * FROM cron.job;
 -- To remove it later:                SELECT cron.unschedule('compute-daily-stats');
