@@ -2,7 +2,7 @@
 -- Two-layer architecture: mobile inserts raw events; a daily cron aggregates them
 -- into daily_stats_snapshots so the dashboard never runs live COUNT DISTINCT queries.
 
--- ── 1. user_activity_events ──────────────────────────────────────────────────
+-- ── 1. user_activity_events ─────────────────────────────────────────────────
 
 CREATE TABLE public.user_activity_events (
   id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -43,12 +43,21 @@ CREATE TABLE public.daily_stats_snapshots (
   dau_engaged   int         NOT NULL DEFAULT 0,
   dau_action    int         NOT NULL DEFAULT 0,
   posts_created int         NOT NULL DEFAULT 0,
-  computed_at   timestamptz NOT NULL DEFAULT now(),
-
-  -- NULLS NOT DISTINCT (PG 15+) makes NULL == NULL in the unique constraint,
-  -- enabling proper ON CONFLICT upserts for the platform-wide row.
-  UNIQUE (snapshot_date, university_id) NULLS NOT DISTINCT
+  computed_at   timestamptz NOT NULL DEFAULT now()
+  -- No table-level UNIQUE: PG 14 treats NULLs as distinct in unique constraints,
+  -- breaking ON CONFLICT for the platform-wide row. Two partial indexes below
+  -- enforce uniqueness correctly for each case.
 );
+
+-- Platform-wide rows (university_id IS NULL): one per date
+CREATE UNIQUE INDEX idx_snapshots_date_global
+  ON public.daily_stats_snapshots (snapshot_date)
+  WHERE university_id IS NULL;
+
+-- Per-university rows: one per (date, university)
+CREATE UNIQUE INDEX idx_snapshots_date_university
+  ON public.daily_stats_snapshots (snapshot_date, university_id)
+  WHERE university_id IS NOT NULL;
 
 CREATE INDEX idx_snapshots_date ON public.daily_stats_snapshots (snapshot_date DESC);
 
@@ -100,11 +109,13 @@ BEGIN
   WHERE created_at::date = target_date
     AND (is_deleted IS NULL OR is_deleted = false);
 
+  -- ON CONFLICT targeting the partial index for the global (NULL) row
   INSERT INTO daily_stats_snapshots
     (snapshot_date, university_id, dau_basic, dau_engaged, dau_action, posts_created)
   VALUES
     (target_date, NULL, v_dau_basic, v_dau_engaged, v_dau_action, v_posts)
-  ON CONFLICT (snapshot_date, university_id) DO UPDATE SET
+  ON CONFLICT (snapshot_date) WHERE university_id IS NULL
+  DO UPDATE SET
     dau_basic     = EXCLUDED.dau_basic,
     dau_engaged   = EXCLUDED.dau_engaged,
     dau_action    = EXCLUDED.dau_action,
@@ -140,11 +151,13 @@ BEGIN
       AND (is_deleted IS NULL OR is_deleted = false)
       AND university_id = v_university_id;
 
+    -- ON CONFLICT targeting the partial index for non-NULL university rows
     INSERT INTO daily_stats_snapshots
       (snapshot_date, university_id, dau_basic, dau_engaged, dau_action, posts_created)
     VALUES
       (target_date, v_university_id, v_dau_basic, v_dau_engaged, v_dau_action, v_posts)
-    ON CONFLICT (snapshot_date, university_id) DO UPDATE SET
+    ON CONFLICT (snapshot_date, university_id) WHERE university_id IS NOT NULL
+    DO UPDATE SET
       dau_basic     = EXCLUDED.dau_basic,
       dau_engaged   = EXCLUDED.dau_engaged,
       dau_action    = EXCLUDED.dau_action,
