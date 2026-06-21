@@ -2,6 +2,7 @@ import { Alert } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { logger } from "../../../utils/logger";
+import { logActivity } from "../../../utils/activityLogger";
 import type { CommentNode } from "../utils/tree";
 
 type CreateCommentInput = {
@@ -110,6 +111,10 @@ export function useCreateComment({ postId, viewerId }: UseCreateCommentOptions) 
         .select("*")
         .eq("id", viewerId)
         .single();
+
+      if (profile?.university_id) {
+        logActivity("comment_created", profile.university_id);
+      }
 
       // Preserve post_specific_anon_id from server so anonymous comments show "User #" immediately.
       // Requires: DB column post_specific_anon_id and create-comment edge function that sets it.

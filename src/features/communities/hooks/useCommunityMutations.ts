@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "react-native";
 import { useAuth } from "../../../context/AuthContext";
 import { logger } from "../../../utils/logger";
+import { logActivity } from "../../../utils/activityLogger";
 import { communitiesTable } from "../data/client";
 import { communityKeys } from "../data/queryKeys";
 import { isRateLimitError } from "../../../utils/clientRateLimit";
@@ -55,9 +56,12 @@ export function useCreateCommunity() {
       if (error) throw error;
       return data as Community;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: communityKeys.mine(userId) });
       queryClient.invalidateQueries({ queryKey: communityKeys.all });
+      if (data?.university_id) {
+        logActivity("community_created", data.university_id);
+      }
     },
     onError: (error) => {
       logger.error("Failed to create community", error as Error);

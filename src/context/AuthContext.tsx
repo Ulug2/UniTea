@@ -10,6 +10,7 @@ import {
 import { Session } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
+import { logActivity } from "../utils/activityLogger";
 import { logger } from "../utils/logger";
 
 const PROFILE_CACHE_KEY = "@unitee:profile_cache";
@@ -171,6 +172,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               newSession.user.email,
               undefined,
             );
+            // Fire-and-forget: fetch university_id then log session_start.
+            // Runs entirely async — never blocks the auth flow.
+            void (async () => {
+              try {
+                const { data } = await supabase
+                  .from("profiles")
+                  .select("university_id")
+                  .eq("id", newSession.user.id)
+                  .single();
+                if (data?.university_id) {
+                  logActivity("session_start", data.university_id);
+                }
+              } catch {
+                // non-fatal
+              }
+            })();
           }
           break;
 

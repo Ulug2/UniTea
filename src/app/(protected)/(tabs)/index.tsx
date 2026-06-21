@@ -38,6 +38,7 @@ import { useFeedPosts } from "../../../hooks/useFeedPosts";
 import CommunityFilterBar from "../../../features/communities/components/CommunityFilterBar";
 import { useMyCommunities } from "../../../features/communities/hooks/useMyCommunities";
 import MatchmakingBanner from "../../../features/matchmaking/components/MatchmakingBanner";
+import { logActivity } from "../../../utils/activityLogger";
 
 type PostSummary = PostsSummaryViewRow;
 
@@ -529,6 +530,16 @@ export default function FeedScreen() {
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const queryClient = useQueryClient();
+
+  const { data: feedScreenUser } = useMyProfile(currentUserId);
+  const feedScreenUniversityId = feedScreenUser?.university_id;
+
+  // Log engaged_session after 10s of continuous feed view
+  useEffect(() => {
+    if (!feedScreenUniversityId) return;
+    const t = setTimeout(() => logActivity("engaged_session", feedScreenUniversityId), 10_000);
+    return () => clearTimeout(t);
+  }, [feedScreenUniversityId]);
 
   const bannerAnim = useRef(new Animated.Value(1)).current;
   const bannerHiddenRef = useRef(false);

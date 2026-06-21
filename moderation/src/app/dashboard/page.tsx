@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
+import { ActivityStats } from "@/components/ActivityStats";
 
 type Profile = {
   id: string;
@@ -505,6 +507,9 @@ export default function DashboardPage() {
         </p>
       )}
 
+      {/* ── Activity Statistics ── */}
+      <ActivityStats />
+
       {/* ── Matchmaking ── */}
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ marginBottom: 16, fontSize: 18 }}>Launch Week Matchmaking</h2>
@@ -655,171 +660,163 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ marginBottom: 16, fontSize: 18 }}>Users</h2>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 12,
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ display: "flex", gap: 4 }}>
-            {(["all", "banned", "unbanned"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setBanFilter(value)}
-                style={{
-                  padding: "8px 14px",
-                  border: "1px solid #ccc",
-                  borderRadius: 6,
-                  background: banFilter === value ? "#333" : "#fff",
-                  color: banFilter === value ? "#fff" : "#111",
-                  fontSize: 14,
-                }}
-              >
-                {value === "all"
-                  ? "All"
-                  : value === "banned"
-                    ? "Banned"
-                    : "Unbanned"}
-              </button>
-            ))}
-          </div>
-          <input
-            type="search"
-            placeholder="Search by username or id"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+      <CollapsibleSection
+        title="Users"
+        items={filteredProfiles}
+        defaultCount={5}
+        controls={
+          <div
             style={{
-              flex: 1,
-              minWidth: 200,
-              maxWidth: 320,
-              padding: "10px 12px",
-              border: "1px solid #ccc",
-              borderRadius: 6,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 12,
+              alignItems: "center",
             }}
-          />
-        </div>
-        <div
-          style={{
-            overflowX: "auto",
-            background: "#fff",
-            borderRadius: 8,
-            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-          }}
-        >
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid #eee", textAlign: "left" }}>
-                <th style={{ padding: 12 }}>Username</th>
-                <th style={{ padding: 12 }}>ID</th>
-                <th style={{ padding: 12 }}>Status</th>
-                <th style={{ padding: 12 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProfiles.map((p) => (
-                <tr key={p.id} style={{ borderBottom: "1px solid #eee" }}>
-                  <td style={{ padding: 12 }}>@{p.username ?? "—"}</td>
-                  <td style={{ padding: 12, fontSize: 12, color: "#666" }}>
-                    {p.id.slice(0, 8)}…
-                  </td>
-                  <td style={{ padding: 12 }}>
-                    {p.is_banned ? (
-                      <span style={{ color: "#c00" }}>
-                        Banned
-                        {p.is_permanently_banned
-                          ? " (permanent)"
-                          : p.banned_until
-                            ? ` until ${new Date(p.banned_until).toLocaleDateString()}`
-                            : ""}
-                      </span>
-                    ) : (
-                      <span style={{ color: "#2e7d32" }}>Active</span>
-                    )}
-                  </td>
-                  <td style={{ padding: 12 }}>
-                    {p.is_banned ? (
-                      <button
-                        type="button"
-                        disabled={actionLoading !== null}
-                        onClick={() => handleUnban(p.id)}
-                        style={{
-                          padding: "6px 12px",
-                          background: "#2e7d32",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: 6,
-                          fontSize: 14,
-                        }}
-                      >
-                        {actionLoading === p.id ? "…" : "Unban"}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={actionLoading !== null}
-                        onClick={() =>
-                          setBanModal({
-                            userId: p.id,
-                            username: p.username ?? "",
-                          })
-                        }
-                        style={{
-                          padding: "6px 12px",
-                          background: "#c62828",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: 6,
-                          fontSize: 14,
-                        }}
-                      >
-                        Ban
-                      </button>
-                    )}
-                  </td>
-                </tr>
+          >
+            <div style={{ display: "flex", gap: 4 }}>
+              {(["all", "banned", "unbanned"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setBanFilter(value)}
+                  style={{
+                    padding: "8px 14px",
+                    border: "1px solid #ccc",
+                    borderRadius: 6,
+                    background: banFilter === value ? "#333" : "#fff",
+                    color: banFilter === value ? "#fff" : "#111",
+                    fontSize: 14,
+                  }}
+                >
+                  {value === "all" ? "All" : value === "banned" ? "Banned" : "Unbanned"}
+                </button>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ marginBottom: 16, fontSize: 18 }}>Reports</h2>
-        <div
-          style={{
-            overflowX: "auto",
-            background: "#fff",
-            borderRadius: 8,
-            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-          }}
-        >
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid #eee", textAlign: "left" }}>
-                <th style={{ padding: 12 }}>Reason</th>
-                <th style={{ padding: 12 }}>Status</th>
-                <th style={{ padding: 12 }}>Post / Comment</th>
-                <th style={{ padding: 12 }}>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={4}
-                    style={{ padding: 24, color: "#666", textAlign: "center" }}
-                  >
-                    No reports
-                  </td>
+            </div>
+            <input
+              type="search"
+              placeholder="Search by username or id"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                flex: 1,
+                minWidth: 200,
+                maxWidth: 320,
+                padding: "10px 12px",
+                border: "1px solid #ccc",
+                borderRadius: 6,
+              }}
+            />
+          </div>
+        }
+        renderList={(visibleProfiles) => (
+          <div
+            style={{
+              overflowX: "auto",
+              background: "#fff",
+              borderRadius: 8,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            }}
+          >
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #eee", textAlign: "left" }}>
+                  <th style={{ padding: 12 }}>Username</th>
+                  <th style={{ padding: 12 }}>ID</th>
+                  <th style={{ padding: 12 }}>Status</th>
+                  <th style={{ padding: 12 }}>Actions</th>
                 </tr>
-              ) : (
-                reports.map((r) => {
+              </thead>
+              <tbody>
+                {visibleProfiles.map((p) => (
+                  <tr key={p.id} style={{ borderBottom: "1px solid #eee" }}>
+                    <td style={{ padding: 12 }}>@{p.username ?? "—"}</td>
+                    <td style={{ padding: 12, fontSize: 12, color: "#666" }}>
+                      {p.id.slice(0, 8)}…
+                    </td>
+                    <td style={{ padding: 12 }}>
+                      {p.is_banned ? (
+                        <span style={{ color: "#c00" }}>
+                          Banned
+                          {p.is_permanently_banned
+                            ? " (permanent)"
+                            : p.banned_until
+                              ? ` until ${new Date(p.banned_until).toLocaleDateString()}`
+                              : ""}
+                        </span>
+                      ) : (
+                        <span style={{ color: "#2e7d32" }}>Active</span>
+                      )}
+                    </td>
+                    <td style={{ padding: 12 }}>
+                      {p.is_banned ? (
+                        <button
+                          type="button"
+                          disabled={actionLoading !== null}
+                          onClick={() => handleUnban(p.id)}
+                          style={{
+                            padding: "6px 12px",
+                            background: "#2e7d32",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: 6,
+                            fontSize: 14,
+                          }}
+                        >
+                          {actionLoading === p.id ? "…" : "Unban"}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={actionLoading !== null}
+                          onClick={() =>
+                            setBanModal({ userId: p.id, username: p.username ?? "" })
+                          }
+                          style={{
+                            padding: "6px 12px",
+                            background: "#c62828",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: 6,
+                            fontSize: 14,
+                          }}
+                        >
+                          Ban
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      />
+
+      <CollapsibleSection
+        title="Reports"
+        items={reports}
+        defaultCount={5}
+        emptyMessage="No reports"
+        renderList={(visibleReports) => (
+          <div
+            style={{
+              overflowX: "auto",
+              background: "#fff",
+              borderRadius: 8,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            }}
+          >
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #eee", textAlign: "left" }}>
+                  <th style={{ padding: 12 }}>Reason</th>
+                  <th style={{ padding: 12 }}>Status</th>
+                  <th style={{ padding: 12 }}>Post / Comment</th>
+                  <th style={{ padding: 12 }}>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleReports.map((r) => {
                   const s = getStatusStyle(r.status);
                   const isOpen = statusMenuId === r.id;
                   return (
@@ -834,13 +831,8 @@ export default function DashboardPage() {
                               if (isOpen) {
                                 closeStatusMenu();
                               } else {
-                                const rect = (
-                                  e.currentTarget as HTMLElement
-                                ).getBoundingClientRect();
-                                setStatusMenuAnchor({
-                                  top: rect.bottom + 4,
-                                  left: rect.left,
-                                });
+                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                setStatusMenuAnchor({ top: rect.bottom + 4, left: rect.left });
                                 setStatusMenuId(r.id);
                               }
                             }}
@@ -867,11 +859,7 @@ export default function DashboardPage() {
                             createPortal(
                               <>
                                 <div
-                                  style={{
-                                    position: "fixed",
-                                    inset: 0,
-                                    zIndex: 999,
-                                  }}
+                                  style={{ position: "fixed", inset: 0, zIndex: 999 }}
                                   onClick={closeStatusMenu}
                                 />
                                 <div
@@ -892,12 +880,7 @@ export default function DashboardPage() {
                                     <button
                                       key={opt.value}
                                       type="button"
-                                      onClick={() =>
-                                        handleUpdateReportStatus(
-                                          r.id,
-                                          opt.value,
-                                        )
-                                      }
+                                      onClick={() => handleUpdateReportStatus(r.id, opt.value)}
                                       style={{
                                         display: "flex",
                                         alignItems: "center",
@@ -912,10 +895,7 @@ export default function DashboardPage() {
                                         borderBottom: "1px solid #f5f5f5",
                                         textAlign: "left",
                                         fontSize: 13,
-                                        fontWeight:
-                                          opt.value === (r.status ?? "pending")
-                                            ? 600
-                                            : 400,
+                                        fontWeight: opt.value === (r.status ?? "pending") ? 600 : 400,
                                         color:
                                           opt.value === (r.status ?? "pending")
                                             ? opt.color
@@ -949,278 +929,153 @@ export default function DashboardPage() {
                             : "—"}
                       </td>
                       <td style={{ padding: 12, fontSize: 12 }}>
-                        {r.created_at
-                          ? new Date(r.created_at).toLocaleString()
-                          : "—"}
+                        {r.created_at ? new Date(r.created_at).toLocaleString() : "—"}
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      />
 
       {/* ── Admin Action Logs ── */}
-      <section>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 16,
-            flexWrap: "wrap",
-            gap: 12,
-          }}
-        >
-          <h2 style={{ fontSize: 18, margin: 0 }}>Admin Action Logs</h2>
-          <span style={{ fontSize: 13, color: "#888" }}>
-            {filteredLogs.length}{" "}
-            {filteredLogs.length === 1 ? "entry" : "entries"}
-          </span>
-        </div>
-
-        {/* Filter tabs */}
-        <div
-          style={{
-            display: "flex",
-            gap: 6,
-            marginBottom: 14,
-            flexWrap: "wrap",
-          }}
-        >
-          {(["all", "ban", "unban", "delete_post"] as const).map((f) => {
-            const isActive = logFilter === f;
-            const colors =
-              f !== "all" ? ACTION_COLORS[f] : { bg: "#333", color: "#fff" };
-            return (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setLogFilter(f)}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: 20,
-                  border: "1px solid",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  borderColor: isActive
-                    ? f === "all"
-                      ? "#333"
-                      : colors.color
-                    : "#ddd",
-                  background: isActive
-                    ? f === "all"
-                      ? "#333"
-                      : colors.bg
-                    : "#fff",
-                  color: isActive
-                    ? f === "all"
-                      ? "#fff"
-                      : colors.color
-                    : "#555",
-                  transition: "all 0.15s",
-                }}
-              >
-                {f === "all" ? "All" : ACTION_LABELS[f]}
-              </button>
-            );
-          })}
-        </div>
-
-        <div
-          style={{
-            overflowX: "auto",
-            background: "#fff",
-            borderRadius: 8,
-            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-          }}
-        >
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr
-                style={{
-                  borderBottom: "2px solid #f0f0f0",
-                  textAlign: "left",
-                  background: "#fafafa",
-                }}
-              >
-                <th
+      <CollapsibleSection
+        title="Admin Action Logs"
+        items={filteredLogs}
+        defaultCount={5}
+        emptyMessage="No action logs yet."
+        controls={
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {(["all", "ban", "unban", "delete_post"] as const).map((f) => {
+              const isActive = logFilter === f;
+              const colors = f !== "all" ? ACTION_COLORS[f] : { bg: "#333", color: "#fff" };
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setLogFilter(f)}
                   style={{
-                    padding: "10px 14px",
+                    padding: "7px 14px",
+                    borderRadius: 20,
+                    border: "1px solid",
                     fontSize: 13,
-                    fontWeight: 600,
-                    color: "#555",
-                    whiteSpace: "nowrap",
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    borderColor: isActive ? (f === "all" ? "#333" : colors.color) : "#ddd",
+                    background: isActive ? (f === "all" ? "#333" : colors.bg) : "#fff",
+                    color: isActive ? (f === "all" ? "#fff" : colors.color) : "#555",
+                    transition: "all 0.15s",
                   }}
                 >
-                  When
-                </th>
-                <th
+                  {f === "all" ? "All" : ACTION_LABELS[f]}
+                </button>
+              );
+            })}
+          </div>
+        }
+        renderList={(visibleLogs) => (
+          <div
+            style={{
+              overflowX: "auto",
+              background: "#fff",
+              borderRadius: 8,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            }}
+          >
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr
                   style={{
-                    padding: "10px 14px",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#555",
+                    borderBottom: "2px solid #f0f0f0",
+                    textAlign: "left",
+                    background: "#fafafa",
                   }}
                 >
-                  Action
-                </th>
-                <th
-                  style={{
-                    padding: "10px 14px",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#555",
-                  }}
-                >
-                  Admin
-                </th>
-                <th
-                  style={{
-                    padding: "10px 14px",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#555",
-                  }}
-                >
-                  Target User
-                </th>
-                <th
-                  style={{
-                    padding: "10px 14px",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#555",
-                  }}
-                >
-                  Details
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLogs.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    style={{
-                      padding: "40px 24px",
-                      textAlign: "center",
-                      color: "#aaa",
-                      fontSize: 14,
-                    }}
-                  >
-                    No action logs yet.
-                  </td>
-                </tr>
-              ) : (
-                filteredLogs.map((log) => {
-                  const adminProfile = profiles.find(
-                    (p) => p.id === log.admin_id,
-                  );
-                  const targetProfile = log.target_user_id
-                    ? profiles.find((p) => p.id === log.target_user_id)
-                    : null;
-                  const { bg, color } = ACTION_COLORS[log.action];
-
-                  // Build a human-readable detail string
-                  let detail = "";
-                  if (log.action === "ban") {
-                    const dur = (log.metadata.duration as string) ?? "";
-                    const durLabel =
-                      dur === "10_days"
-                        ? "10 days"
-                        : dur === "1_month"
-                          ? "1 month"
-                          : dur === "1_year"
-                            ? "1 year"
-                            : dur === "permanent"
-                              ? "permanent"
-                              : dur;
-                    detail = `Duration: ${durLabel}`;
-                  } else if (
-                    log.action === "delete_post" &&
-                    log.target_post_id
-                  ) {
-                    detail = `Post ${log.target_post_id.slice(0, 8)}…`;
-                  }
-
-                  return (
-                    <tr
-                      key={log.id}
+                  {["When", "Action", "Admin", "Target User", "Details"].map((h) => (
+                    <th
+                      key={h}
                       style={{
-                        borderBottom: "1px solid #f2f2f2",
-                        transition: "background 0.1s",
+                        padding: "10px 14px",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "#555",
+                        whiteSpace: h === "When" ? "nowrap" : undefined,
                       }}
                     >
-                      <td
-                        style={{
-                          padding: "11px 14px",
-                          fontSize: 12,
-                          color: "#777",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {new Date(log.created_at).toLocaleString()}
-                      </td>
-                      <td style={{ padding: "11px 14px" }}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "3px 10px",
-                            borderRadius: 12,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            background: bg,
-                            color,
-                          }}
-                        >
-                          {ACTION_LABELS[log.action]}
-                        </span>
-                      </td>
-                      <td style={{ padding: "11px 14px", fontSize: 13 }}>
-                        {adminProfile ? (
-                          <span title={log.admin_id}>
-                            @{adminProfile.username}
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visibleLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ padding: "40px 24px", textAlign: "center", color: "#aaa", fontSize: 14 }}>
+                      No action logs yet.
+                    </td>
+                  </tr>
+                ) : (
+                  visibleLogs.map((log) => {
+                    const adminProfile = profiles.find((p) => p.id === log.admin_id);
+                    const targetProfile = log.target_user_id
+                      ? profiles.find((p) => p.id === log.target_user_id)
+                      : null;
+                    const { bg, color } = ACTION_COLORS[log.action];
+
+                    let detail = "";
+                    if (log.action === "ban") {
+                      const dur = (log.metadata.duration as string) ?? "";
+                      const durLabel =
+                        dur === "10_days" ? "10 days"
+                        : dur === "1_month" ? "1 month"
+                        : dur === "1_year" ? "1 year"
+                        : dur === "permanent" ? "permanent"
+                        : dur;
+                      detail = `Duration: ${durLabel}`;
+                    } else if (log.action === "delete_post" && log.target_post_id) {
+                      detail = `Post ${log.target_post_id.slice(0, 8)}…`;
+                    }
+
+                    return (
+                      <tr key={log.id} style={{ borderBottom: "1px solid #f2f2f2", transition: "background 0.1s" }}>
+                        <td style={{ padding: "11px 14px", fontSize: 12, color: "#777", whiteSpace: "nowrap" }}>
+                          {new Date(log.created_at).toLocaleString()}
+                        </td>
+                        <td style={{ padding: "11px 14px" }}>
+                          <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 600, background: bg, color }}>
+                            {ACTION_LABELS[log.action]}
                           </span>
-                        ) : (
-                          <span style={{ color: "#aaa", fontSize: 12 }}>
-                            {log.admin_id.slice(0, 8)}…
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ padding: "11px 14px", fontSize: 13 }}>
-                        {targetProfile ? (
-                          <span title={log.target_user_id ?? undefined}>
-                            @{targetProfile.username}
-                          </span>
-                        ) : log.target_user_id ? (
-                          <span style={{ color: "#aaa", fontSize: 12 }}>
-                            {log.target_user_id.slice(0, 8)}…
-                          </span>
-                        ) : (
-                          <span style={{ color: "#ccc" }}>—</span>
-                        )}
-                      </td>
-                      <td
-                        style={{
-                          padding: "11px 14px",
-                          fontSize: 12,
-                          color: "#666",
-                        }}
-                      >
-                        {detail || <span style={{ color: "#ccc" }}>—</span>}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                        </td>
+                        <td style={{ padding: "11px 14px", fontSize: 13 }}>
+                          {adminProfile ? (
+                            <span title={log.admin_id}>@{adminProfile.username}</span>
+                          ) : (
+                            <span style={{ color: "#aaa", fontSize: 12 }}>{log.admin_id.slice(0, 8)}…</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "11px 14px", fontSize: 13 }}>
+                          {targetProfile ? (
+                            <span title={log.target_user_id ?? undefined}>@{targetProfile.username}</span>
+                          ) : log.target_user_id ? (
+                            <span style={{ color: "#aaa", fontSize: 12 }}>{log.target_user_id.slice(0, 8)}…</span>
+                          ) : (
+                            <span style={{ color: "#ccc" }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "11px 14px", fontSize: 12, color: "#666" }}>
+                          {detail || <span style={{ color: "#ccc" }}>—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      />
 
       {banModal && (
         <div
