@@ -9,6 +9,8 @@ type DailySnapshot = {
   dau_engaged: number;
   dau_action: number;
   posts_created: number;
+  comments_created: number;
+  communities_created: number;
 };
 
 type PreciseMetrics = {
@@ -23,6 +25,8 @@ type PreciseMetrics = {
 type TodayMetrics = {
   dau_basic: number;
   posts_today: number;
+  comments_today: number;
+  communities_today: number;
 };
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -230,7 +234,7 @@ export function ActivityStats() {
     try {
       const { data } = await supabase
         .from("daily_stats_snapshots")
-        .select("snapshot_date, dau_basic, dau_engaged, dau_action, posts_created")
+        .select("snapshot_date, dau_basic, dau_engaged, dau_action, posts_created, comments_created, communities_created")
         .is("university_id", null)
         .order("snapshot_date", { ascending: false })
         .limit(30);
@@ -281,18 +285,29 @@ export function ActivityStats() {
       todayStart.setUTCHours(0, 0, 0, 0);
       const iso = todayStart.toISOString();
 
-      const [dauRes, postsRes] = await Promise.all([
+      const [dauRes, postsRes, commentsRes, communitiesRes] = await Promise.all([
         supabase.rpc("count_today_dau", { p_since: iso }),
         supabase
           .from("posts")
           .select("id", { count: "exact", head: true })
           .gte("created_at", iso)
           .neq("is_deleted", true),
+        supabase
+          .from("comments")
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", iso)
+          .neq("is_deleted", true),
+        supabase
+          .from("communities")
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", iso),
       ]);
 
       setToday({
         dau_basic: dauRes.data ?? 0,
         posts_today: postsRes.count ?? 0,
+        comments_today: commentsRes.count ?? 0,
+        communities_today: communitiesRes.count ?? 0,
       });
       todayFetchedAt.current = Date.now();
     } catch {
@@ -318,6 +333,12 @@ export function ActivityStats() {
   const approxMauBasic = snapshots.slice(0, 30).reduce((s, r) => s + r.dau_basic, 0);
   const approxMauEngaged = snapshots.slice(0, 30).reduce((s, r) => s + r.dau_engaged, 0);
   const approxMauAction = snapshots.slice(0, 30).reduce((s, r) => s + r.dau_action, 0);
+
+  // 7-day content totals from snapshots
+  const last7 = snapshots.slice(0, 7);
+  const posts7d = last7.reduce((s, r) => s + r.posts_created, 0);
+  const comments7d = last7.reduce((s, r) => s + r.comments_created, 0);
+  const communities7d = last7.reduce((s, r) => s + r.communities_created, 0);
 
   const wauBasic = precise?.wau_basic ?? (snapshotsLoading ? null : approxWauBasic);
   const wauEngaged = precise?.wau_engaged ?? (snapshotsLoading ? null : approxWauEngaged);
@@ -434,6 +455,38 @@ export function ActivityStats() {
           </div>
         )}
 
+        {/* Content created (last 7 days from snapshots) */}
+        <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>
+            Content Created — Last 7 Days
+          </p>
+          {snapshotsLoading ? (
+            <div style={{ display: "flex", gap: 24 }}>
+              {[0, 1, 2].map((i) => (
+                <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ width: 60, height: 12, background: "#e0e0e0", borderRadius: 4 }} />
+                  <div style={{ width: 40, height: 20, background: "#e0e0e0", borderRadius: 4 }} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
+              {[
+                { label: "Posts", value: posts7d, color: "#1565c0" },
+                { label: "Comments", value: comments7d, color: "#2e7d32" },
+                { label: "Communities", value: communities7d, color: "#e65100" },
+              ].map(({ label, value, color }) => (
+                <div key={label}>
+                  <p style={{ fontSize: 12, color: "#888", marginBottom: 2 }}>{label}</p>
+                  <p style={{ fontSize: 24, fontWeight: 700, color, margin: 0 }}>
+                    {value.toLocaleString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Tier legend */}
         <div
           style={{
@@ -493,8 +546,10 @@ export function ActivityStats() {
             <span style={{ color: "#aaa" }}>loading…</span>
           ) : today ? (
             <>
-              DAU {today.dau_basic.toLocaleString()} (basic) · Posts{" "}
-              {today.posts_today.toLocaleString()}
+              DAU {today.dau_basic.toLocaleString()} (basic)
+              {" · "}Posts {today.posts_today.toLocaleString()}
+              {" · "}Comments {today.comments_today.toLocaleString()}
+              {" · "}Communities {today.communities_today.toLocaleString()}
             </>
           ) : (
             <span style={{ color: "#aaa" }}>—</span>
