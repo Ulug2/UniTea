@@ -336,12 +336,16 @@ export function ActivityStats() {
   const approxMauAction = snapshots.slice(0, 30).reduce((s, r) => s + r.dau_action, 0);
 
   // Content totals for the selected period.
-  // For "1d" use live today data (snapshots only cover completed days from the nightly cron).
+  // Snapshots only cover completed days (nightly cron), so today's live counts are
+  // always added on top so the numbers stay current throughout the day.
+  const todayPosts       = today?.posts_today ?? 0;
+  const todayComments    = today?.comments_today ?? 0;
+  const todayCommunities = today?.communities_today ?? 0;
   const contentDays = contentPeriod === "7d" ? 7 : 30;
   const contentSlice = snapshots.slice(0, contentDays);
-  const contentPosts       = contentPeriod === "1d" ? (today?.posts_today ?? 0)       : contentSlice.reduce((s, r) => s + r.posts_created, 0);
-  const contentComments    = contentPeriod === "1d" ? (today?.comments_today ?? 0)    : contentSlice.reduce((s, r) => s + r.comments_created, 0);
-  const contentCommunities = contentPeriod === "1d" ? (today?.communities_today ?? 0) : contentSlice.reduce((s, r) => s + r.communities_created, 0);
+  const contentPosts       = contentPeriod === "1d" ? todayPosts       : contentSlice.reduce((s, r) => s + r.posts_created, 0)       + todayPosts;
+  const contentComments    = contentPeriod === "1d" ? todayComments    : contentSlice.reduce((s, r) => s + r.comments_created, 0)    + todayComments;
+  const contentCommunities = contentPeriod === "1d" ? todayCommunities : contentSlice.reduce((s, r) => s + r.communities_created, 0) + todayCommunities;
 
   const wauBasic = precise?.wau_basic ?? (snapshotsLoading ? null : approxWauBasic);
   const wauEngaged = precise?.wau_engaged ?? (snapshotsLoading ? null : approxWauEngaged);
@@ -495,7 +499,7 @@ export function ActivityStats() {
               ))}
             </div>
           </div>
-          {(contentPeriod === "1d" ? todayLoading : snapshotsLoading) ? (
+          {(contentPeriod === "1d" ? todayLoading : snapshotsLoading || todayLoading) ? (
             <div style={{ display: "flex", gap: 32 }}>
               {[0, 1, 2].map((i) => (
                 <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
