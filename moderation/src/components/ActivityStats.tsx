@@ -227,6 +227,7 @@ export function ActivityStats() {
   const todayFetchedAt = useRef<number>(0);
 
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [contentPeriod, setContentPeriod] = useState<"1d" | "7d" | "30d">("7d");
 
   const fetchSnapshots = useCallback(async () => {
     if (Date.now() - snapshotsFetchedAt.current < THIRTY_MIN_MS) return;
@@ -334,11 +335,12 @@ export function ActivityStats() {
   const approxMauEngaged = snapshots.slice(0, 30).reduce((s, r) => s + r.dau_engaged, 0);
   const approxMauAction = snapshots.slice(0, 30).reduce((s, r) => s + r.dau_action, 0);
 
-  // 7-day content totals from snapshots
-  const last7 = snapshots.slice(0, 7);
-  const posts7d = last7.reduce((s, r) => s + r.posts_created, 0);
-  const comments7d = last7.reduce((s, r) => s + r.comments_created, 0);
-  const communities7d = last7.reduce((s, r) => s + r.communities_created, 0);
+  // Content totals for the selected period
+  const contentDays = contentPeriod === "1d" ? 1 : contentPeriod === "7d" ? 7 : 30;
+  const contentSlice = snapshots.slice(0, contentDays);
+  const contentPosts       = contentSlice.reduce((s, r) => s + r.posts_created, 0);
+  const contentComments    = contentSlice.reduce((s, r) => s + r.comments_created, 0);
+  const contentCommunities = contentSlice.reduce((s, r) => s + r.communities_created, 0);
 
   const wauBasic = precise?.wau_basic ?? (snapshotsLoading ? null : approxWauBasic);
   const wauEngaged = precise?.wau_engaged ?? (snapshotsLoading ? null : approxWauEngaged);
@@ -356,8 +358,16 @@ export function ActivityStats() {
     fetchToday();
   };
 
-  const secondsAgo = lastRefreshed
-    ? Math.round((Date.now() - lastRefreshed.getTime()) / 1000)
+  const timeAgoLabel = lastRefreshed
+    ? (() => {
+        const secs = Math.round((Date.now() - lastRefreshed.getTime()) / 1000);
+        if (secs < 60) return `${secs}s ago`;
+        const mins = Math.floor(secs / 60);
+        if (mins < 60) return `${mins}m ago`;
+        const hrs = Math.floor(mins / 60);
+        const remMins = mins % 60;
+        return remMins > 0 ? `${hrs}h ${remMins}m ago` : `${hrs}h ago`;
+      })()
     : null;
 
   return (
@@ -372,9 +382,9 @@ export function ActivityStats() {
       >
         <h2 style={{ fontSize: 18 }}>Activity Statistics</h2>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {secondsAgo != null && (
+          {timeAgoLabel != null && (
             <span style={{ fontSize: 12, color: "#aaa" }}>
-              Last refreshed: {secondsAgo}s ago
+              Last refreshed: {timeAgoLabel}
             </span>
           )}
           <button
@@ -437,7 +447,7 @@ export function ActivityStats() {
         )}
         {!snapshotsLoading && snapshots.length === 0 && (
           <p style={{ fontSize: 13, color: "#aaa" }}>
-            No snapshot data yet. The daily aggregation job runs at 00:05 UTC.
+            No snapshot data yet. The daily aggregation job runs at 00:05 ET.
           </p>
         )}
         {snapshotsLoading && (
@@ -455,30 +465,54 @@ export function ActivityStats() {
           </div>
         )}
 
-        {/* Content created (last 7 days from snapshots) */}
+        {/* Content created — with period selector */}
         <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>
-            Content Created — Last 7 Days
-          </p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: 1, margin: 0 }}>
+              Content Created
+            </p>
+            <div style={{ display: "flex", gap: 4 }}>
+              {(["1d", "7d", "30d"] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setContentPeriod(p)}
+                  style={{
+                    padding: "4px 12px",
+                    borderRadius: 6,
+                    border: "1px solid",
+                    fontSize: 12,
+                    fontWeight: contentPeriod === p ? 700 : 400,
+                    cursor: "pointer",
+                    borderColor: contentPeriod === p ? "#1565c0" : "#ddd",
+                    background: contentPeriod === p ? "#e3f2fd" : "#fff",
+                    color: contentPeriod === p ? "#1565c0" : "#555",
+                  }}
+                >
+                  {p === "1d" ? "1 day" : p === "7d" ? "7 days" : "1 month"}
+                </button>
+              ))}
+            </div>
+          </div>
           {snapshotsLoading ? (
-            <div style={{ display: "flex", gap: 24 }}>
+            <div style={{ display: "flex", gap: 32 }}>
               {[0, 1, 2].map((i) => (
-                <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <div style={{ width: 60, height: 12, background: "#e0e0e0", borderRadius: 4 }} />
-                  <div style={{ width: 40, height: 20, background: "#e0e0e0", borderRadius: 4 }} />
+                <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ width: 70, height: 12, background: "#e0e0e0", borderRadius: 4 }} />
+                  <div style={{ width: 44, height: 24, background: "#e0e0e0", borderRadius: 4 }} />
                 </div>
               ))}
             </div>
           ) : (
-            <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 40, flexWrap: "wrap" }}>
               {[
-                { label: "Posts", value: posts7d, color: "#1565c0" },
-                { label: "Comments", value: comments7d, color: "#2e7d32" },
-                { label: "Communities", value: communities7d, color: "#e65100" },
+                { label: "Posts", value: contentPosts, color: "#1565c0" },
+                { label: "Comments", value: contentComments, color: "#2e7d32" },
+                { label: "Communities", value: contentCommunities, color: "#e65100" },
               ].map(({ label, value, color }) => (
                 <div key={label}>
-                  <p style={{ fontSize: 12, color: "#888", marginBottom: 2 }}>{label}</p>
-                  <p style={{ fontSize: 24, fontWeight: 700, color, margin: 0 }}>
+                  <p style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>{label}</p>
+                  <p style={{ fontSize: 28, fontWeight: 700, color, margin: 0, lineHeight: 1 }}>
                     {value.toLocaleString()}
                   </p>
                 </div>
