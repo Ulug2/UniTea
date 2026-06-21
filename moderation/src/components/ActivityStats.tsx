@@ -434,6 +434,51 @@ export function ActivityStats() {
           </div>
         )}
 
+        {/* Tier legend */}
+        <div
+          style={{
+            borderTop: "1px solid #f0f0f0",
+            paddingTop: 16,
+            display: "flex",
+            gap: 20,
+            flexWrap: "wrap",
+          }}
+        >
+          {[
+            {
+              tier: "Basic",
+              dot: "#90caf9",
+              desc: "Opened the app / session created (SIGNED_IN or TOKEN_REFRESHED)",
+            },
+            {
+              tier: "Engaged",
+              dot: "#42a5f5",
+              desc: "Stayed on the feed for ≥ 10 seconds",
+            },
+            {
+              tier: "Action",
+              dot: "#1565c0",
+              desc: "Created a post, comment, or community",
+            },
+          ].map(({ tier, dot, desc }) => (
+            <div key={tier} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "#666", maxWidth: 240 }}>
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: dot,
+                  flexShrink: 0,
+                  marginTop: 2,
+                }}
+              />
+              <span>
+                <strong style={{ color: "#333" }}>{tier}:</strong> {desc}
+              </span>
+            </div>
+          ))}
+        </div>
+
         {/* Today live */}
         <div
           style={{
