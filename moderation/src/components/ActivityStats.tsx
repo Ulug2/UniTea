@@ -335,12 +335,13 @@ export function ActivityStats() {
   const approxMauEngaged = snapshots.slice(0, 30).reduce((s, r) => s + r.dau_engaged, 0);
   const approxMauAction = snapshots.slice(0, 30).reduce((s, r) => s + r.dau_action, 0);
 
-  // Content totals for the selected period
-  const contentDays = contentPeriod === "1d" ? 1 : contentPeriod === "7d" ? 7 : 30;
+  // Content totals for the selected period.
+  // For "1d" use live today data (snapshots only cover completed days from the nightly cron).
+  const contentDays = contentPeriod === "7d" ? 7 : 30;
   const contentSlice = snapshots.slice(0, contentDays);
-  const contentPosts       = contentSlice.reduce((s, r) => s + r.posts_created, 0);
-  const contentComments    = contentSlice.reduce((s, r) => s + r.comments_created, 0);
-  const contentCommunities = contentSlice.reduce((s, r) => s + r.communities_created, 0);
+  const contentPosts       = contentPeriod === "1d" ? (today?.posts_today ?? 0)       : contentSlice.reduce((s, r) => s + r.posts_created, 0);
+  const contentComments    = contentPeriod === "1d" ? (today?.comments_today ?? 0)    : contentSlice.reduce((s, r) => s + r.comments_created, 0);
+  const contentCommunities = contentPeriod === "1d" ? (today?.communities_today ?? 0) : contentSlice.reduce((s, r) => s + r.communities_created, 0);
 
   const wauBasic = precise?.wau_basic ?? (snapshotsLoading ? null : approxWauBasic);
   const wauEngaged = precise?.wau_engaged ?? (snapshotsLoading ? null : approxWauEngaged);
@@ -494,7 +495,7 @@ export function ActivityStats() {
               ))}
             </div>
           </div>
-          {snapshotsLoading ? (
+          {(contentPeriod === "1d" ? todayLoading : snapshotsLoading) ? (
             <div style={{ display: "flex", gap: 32 }}>
               {[0, 1, 2].map((i) => (
                 <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
