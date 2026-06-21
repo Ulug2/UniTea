@@ -13,7 +13,7 @@ function getCorsHeaders(req: Request) {
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type",
+      "authorization, x-client-info, apikey, content-type, x-webhook-secret",
   };
 }
 
@@ -39,6 +39,25 @@ serve(async (req) => {
     return new Response(null, {
       status: 204,
       headers: corsHeaders,
+    });
+  }
+
+  // Verify the webhook secret. JWT verification is disabled for this function
+  // (verify_jwt = false in config.toml) so callers authenticate with a shared
+  // secret instead of a service-role Bearer token.
+  const expectedSecret = Deno.env.get("NOTIFICATION_WEBHOOK_SECRET");
+  if (!expectedSecret) {
+    console.error("NOTIFICATION_WEBHOOK_SECRET is not set");
+    return new Response(JSON.stringify({ error: "Server misconfiguration" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }
+  const incomingSecret = req.headers.get("x-webhook-secret");
+  if (!incomingSecret || incomingSecret !== expectedSecret) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
 
