@@ -1,6 +1,7 @@
 import { useMutation, UseMutationResult, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 import { logger } from "../utils/logger";
+import { logActivity } from "../utils/activityLogger";
 import { Alert } from "react-native";
 import { feedKeys } from "../features/communities/data/queryKeys";
 import {
@@ -272,6 +273,9 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         queryClient.invalidateQueries({ queryKey: ["posts", "lost_found"] });
       } else {
         queryClient.invalidateQueries({ queryKey: ["posts", "feed"] });
+      }
+      if (universityId) {
+        logActivity("post_created", universityId);
       }
     },
     onSettled: () => {
