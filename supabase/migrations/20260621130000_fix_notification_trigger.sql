@@ -60,15 +60,17 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  PERFORM supabase_functions.http_request(
-    'https://rtynfdpezsrolwsglgoe.supabase.co/functions/v1/send-push-notification',
-    'POST',
-    jsonb_build_object(
-      'Content-Type',    'application/json',
-      'x-webhook-secret', webhook_secret
-    )::text,
-    '{}',
-    '5000'
+  -- supabase_functions.http_request() is a trigger function (reads TG_ARGV),
+  -- not callable directly. Use net.http_post instead.
+  PERFORM net.http_post(
+    url                  := 'https://rtynfdpezsrolwsglgoe.supabase.co/functions/v1/send-push-notification',
+    body                 := '{}'::jsonb,
+    params               := '{}'::jsonb,
+    headers              := jsonb_build_object(
+                              'Content-Type',     'application/json',
+                              'x-webhook-secret', webhook_secret
+                            ),
+    timeout_milliseconds := 5000
   );
 
   RETURN NEW;
