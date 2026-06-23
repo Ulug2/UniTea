@@ -12,10 +12,20 @@ import { router } from "expo-router";
 // Using module-level variable so notification handler can access it
 let currentAppState: AppStateStatus = AppState.currentState;
 
-// Track which chat screen is currently viewed (other user id) so we can suppress
-// in-app banners for messages from that chat only
+// Track which chat screen is currently viewed.
+// Primary key: chat ID (works for all chat types including anonymous).
+// Fallback key: partner user ID (for non-anonymous chats, matches relatedUserId in payload).
+let currentViewedChatId: string | null = null;
 let currentViewedChatPartnerId: string | null = null;
 const handledNotificationResponseIds = new Set<string>();
+
+export function setCurrentViewedChatId(chatId: string | null) {
+  currentViewedChatId = chatId;
+}
+
+export function getCurrentViewedChatId(): string | null {
+  return currentViewedChatId;
+}
 
 export function setCurrentViewedChatPartnerId(partnerId: string | null) {
   currentViewedChatPartnerId = partnerId;
@@ -168,13 +178,17 @@ export async function handleNotificationResponse(
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
     const isAppInForeground = currentAppState === "active";
-    const { type, relatedUserId } = getNotificationData(notification);
+    const { type, relatedUserId, relatedChatId } = getNotificationData(notification);
     const isChatMessage = type === "chat_message";
+    // Suppress the banner if the user is currently viewing the exact chat the
+    // message belongs to.  Check chatId first (works for anonymous chats too),
+    // then fall back to partnerId for payloads that omit relatedChatId.
     const isViewingThisChat =
       isChatMessage &&
-      relatedUserId != null &&
-      currentViewedChatPartnerId != null &&
-      currentViewedChatPartnerId === relatedUserId;
+      (
+        (relatedChatId != null && currentViewedChatId != null && relatedChatId === currentViewedChatId) ||
+        (relatedUserId != null && currentViewedChatPartnerId != null && relatedUserId === currentViewedChatPartnerId)
+      );
 
     // When app is in foreground: show chat message banners unless user is viewing that chat
     if (isAppInForeground) {
@@ -379,10 +393,16 @@ export function usePushNotifications() {
           const reg = await registerForPushNotificationsAsync();
           if (!isMounted || !reg?.pushToken) return;
 
+          // If the row previously had no push token (permission was revoked),
+          // also restore the notification toggles to their default-on state.
+          // This handles the case where a user denied OS permission, then later
+          // granted it from Settings — without this, notify_chats stays false.
+          const wasRevoked = !existingSettings.data?.push_token;
           await supabase.from("notification_settings").upsert(
             {
               user_id: userId,
               push_token: reg.pushToken,
+              ...(wasRevoked ? { notify_chats: true, notify_upvotes: true } : {}),
             },
             { onConflict: "user_id" }
           );

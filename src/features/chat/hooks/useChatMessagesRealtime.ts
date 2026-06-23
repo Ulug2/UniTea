@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "../../../lib/supabase";
 import { prependIncomingMessage, upsertIncomingMessage } from "../data/cache";
 import { subscribeToChatMessages } from "../data/realtime";
 
@@ -63,10 +64,23 @@ export function useChatMessagesRealtime(
         prependIncomingMessage(queryClient, chatId, newMessage);
         onIncomingMessageRef.current?.();
 
-        queryClient.invalidateQueries({
-          queryKey: ["global-unread-count", currentUserId],
-          refetchType: "none",
-        });
+        // User is actively viewing this chat — mark the message read immediately
+        // so the server-side unread count stays at zero without waiting for the
+        // chat detail screen's 800 ms markAsRead timer.
+        supabase
+          .from("chat_messages")
+          .update({ is_read: true })
+          .eq("id", newMessage.id)
+          .then(({ error }) => {
+            if (error) {
+              // Non-critical: the chat detail screen's markAsRead will reconcile
+              // on the next unread-count change.
+              queryClient.invalidateQueries({
+                queryKey: ["global-unread-count", currentUserId],
+                refetchType: "none",
+              });
+            }
+          });
       },
       onEnrichedInsert: (enrichedMessage) => {
         // Enrichment is a secondary update to an already-received message.

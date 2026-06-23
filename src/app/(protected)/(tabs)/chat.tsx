@@ -18,6 +18,7 @@ import {
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import { saveChatToStorage } from "../../../utils/feedPersistence";
 import { getChatDisplayIdentity } from "../../../features/chat/utils/getChatIdentity";
+import { getCurrentViewedChatId } from "../../../hooks/usePushNotifications";
 
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
 type User = Database["public"]["Tables"]["profiles"]["Row"];
@@ -249,6 +250,7 @@ export default function ChatScreen() {
             return;
           }
 
+          // Update last_message_at immediately (available from the chats row).
           queryClient.setQueryData<ChatSummary[]>(
             ["chat-summaries", currentUserId],
             (oldSummaries) => {
@@ -272,12 +274,9 @@ export default function ChatScreen() {
                 last_message_at:
                   updatedChat.last_message_at ||
                   updated[chatIndex].last_message_at,
-                unread_count_p1:
-                  updatedChat.unread_count_p1 ??
-                  updated[chatIndex].unread_count_p1,
-                unread_count_p2:
-                  updatedChat.unread_count_p2 ??
-                  updated[chatIndex].unread_count_p2,
+                // unread_count_p1/p2 are NOT columns on the chats table — they
+                // are computed by the user_chats_summary VIEW.  We fetch them
+                // asynchronously below rather than reading undefined from payload.
               };
 
               updated.sort((a, b) => {
@@ -294,13 +293,70 @@ export default function ChatScreen() {
             },
           );
 
+          // Fetch fresh unread counts from the view and patch the cache.
+          // The chats-table UPDATE payload does not carry unread_count_p1/p2 (those
+          // are computed by the view), so we do a targeted query here.
+          const updatedChatId = updatedChat.id as string;
+          const isViewingThisChat = getCurrentViewedChatId() === updatedChatId;
+
+          if (isViewingThisChat) {
+            // User is in this chat right now — the realtime hook already marks
+            // incoming messages as read, so force the cached count to zero.
+            queryClient.setQueryData<ChatSummary[]>(
+              ["chat-summaries", currentUserId],
+              (old) => {
+                if (!old) return old;
+                return old.map((s) => {
+                  if (s.chat_id !== updatedChatId) return s;
+                  const isP1 = s.participant_1_id === currentUserId;
+                  return {
+                    ...s,
+                    unread_count_p1: isP1 ? 0 : s.unread_count_p1,
+                    unread_count_p2: !isP1 ? 0 : s.unread_count_p2,
+                  };
+                });
+              },
+            );
+          } else {
+            // Async fetch to get accurate unread counts from the view.
+            (async () => {
+              try {
+                const { data: freshRow } = await (supabase as any)
+                  .from("user_chats_summary")
+                  .select("chat_id, unread_count_p1, unread_count_p2")
+                  .eq("chat_id", updatedChatId)
+                  .maybeSingle();
+
+                if (!freshRow || !isMounted) return;
+
+                queryClient.setQueryData<ChatSummary[]>(
+                  ["chat-summaries", currentUserId],
+                  (old) => {
+                    if (!old) return old;
+                    return old.map((s) =>
+                      s.chat_id === updatedChatId
+                        ? {
+                            ...s,
+                            unread_count_p1: freshRow.unread_count_p1 ?? s.unread_count_p1,
+                            unread_count_p2: freshRow.unread_count_p2 ?? s.unread_count_p2,
+                          }
+                        : s,
+                    );
+                  },
+                );
+              } catch {
+                // Non-critical — will sync on next manual refresh
+              }
+            })();
+          }
+
           // Keep the global badge in sync by re-deriving from the updated cache.
           const updatedSummaries = queryClient.getQueryData<ChatSummary[]>([
             "chat-summaries",
             currentUserId,
           ]);
           if (updatedSummaries) {
-            const cachedBlocks =
+            const cachedBlocksForBadge =
               queryClient.getQueryData<BlockRecord[]>([
                 "blocks",
                 currentUserId,
@@ -311,7 +367,7 @@ export default function ChatScreen() {
                   chat.participant_1_id === currentUserId
                     ? chat.participant_2_id
                     : chat.participant_1_id;
-                if (isBlockedChat(cachedBlocks, otherId)) return sum;
+                if (isBlockedChat(cachedBlocksForBadge, otherId)) return sum;
                 const isP1 = chat.participant_1_id === currentUserId;
                 return (
                   sum +

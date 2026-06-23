@@ -33,7 +33,11 @@ import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import EntityAvatar from "../../../components/EntityAvatar";
 import { getAvatarForEntity } from "../../../utils/entityDisplay";
 import { useBlocks } from "../../../hooks/useBlocks";
-import { setCurrentViewedChatPartnerId } from "../../../hooks/usePushNotifications";
+import {
+  setCurrentViewedChatPartnerId,
+  setCurrentViewedChatId,
+} from "../../../hooks/usePushNotifications";
+import * as Notifications from "expo-notifications";
 import { hashStringToNumber } from "../../../features/chat/utils/anon";
 import { getChatDisplayIdentity } from "../../../features/chat/utils/getChatIdentity";
 import type {
@@ -219,12 +223,19 @@ export default function ChatDetailScreen() {
   const isLegacyAnonymous = otherUserId?.startsWith("anonymous-");
   const isChatAnonymous = isLegacyAnonymous || chat?.is_anonymous === true;
 
-  // Tell notification handler which chat we're viewing so it can suppress banners for this chat only
+  // Tell the notification handler which chat is active so it can suppress banners
+  // for this exact conversation.  We set BOTH chatId (primary — works for anonymous
+  // chats where relatedUserId is scrubbed from the push payload) and partnerId
+  // (fallback for legacy payloads that omit relatedChatId).
   useFocusEffect(
     useCallback(() => {
+      setCurrentViewedChatId(id ?? null);
       setCurrentViewedChatPartnerId(otherUserId ?? null);
-      return () => setCurrentViewedChatPartnerId(null);
-    }, [otherUserId]),
+      return () => {
+        setCurrentViewedChatId(null);
+        setCurrentViewedChatPartnerId(null);
+      };
+    }, [id, otherUserId]),
   );
 
   // Fetch blocked users
@@ -413,11 +424,6 @@ export default function ChatDetailScreen() {
     if (unreadCountInThisChat <= 0) return;
     if (unreadCountInThisChat === lastHandledUnreadCountRef.current) return;
 
-    // Ensure we have the messages cache populated before updating read
-    // state + badges; otherwise we'd desync UI vs badges.
-    const cachedMessages = queryClient.getQueryData<any>(["chat-messages", id]);
-    if (!cachedMessages) return;
-
     const markAsRead = () => {
       lastHandledUnreadCountRef.current = unreadCountInThisChat;
 
@@ -444,6 +450,7 @@ export default function ChatDetailScreen() {
       const cachedBlocks =
         queryClient.getQueryData<any[]>(["blocks", currentUserId]) || [];
 
+      let newGlobalTotal = 0;
       queryClient.setQueriesData<number>(
         { queryKey: ["global-unread-count", currentUserId], exact: false },
         () => {
@@ -470,9 +477,14 @@ export default function ChatDetailScreen() {
             return sum + unread;
           }, 0);
 
+          newGlobalTotal = total;
           return total;
         },
       );
+
+      // Sync the device app icon badge immediately so the OS badge reflects the
+      // new unread count without waiting for the next push notification.
+      Notifications.setBadgeCountAsync(newGlobalTotal).catch(() => {});
 
       // Optimistically update the messages cache:
       // - On first read, scan all loaded pages.
