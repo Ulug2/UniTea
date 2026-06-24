@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo, useEffect } from "react";
+import { useRef, useState, useMemo, useEffect, useCallback } from "react";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
 import {
   Text,
@@ -393,6 +393,16 @@ export default function LostFoundPostDetailed() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const postId = typeof id === "string" ? id : id?.[0];
 
+  // Safe back navigation: falls back to the feed when there is no back stack
+  // (cold-start deep link where the tabs screen was never pushed).
+  const navigateBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(protected)/(tabs)");
+    }
+  }, []);
+
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const { session } = useAuth();
@@ -527,7 +537,21 @@ export default function LostFoundPostDetailed() {
   if (error || !post) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <Text style={styles.errorText}>Post not found.</Text>
+        <Text style={styles.errorText}>This post isn't available.</Text>
+        <Pressable
+          onPress={() => router.replace("/(protected)/(tabs)")}
+          style={{
+            marginTop: verticalScale(16),
+            backgroundColor: TEAL,
+            paddingHorizontal: scale(24),
+            paddingVertical: verticalScale(12),
+            borderRadius: moderateScale(8),
+          }}
+        >
+          <Text style={{ color: "#fff", fontFamily: "Poppins_500Medium", fontSize: moderateScale(15) }}>
+            Back to feed
+          </Text>
+        </Pressable>
       </View>
     );
   }
@@ -569,7 +593,7 @@ export default function LostFoundPostDetailed() {
     <View style={styles.container}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <Pressable hitSlop={moderateScale(12)} onPress={() => router.back()}>
+        <Pressable hitSlop={moderateScale(12)} onPress={navigateBack}>
           <Ionicons
             name="arrow-back"
             size={moderateScale(24)}

@@ -139,9 +139,19 @@ export default function PostDetailed() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const isExiting = useRef(false);
 
+  // Safe back navigation: falls back to the feed when there is no back stack
+  // (cold-start deep link where the tabs screen was never pushed).
+  const navigateBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(protected)/(tabs)");
+    }
+  }, []);
+
   const closeScreen = useCallback(() => {
     if (Platform.OS !== "android") {
-      router.back();
+      navigateBack();
       return;
     }
     if (isExiting.current) return;
@@ -166,9 +176,9 @@ export default function PostDetailed() {
         }),
       ]),
     ]).start(() => {
-      router.back();
+      navigateBack();
     });
-  }, [screenHeight, slideAnim, fadeAnim]);
+  }, [screenHeight, slideAnim, fadeAnim, navigateBack]);
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -221,7 +231,7 @@ export default function PostDetailed() {
               name="close"
               size={headerIconSize}
               color="white"
-              onPress={() => router.back()}
+              onPress={closeScreen}
             />
           ),
           headerRight: () => (

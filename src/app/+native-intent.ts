@@ -52,8 +52,13 @@ export function redirectSystemPath({
       readFromRaw("post_type") ??
       readFromRaw("type");
 
-    if (segments[0] === "post" && segments[1] && postType === "lost_found") {
-      return `/lostfoundpost/${segments[1]}?fromDeeplink=1`;
+    if (segments[0] === "post" && segments[1]) {
+      if (postType === "lost_found") {
+        return `/lostfoundpost/${segments[1]}?fromDeeplink=1`;
+      }
+      // Regular post deep link — append fromDeeplink so the detail screen can
+      // show contextual error copy and handle empty back-stack on cold start.
+      return `/post/${segments[1]}?fromDeeplink=1`;
     }
   } catch {
     // Fall through to default handling on any parse error.
