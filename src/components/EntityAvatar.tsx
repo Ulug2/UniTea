@@ -6,8 +6,8 @@ import {
   type StyleProp,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
-import CachedAvatar from "./CachedAvatar";
 import SupabaseImage from "./SupabaseImage";
+import { getAvatarUri } from "../utils/avatarUri";
 import {
   AVATAR_FALLBACK_BG,
   SVG_AVATAR_ICON_COLOR,
@@ -51,9 +51,12 @@ function EntityAvatar({ descriptor, style, onLoad }: EntityAvatarProps) {
     case "remote":
       if (descriptor.bucket === "avatars") {
         return (
-          <CachedAvatar
-            avatarUrl={descriptor.url}
+          <ExpoImage
+            source={{ uri: getAvatarUri(descriptor.url) }}
             style={style}
+            contentFit="cover"
+            cachePolicy="disk"
+            transition={0}
             onLoad={handleLoad}
           />
         );

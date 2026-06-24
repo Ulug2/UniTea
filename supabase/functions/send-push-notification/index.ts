@@ -338,34 +338,29 @@ serve(async (req) => {
       return message.substring(0, MAX_MESSAGE_LENGTH) + "...";
     };
 
+    // Resolve chat context when related_chat_id is not stored directly
+    // in the notification (legacy rows predating the column addition).
     const resolveChatContextForUsers = async (
       recipientUserId: string,
       senderUserId: string,
     ): Promise<{ chatId: string | null; isAnonymous: boolean }> => {
-      const { data: summary1 } = await supabase
-        .from("user_chats_summary")
-        .select("chat_id, is_anonymous")
-        .eq("participant_1_id", recipientUserId)
-        .eq("participant_2_id", senderUserId)
-        .maybeSingle();
+      // Query chats table directly — avoids the user_chats_summary view
+      // which (a) filters out chats with no messages yet and (b) errors
+      // via .maybeSingle() when two users have multiple chats.
+      const { data: rows } = await supabase
+        .from("chats")
+        .select("id, is_anonymous")
+        .or(
+          `and(participant_1_id.eq.${recipientUserId},participant_2_id.eq.${senderUserId}),` +
+          `and(participant_1_id.eq.${senderUserId},participant_2_id.eq.${recipientUserId})`,
+        )
+        .order("created_at", { ascending: false })
+        .limit(1);
 
-      if (summary1?.chat_id) {
-        return {
-          chatId: summary1.chat_id as string,
-          isAnonymous: Boolean(summary1.is_anonymous),
-        };
-      }
-
-      const { data: summary2 } = await supabase
-        .from("user_chats_summary")
-        .select("chat_id, is_anonymous")
-        .eq("participant_1_id", senderUserId)
-        .eq("participant_2_id", recipientUserId)
-        .maybeSingle();
-
+      const row = rows?.[0] as { id: string; is_anonymous: boolean } | undefined;
       return {
-        chatId: (summary2?.chat_id as string | undefined) ?? null,
-        isAnonymous: Boolean(summary2?.is_anonymous),
+        chatId: row?.id ?? null,
+        isAnonymous: Boolean(row?.is_anonymous),
       };
     };
 
@@ -521,13 +516,26 @@ serve(async (req) => {
           : "New message";
         const messageBody = truncateMessage(latestChat.message || "Sent a message");
         const unreadChatCount = unreadChatCountByUserId.get(userId) ?? 0;
-        const chatContext = senderId
-          ? await resolveChatContextForUsers(userId, senderId)
-          : { chatId: null, isAnonymous: false };
-        const relatedChatId =
-          latestChat.related_chat_id ??
-          chatContext.chatId;
-        const isAnonymousChat = chatContext.isAnonymous;
+
+        // related_chat_id is stored directly in the notification (new rows).
+        // For older rows that predate the column, fall back to the resolver.
+        let relatedChatId: string | null = latestChat.related_chat_id ?? null;
+        let isAnonymousChat = false;
+
+        if (relatedChatId) {
+          // Fast path: look up anonymity from the chats table directly.
+          const { data: chatRow } = await supabase
+            .from("chats")
+            .select("is_anonymous")
+            .eq("id", relatedChatId)
+            .single();
+          isAnonymousChat = Boolean((chatRow as any)?.is_anonymous);
+        } else if (senderId) {
+          // Legacy path: resolve chat context from participant IDs.
+          const chatContext = await resolveChatContextForUsers(userId, senderId);
+          relatedChatId = chatContext.chatId;
+          isAnonymousChat = chatContext.isAnonymous;
+        }
         const pushTitle = isAnonymousChat
           ? "From: Anonymous user"
           : senderUsername;

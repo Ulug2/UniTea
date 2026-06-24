@@ -8,6 +8,11 @@ import { useAuth } from "../context/AuthContext";
 import { logger } from "../utils/logger";
 import { router } from "expo-router";
 
+// Expo Go (SDK 53+) removed remote push notification support.
+// Skip all notification setup in that environment to avoid warnings and
+// network timeouts from getExpoPushTokenAsync.
+const isExpoGo = Constants.executionEnvironment === "storeClient";
+
 // Track app state to suppress notifications when app is in foreground
 // Using module-level variable so notification handler can access it
 let currentAppState: AppStateStatus = AppState.currentState;
@@ -31,14 +36,14 @@ export function setCurrentViewedChatPartnerId(partnerId: string | null) {
   currentViewedChatPartnerId = partnerId;
 }
 
-// Set up AppState listener at module level to track foreground/background state
-// This ensures the listener is active from app startup, regardless of hook usage
-const appStateSubscription = AppState.addEventListener(
-  "change",
-  (nextAppState: AppStateStatus) => {
+// Track foreground/background state so the notification handler can suppress
+// banners while the user is actively viewing the relevant screen.
+// Not needed in Expo Go since push notifications are unsupported there.
+if (!isExpoGo) {
+  AppState.addEventListener("change", (nextAppState: AppStateStatus) => {
     currentAppState = nextAppState;
-  }
-);
+  });
+}
 
 export function getNotificationData(notification: Notifications.Notification): {
   type?: string;
@@ -99,8 +104,11 @@ export async function routeFromNotification(
   const { type, relatedUserId, relatedPostId, relatedChatId } =
     getNotificationData(notification);
 
-  // Chat notifications should open the exact chat if payload is complete.
+  // Chat notifications: ensure Chats tab is active so pressing back from
+  // the detail screen returns to the chat list — not the Feed tab.
   if (type === "chat_message") {
+    router.navigate("/chat"); // switch to Chats tab (no-op if already there)
+
     if (relatedChatId) {
       router.push(`/chat/${relatedChatId}`);
       return;
@@ -112,7 +120,7 @@ export async function routeFromNotification(
         notificationType: type,
         component: "usePushNotifications",
       });
-      router.push("/chat");
+      // Already navigated to /chat above — stay there
       return;
     }
 
@@ -130,7 +138,7 @@ export async function routeFromNotification(
       notificationType: type,
       component: "usePushNotifications",
     });
-    router.push("/chat");
+    // Already on /chat — stay there
     return;
   }
 
@@ -174,8 +182,9 @@ export async function handleNotificationResponse(
   await routeFromNotification(response.notification, userId);
 }
 
-// Set notification handler: show chat message banners in foreground except when viewing that chat
-Notifications.setNotificationHandler({
+// Set notification handler: show chat message banners in foreground except when viewing that chat.
+// Skipped in Expo Go — remote push notifications are unsupported there since SDK 53.
+if (!isExpoGo) Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
     const isAppInForeground = currentAppState === "active";
     const { type, relatedUserId, relatedChatId } = getNotificationData(notification);
@@ -299,7 +308,7 @@ export function usePushNotifications() {
   const userId = session?.user?.id;
 
   useEffect(() => {
-    if (Platform.OS !== "android") return;
+    if (isExpoGo || Platform.OS !== "android") return;
 
     Notifications.setNotificationChannelAsync("default", {
       name: "Default",
@@ -316,7 +325,7 @@ export function usePushNotifications() {
   }, []);
 
   useEffect(() => {
-    if (!userId) return;
+    if (isExpoGo || !userId) return;
 
     let isMounted = true;
 
@@ -444,7 +453,7 @@ export function usePushNotifications() {
   // Handle notification taps so the user lands directly in the correct
   // chat and the read-state / badge decrements can happen immediately.
   useEffect(() => {
-    if (!userId) return;
+    if (isExpoGo || !userId) return;
 
     const subscription = Notifications.addNotificationResponseReceivedListener(
       async (response) => {

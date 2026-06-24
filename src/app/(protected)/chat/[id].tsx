@@ -415,27 +415,21 @@ export default function ChatDetailScreen() {
     onIncomingMessage: handleIncomingMessage,
   });
 
-  // Mark messages as read when opening chat - optimized with immediate optimistic updates
+  // Core mark-as-read logic extracted so it can be called from both the
+  // focus effect and the unread-count-change effect.
   const hasMarkedInitialUnreadRef = useRef(false);
   const lastHandledUnreadCountRef = useRef<number>(0);
 
-  useEffect(() => {
-    if (!id || !currentUserId) return;
-    if (unreadCountInThisChat <= 0) return;
-    if (unreadCountInThisChat === lastHandledUnreadCountRef.current) return;
-
-    const markAsRead = () => {
-      lastHandledUnreadCountRef.current = unreadCountInThisChat;
-
-      // Update chat-summaries unread counters (for badge derivation).
+  const applyMarkAsRead = useCallback(
+    (knownUnreadCount: number, markAllPages: boolean) => {
+      if (!id || !currentUserId) return;
+      // Optimistically zero out the unread counter for this chat.
       queryClient.setQueryData<any[]>(
         ["chat-summaries", currentUserId],
         (oldSummaries: any[] | undefined) => {
           if (!oldSummaries) return oldSummaries;
-
           return oldSummaries.map((summary: any) => {
             if (summary.chat_id !== id) return summary;
-
             const isP1 = summary.participant_1_id === currentUserId;
             return {
               ...summary,
@@ -446,81 +440,57 @@ export default function ChatDetailScreen() {
         },
       );
 
-      // Recompute global unread count from the updated chat-summaries cache.
+      // Recompute and sync the OS badge immediately.
       const cachedBlocks =
         queryClient.getQueryData<any[]>(["blocks", currentUserId]) || [];
-
       let newGlobalTotal = 0;
       queryClient.setQueriesData<number>(
         { queryKey: ["global-unread-count", currentUserId], exact: false },
         () => {
-          const updatedSummaries = queryClient.getQueryData<any[]>([
+          const updated = queryClient.getQueryData<any[]>([
             "chat-summaries",
             currentUserId,
           ]);
-          if (!updatedSummaries || !Array.isArray(updatedSummaries)) {
-            return undefined;
-          }
-
-          const total = updatedSummaries.reduce((sum: number, chat: any) => {
-            const otherUserId =
-              chat.participant_1_id === currentUserId
-                ? chat.participant_2_id
-                : chat.participant_1_id;
-
-            if (cachedBlocks.some((b) => b.userId === otherUserId)) return sum;
-
-            const isP1 = chat.participant_1_id === currentUserId;
-            const unread = isP1
-              ? chat.unread_count_p1 || 0
-              : chat.unread_count_p2 || 0;
-            return sum + unread;
+          if (!updated || !Array.isArray(updated)) return undefined;
+          const total = updated.reduce((sum: number, c: any) => {
+            const other =
+              c.participant_1_id === currentUserId
+                ? c.participant_2_id
+                : c.participant_1_id;
+            if (cachedBlocks.some((b) => b.userId === other)) return sum;
+            const isP1 = c.participant_1_id === currentUserId;
+            return sum + (isP1 ? c.unread_count_p1 || 0 : c.unread_count_p2 || 0);
           }, 0);
-
           newGlobalTotal = total;
           return total;
         },
       );
-
-      // Sync the device app icon badge immediately so the OS badge reflects the
-      // new unread count without waiting for the next push notification.
       Notifications.setBadgeCountAsync(newGlobalTotal).catch(() => {});
 
-      // Optimistically update the messages cache:
-      // - On first read, scan all loaded pages.
-      // - After that, new unread messages arrive via INSERT into page[0].
-      let updatedMessageCache = false;
-      const shouldMarkAllPages = !hasMarkedInitialUnreadRef.current;
-
+      // Optimistically mark messages as read in the messages cache.
       queryClient.setQueryData(["chat-messages", id], (oldData: any) => {
         if (!oldData) return oldData;
-        updatedMessageCache = true;
-
-        const newPages = (oldData.pages ?? []).map(
-          (page: ChatMessageVM[], pageIndex: number) => {
-            if (!Array.isArray(page)) return page;
-            if (!shouldMarkAllPages && pageIndex !== 0) return page;
-
-            return page.map((msg) => {
-              if (msg.user_id !== currentUserId && !msg.is_read) {
-                return { ...msg, is_read: true };
-              }
-              return msg;
-            });
-          },
-        );
-
         return {
           ...oldData,
-          pages: newPages,
+          pages: (oldData.pages ?? []).map(
+            (page: ChatMessageVM[], pageIndex: number) => {
+              if (!Array.isArray(page)) return page;
+              if (!markAllPages && pageIndex !== 0) return page;
+              return page.map((msg) =>
+                msg.user_id !== currentUserId && !msg.is_read
+                  ? { ...msg, is_read: true }
+                  : msg,
+              );
+            },
+          ),
         };
       });
 
-      if (!hasMarkedInitialUnreadRef.current && updatedMessageCache) {
-        hasMarkedInitialUnreadRef.current = true;
+      if (knownUnreadCount > 0) {
+        lastHandledUnreadCountRef.current = knownUnreadCount;
       }
 
-      // Send server request (fire and forget - UI already updated).
+      // Server update (fire-and-forget; UI already reflects the new state).
       supabase
         .from("chat_messages")
         .update({ is_read: true })
@@ -543,11 +513,49 @@ export default function ChatDetailScreen() {
             });
           }
         });
-    };
+    },
+    [id, currentUserId, queryClient],
+  );
 
-    const timer = setTimeout(markAsRead, 800);
+  // On every focus: immediately fire mark-as-read regardless of what the cache
+  // says about unread count.  This is the reliability layer for notification
+  // cold-starts where chatSummaries may be stale (staleTime: Infinity means the
+  // cache never auto-refreshes) and unreadCountInThisChat reports 0.
+  useFocusEffect(
+    useCallback(() => {
+      if (!id || !currentUserId) return;
+      // Reset per-focus tracking so the debounced effect below can also fire
+      // if new messages arrive while the screen is open.
+      hasMarkedInitialUnreadRef.current = false;
+      lastHandledUnreadCountRef.current = 0;
+
+      const timer = setTimeout(() => {
+        applyMarkAsRead(0 /* count unknown from cache */, true /* all pages */);
+        hasMarkedInitialUnreadRef.current = true;
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }, [id, currentUserId, applyMarkAsRead]),
+  );
+
+  // Secondary effect: when unread count increases after the focus fire (e.g. a
+  // new message arrives while the chat is open), mark it read after a short
+  // debounce so the pill/badge stays up-to-date.
+  useEffect(() => {
+    if (!id || !currentUserId) return;
+    if (unreadCountInThisChat <= 0) return;
+    if (unreadCountInThisChat === lastHandledUnreadCountRef.current) return;
+
+    const timer = setTimeout(() => {
+      applyMarkAsRead(
+        unreadCountInThisChat,
+        !hasMarkedInitialUnreadRef.current,
+      );
+      hasMarkedInitialUnreadRef.current = true;
+    }, 500);
+
     return () => clearTimeout(timer);
-  }, [id, currentUserId, unreadCountInThisChat, queryClient]);
+  }, [id, currentUserId, unreadCountInThisChat, applyMarkAsRead]);
 
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

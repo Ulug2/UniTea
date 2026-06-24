@@ -700,7 +700,7 @@ const PostListItem = React.memo(function PostListItem({
     e.stopPropagation();
     if (anonChatMutation.isPending) return;
     anonChatMutation.mutate(
-      { postId, postAuthorId: userId },
+      { postId, postAuthorId: userId, isPostAnonymous: isAnonymous ?? false },
       {
         onSuccess: ({ chatId }) => {
           router.push(`/chat/${chatId}`);
