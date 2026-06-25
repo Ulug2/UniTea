@@ -161,9 +161,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           AsyncStorage.removeItem(PROFILE_CACHE_KEY).catch(() => {});
           break;
 
+        case "INITIAL_SESSION":
         case "SIGNED_IN":
         case "TOKEN_REFRESHED":
-          setSession(newSession);
+          if (newSession) setSession(newSession);
           setError(null);
           // Set user context in Sentry
           if (newSession?.user) {
@@ -173,7 +174,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               undefined,
             );
             // Fire-and-forget: fetch university_id then log session_start.
-            // Runs entirely async — never blocks the auth flow.
+            // INITIAL_SESSION covers cold-starts (existing session restored on app open).
+            // SIGNED_IN covers explicit logins. TOKEN_REFRESHED covers background refreshes.
+            // All three count as a DAU event — the user opened / is using the app.
             void (async () => {
               try {
                 const { data } = await supabase
