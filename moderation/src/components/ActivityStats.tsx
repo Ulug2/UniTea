@@ -153,7 +153,7 @@ function BarChart({ days, loading }: { days: DailyCount[]; loading: boolean }) {
     <div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10 }}>
         <p style={{ fontSize: 13, color: "#555", fontWeight: 500, margin: 0 }}>
-          Posts per day — last 14 days
+          Posts per day
         </p>
         <span style={{ fontSize: 11, color: "#aaa" }}>(hover a bar for details)</span>
       </div>
