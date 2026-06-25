@@ -60,6 +60,18 @@ export function redirectSystemPath({
       // show contextual error copy and handle empty back-stack on cold start.
       return `/post/${segments[1]}?fromDeeplink=1`;
     }
+
+    // Password recovery deep link: /reset-password?code=XXXXX
+    // Route to the standalone reset-password screen which handles the PKCE
+    // code exchange, password update, and global session invalidation.
+    if (segments[0] === "reset-password") {
+      const code = readParam("code") ?? readFromRaw("code");
+      if (code) {
+        return `/reset-password?code=${encodeURIComponent(code)}`;
+      }
+      // No code — screen will show the expired/invalid link state.
+      return "/reset-password";
+    }
   } catch {
     // Fall through to default handling on any parse error.
   }

@@ -26,7 +26,8 @@ interface ManageAccountModalProps {
   onUnblockAll: () => void;
   onUpdateAvatar: () => void;
   onUpdateUsername: (username: string) => void;
-  onUpdatePassword: (password: string, confirmPassword: string) => void;
+  onUpdatePassword: (currentPassword: string, newPassword: string, confirmPassword: string) => void;
+  onForgotPassword?: () => void;
   isDeleting?: boolean;
   isUnblocking?: boolean;
   isUpdating?: boolean;
@@ -44,6 +45,7 @@ export default function ManageAccountModal({
   onUpdateAvatar,
   onUpdateUsername,
   onUpdatePassword,
+  onForgotPassword,
   isDeleting = false,
   isUnblocking = false,
   isUpdating = false,
@@ -59,6 +61,7 @@ export default function ManageAccountModal({
     Platform.OS === "ios" ? (isDark ? "dark" : "light") : undefined;
   const [currentView, setCurrentView] = useState<ViewType>("menu");
   const [username, setUsername] = useState(currentUsername);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -84,6 +87,7 @@ export default function ManageAccountModal({
     if (!visible) {
       setCurrentView("menu");
       setUsername(currentUsername);
+      setCurrentPassword("");
       setPassword("");
       setConfirmPassword("");
       setAndroidKeyboardInset(0);
@@ -101,10 +105,11 @@ export default function ManageAccountModal({
   };
 
   const handlePasswordSave = () => {
-    if (!password || !confirmPassword) {
+    if (!currentPassword || !password || !confirmPassword) {
       return;
     }
-    onUpdatePassword(password, confirmPassword);
+    onUpdatePassword(currentPassword, password, confirmPassword);
+    setCurrentPassword("");
     setPassword("");
     setConfirmPassword("");
     setCurrentView("menu");
@@ -361,6 +366,51 @@ export default function ManageAccountModal({
         showsVerticalScrollIndicator={false}
       >
         <Text style={[styles.label, { color: theme.secondaryText }]}>
+          Current Password
+        </Text>
+        <TextInput
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.background,
+              color: theme.text,
+              borderColor: theme.border,
+            },
+          ]}
+          placeholder="Enter current password"
+          placeholderTextColor={theme.secondaryText}
+          keyboardAppearance={keyboardAppearance}
+          value={currentPassword}
+          onChangeText={setCurrentPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          textContentType="password"
+        />
+
+        {onForgotPassword && (
+          <Pressable
+            onPress={() => {
+              setCurrentPassword("");
+              setPassword("");
+              setConfirmPassword("");
+              setCurrentView("menu");
+              onForgotPassword();
+            }}
+            style={styles.forgotPasswordLink}
+          >
+            <Text style={[styles.forgotPasswordText, { color: theme.primary }]}>
+              Forgot Password?
+            </Text>
+          </Pressable>
+        )}
+
+        <Text
+          style={[
+            styles.label,
+            { color: theme.secondaryText, marginTop: verticalScale(16) },
+          ]}
+        >
           New Password
         </Text>
         <TextInput
@@ -380,15 +430,16 @@ export default function ManageAccountModal({
           secureTextEntry
           autoCapitalize="none"
           autoCorrect={false}
+          textContentType="newPassword"
         />
 
         <Text
           style={[
             styles.label,
-            { color: theme.secondaryText, marginTop: verticalScale(16) },
+            { color: theme.secondaryText, marginTop: verticalScale(4) },
           ]}
         >
-          Confirm Password
+          Confirm New Password
         </Text>
         <TextInput
           style={[
@@ -399,7 +450,7 @@ export default function ManageAccountModal({
               borderColor: theme.border,
             },
           ]}
-          placeholder="Confirm password"
+          placeholder="Confirm new password"
           placeholderTextColor={theme.secondaryText}
           keyboardAppearance={keyboardAppearance}
           value={confirmPassword}
@@ -407,6 +458,7 @@ export default function ManageAccountModal({
           secureTextEntry
           autoCapitalize="none"
           autoCorrect={false}
+          textContentType="newPassword"
         />
 
         <Pressable
@@ -414,13 +466,13 @@ export default function ManageAccountModal({
             styles.saveButton,
             {
               backgroundColor:
-                password && confirmPassword && !isUpdating
+                currentPassword && password && confirmPassword && !isUpdating
                   ? theme.primary
                   : theme.border,
             },
           ]}
           onPress={handlePasswordSave}
-          disabled={!password || !confirmPassword || isUpdating}
+          disabled={!currentPassword || !password || !confirmPassword || isUpdating}
         >
           {isUpdating ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
@@ -560,5 +612,14 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(16),
     fontFamily: "Poppins_600SemiBold",
     color: "#FFFFFF",
+  },
+  forgotPasswordLink: {
+    alignSelf: "flex-end",
+    paddingVertical: verticalScale(4),
+    marginBottom: verticalScale(4),
+  },
+  forgotPasswordText: {
+    fontSize: moderateScale(13),
+    fontFamily: "Poppins_500Medium",
   },
 });

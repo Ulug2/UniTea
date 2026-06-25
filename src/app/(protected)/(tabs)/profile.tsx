@@ -207,20 +207,68 @@ export default function ProfileScreen() {
     updateProfileMutation.mutate({ username: newUsername.trim() });
   };
 
-  // Handle password update
+  // Handle password update (requires current password verification)
   const handlePasswordUpdate = (
+    currentPassword: string,
     newPassword: string,
     confirmPassword: string,
   ) => {
-    if (!newPassword || newPassword.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters long");
+    if (!currentPassword) {
+      Alert.alert("Error", "Please enter your current password.");
+      return;
+    }
+    if (!newPassword || newPassword.length < 8) {
+      Alert.alert("Error", "Password must be at least 8 characters long.");
+      return;
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      Alert.alert("Error", "Password must contain at least one uppercase letter.");
+      return;
+    }
+    if (!/[a-z]/.test(newPassword)) {
+      Alert.alert("Error", "Password must contain at least one lowercase letter.");
       return;
     }
     if (newPassword !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match");
+      Alert.alert("Error", "Passwords do not match.");
       return;
     }
-    updatePasswordMutation.mutate(newPassword);
+    updatePasswordMutation.mutate(
+      { currentPassword, newPassword },
+      {
+        onSuccess: () => {
+          Alert.alert("Password Changed", "Your password has been updated successfully.");
+        },
+        onError: (err: unknown) => {
+          const message =
+            err instanceof Error
+              ? err.message
+              : "Failed to update password. Please try again.";
+          Alert.alert("Error", message);
+        },
+      },
+    );
+  };
+
+  const handleForgotPasswordFromProfile = async () => {
+    setManageAccountVisible(false);
+    const email = session?.user?.email;
+    if (!email) return;
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: "https://unitea.app/reset-password",
+      });
+      if (error) {
+        Alert.alert("Error", "Could not send reset email. Please try again.");
+      } else {
+        Alert.alert(
+          "Password Reset Email Sent",
+          `We've sent a password reset link to ${email}. Follow the link in the email to set a new password.`,
+        );
+      }
+    } catch {
+      Alert.alert("Error", "Could not send reset email. Please try again.");
+    }
   };
 
   // Show loading while fetching profile to prevent "User" flicker
@@ -303,6 +351,7 @@ export default function ProfileScreen() {
         onUpdateAvatar={handleAvatarUpdate}
         onUpdateUsername={handleUsernameUpdate}
         onUpdatePassword={handlePasswordUpdate}
+        onForgotPassword={handleForgotPasswordFromProfile}
         isDeleting={deleteAccountMutation.isPending}
         isUnblocking={unblockAllMutation.isPending}
         isUpdating={

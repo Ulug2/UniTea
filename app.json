@@ -48,6 +48,11 @@
               "scheme": "https",
               "host": "unitea.app",
               "pathPrefix": "/lostfoundpost"
+            },
+            {
+              "scheme": "https",
+              "host": "unitea.app",
+              "pathPattern": "/reset-password"
             }
           ],
           "category": [
