@@ -116,15 +116,30 @@ function Row({ label, value, title }: { label: string; value: number | null; tit
   );
 }
 
-// Bar chart — uses live data from get_daily_content_counts() RPC so values
-// always agree with the Content Created panel (both read from the posts table).
-function BarChart({ days, loading }: { days: DailyCount[]; loading: boolean }) {
+// Bar chart — 7 days per page, arrows navigate to older weeks.
+// `allDays` arrives newest-first from the RPC; offset=0 is the current week.
+function BarChart({ allDays, loading }: { allDays: DailyCount[]; loading: boolean }) {
+  const [offset, setOffset]   = useState(0);   // weeks back from today
   const [hovered, setHovered] = useState<string | null>(null);
 
-  const last14     = days.slice(0, 14);         // already DESC from RPC
-  const chronOrder = [...last14].reverse();      // oldest → newest for display
-  const max        = Math.max(...last14.map((d) => d.posts), 1);
-  const hoveredDay = last14.find((d) => d.day === hovered) ?? null;
+  const PAGE = 7;
+  const totalPages = Math.max(1, Math.ceil(allDays.length / PAGE));
+
+  // Slice newest-first, then reverse for left→right display
+  const pageDesc  = allDays.slice(offset * PAGE, offset * PAGE + PAGE);
+  const pageAsc   = [...pageDesc].reverse();
+  const max       = Math.max(...pageDesc.map((d) => d.posts), 1);
+  const hoveredDay = pageDesc.find((d) => d.day === hovered) ?? null;
+
+  // Date range label for the current page
+  const rangeLabel = (() => {
+    if (pageAsc.length === 0) return "";
+    const fmt = (iso: string) =>
+      new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
+        month: "short", day: "numeric", timeZone: "UTC",
+      });
+    return `${fmt(pageAsc[0].day)} – ${fmt(pageAsc[pageAsc.length - 1].day)}`;
+  })();
 
   if (loading) {
     return (
@@ -143,19 +158,71 @@ function BarChart({ days, loading }: { days: DailyCount[]; loading: boolean }) {
     );
   }
 
-  if (days.length === 0) {
-    return (
-      <p style={{ fontSize: 13, color: "#aaa" }}>No post data for the last 14 days.</p>
-    );
+  if (allDays.length === 0) {
+    return <p style={{ fontSize: 13, color: "#aaa" }}>No post data yet.</p>;
   }
+
+  const ArrowBtn = ({
+    dir,
+    disabled,
+    onClick,
+  }: {
+    dir: "prev" | "next";
+    disabled: boolean;
+    onClick: () => void;
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        background: "none",
+        border: "1px solid",
+        borderColor: disabled ? "#eee" : "#ddd",
+        borderRadius: 4,
+        width: 24,
+        height: 24,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: disabled ? "default" : "pointer",
+        color: disabled ? "#ccc" : "#555",
+        fontSize: 13,
+        lineHeight: 1,
+        padding: 0,
+      }}
+    >
+      {dir === "prev" ? "‹" : "›"}
+    </button>
+  );
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10 }}>
+      {/* Header row with nav */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 10,
+        }}
+      >
         <p style={{ fontSize: 13, color: "#555", fontWeight: 500, margin: 0 }}>
           Posts per day
         </p>
-        <span style={{ fontSize: 11, color: "#aaa" }}>(hover a bar for details)</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, color: "#888" }}>{rangeLabel}</span>
+          <ArrowBtn
+            dir="prev"
+            disabled={offset >= totalPages - 1}
+            onClick={() => { setOffset((o) => o + 1); setHovered(null); }}
+          />
+          <ArrowBtn
+            dir="next"
+            disabled={offset === 0}
+            onClick={() => { setOffset((o) => o - 1); setHovered(null); }}
+          />
+        </div>
       </div>
 
       {/* Tooltip panel */}
@@ -177,9 +244,7 @@ function BarChart({ days, loading }: { days: DailyCount[]; loading: boolean }) {
           <>
             <span style={{ fontSize: 12, fontWeight: 700, color: "#fff", minWidth: 64 }}>
               {new Date(hoveredDay.day + "T00:00:00Z").toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                timeZone: "UTC",
+                month: "short", day: "numeric", timeZone: "UTC",
               })}
             </span>
             {[
@@ -204,7 +269,7 @@ function BarChart({ days, loading }: { days: DailyCount[]; loading: boolean }) {
 
       {/* Bars */}
       <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 72 }}>
-        {chronOrder.map((d) => {
+        {pageAsc.map((d) => {
           const pct   = Math.round((d.posts / max) * 100);
           const isHov = hovered === d.day;
           return (
@@ -238,11 +303,9 @@ function BarChart({ days, loading }: { days: DailyCount[]; loading: boolean }) {
 
       {/* X-axis labels */}
       <div style={{ display: "flex", gap: 3, marginTop: 4 }}>
-        {chronOrder.map((d) => {
+        {pageAsc.map((d) => {
           const label = new Date(d.day + "T00:00:00Z").toLocaleDateString("en-US", {
-            month: "numeric",
-            day: "numeric",
-            timeZone: "UTC",
+            month: "numeric", day: "numeric", timeZone: "UTC",
           });
           return (
             <div
@@ -302,7 +365,7 @@ export function ActivityStats() {
     if (Date.now() - barFetchedAt.current < FIVE_MIN_MS) return;
     setBarLoading(true);
     try {
-      const { data, error } = await supabase.rpc("get_daily_content_counts", { p_days: 14 });
+      const { data, error } = await supabase.rpc("get_daily_content_counts", { p_days: 90 });
       if (!error && data) {
         setBarDays(data as DailyCount[]);
         barFetchedAt.current = Date.now();
@@ -540,7 +603,7 @@ export function ActivityStats() {
         </div>
 
         {/* Bar chart — live from get_daily_content_counts RPC */}
-        <BarChart days={barDays} loading={barLoading} />
+        <BarChart allDays={barDays} loading={barLoading} />
 
         {/* Content Created */}
         <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
