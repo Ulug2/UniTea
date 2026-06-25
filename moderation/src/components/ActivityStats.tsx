@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -271,7 +271,10 @@ function BarChart({ snapshots }: { snapshots: DailySnapshot[] }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ActivityStats() {
-  const supabase = createClient();
+  // Stable client reference — createClient() must NOT be called on every render
+  // or useCallback([supabase]) creates a new function each render, which triggers
+  // the fetchContent useEffect every render, causing an infinite loading loop.
+  const supabase = useMemo(() => createClient(), []);
 
   // Snapshot data — used only for bar chart and yesterday's DAU.
   // Source: daily_stats_snapshots (nightly cron at 05:05 UTC).
@@ -298,6 +301,7 @@ export function ActivityStats() {
   // 1d = today (since UTC midnight); 7d = today + previous 6 days; 30d = today + previous 29 days.
   const [content, setContent] = useState<ContentMetrics | null>(null);
   const [contentLoading, setContentLoading] = useState(true);
+  const [contentError, setContentError] = useState<string | null>(null);
   const [contentPeriod, setContentPeriod] = useState<"1d" | "7d" | "30d">("7d");
 
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
@@ -419,6 +423,7 @@ export function ActivityStats() {
         since.setUTCHours(0, 0, 0, 0);
         const iso = since.toISOString();
 
+        setContentError(null);
         const [postsRes, commentsRes, communitiesRes] = await Promise.all([
           supabase
             .from("posts")
@@ -436,13 +441,18 @@ export function ActivityStats() {
             .gte("created_at", iso),
         ]);
 
-        setContent({
-          posts: postsRes.count ?? 0,
-          comments: commentsRes.count ?? 0,
-          communities: communitiesRes.count ?? 0,
-        });
-      } catch {
-        // Non-fatal.
+        const firstErr = postsRes.error ?? commentsRes.error ?? communitiesRes.error;
+        if (firstErr) {
+          setContentError(firstErr.message);
+        } else {
+          setContent({
+            posts: postsRes.count ?? 0,
+            comments: commentsRes.count ?? 0,
+            communities: communitiesRes.count ?? 0,
+          });
+        }
+      } catch (e: unknown) {
+        setContentError(e instanceof Error ? e.message : "Unknown error");
       } finally {
         setContentLoading(false);
       }
@@ -658,6 +668,10 @@ export function ActivityStats() {
                 </div>
               ))}
             </div>
+          ) : contentError ? (
+            <p style={{ fontSize: 13, color: "#c62828", margin: 0 }}>
+              Error: {contentError}
+            </p>
           ) : (
             <div style={{ display: "flex", gap: 40, flexWrap: "wrap" }}>
               {[
