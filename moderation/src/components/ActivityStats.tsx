@@ -1,145 +1,237 @@
 "use client";
 
+/**
+ * ActivityStats — Moderation Analytics Dashboard
+ *
+ * DATA SOURCES
+ * ─────────────────────────────────────────────────────────────────────
+ * Activity table (DAU / WAU / MAU)
+ *   RPC: get_event_counts_period(p_days)
+ *   Source: user_activity_events (live, UTC-midnight anchored)
+ *   Returns COUNT(*) per event_type — raw event occurrences, not unique users.
+ *   p_days=1  → since today 00:00 UTC          (Today column)
+ *   p_days=7  → since 6 days ago 00:00 UTC     (7-day column)
+ *   p_days=30 → since 29 days ago 00:00 UTC    (30-day column)
+ *
+ * Bar chart
+ *   RPC: get_daily_content_counts(p_days=90)
+ *   Source: posts / comments / communities tables (live, grouped by calendar date UTC)
+ *   Newest-first; paginated 7 days per page with ‹ › arrows.
+ *
+ * Content Created
+ *   Direct COUNT queries on posts / comments / communities
+ *   UTC-midnight anchored per period (Today / 7 days / 30 days)
+ *   Always live — never cached beyond the current render cycle.
+ *
+ * CACHE TTLs
+ * ─────────────────────────────────────────────────────────────────────
+ * Today's event counts : auto-refreshes every 30 seconds
+ * 7-day event counts   : 5 minutes
+ * 30-day event counts  : 15 minutes
+ * Bar chart data       : 5 minutes
+ * Content Created      : no cache (re-queries on period change or Refresh)
+ *
+ * EVENT TYPES (user_activity_events.event_type)
+ * ─────────────────────────────────────────────────────────────────────
+ * session_start      – app cold-start (INITIAL_SESSION) or explicit login (SIGNED_IN).
+ *                      TOKEN_REFRESHED is intentionally excluded to prevent inflation.
+ * engaged_session    – user stayed on the feed for ≥10 seconds.
+ * post_created       – user successfully created a post.
+ * comment_created    – user successfully created a comment.
+ * community_created  – user successfully created a community.
+ */
+
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type DailyCount = {
-  day: string;        // ISO date string, e.g. "2026-06-24"
-  posts: number;
-  comments: number;
-  communities: number;
+type EventCounts = {
+  session_start:      number;
+  engaged_session:    number;
+  post_created:       number;
+  comment_created:    number;
+  community_created:  number;
 };
 
-type PreciseMetrics = {
-  dau_basic: number;
-  dau_engaged: number;
-  dau_action: number;
-  wau_basic: number;
-  wau_engaged: number;
-  wau_action: number;
-  mau_basic: number;
-  mau_engaged: number;
-  mau_action: number;
+type DailyCount = {
+  day:         string; // "YYYY-MM-DD"
+  posts:       number;
+  comments:    number;
+  communities: number;
 };
 
 type ContentMetrics = {
-  posts: number;
-  comments: number;
+  posts:       number;
+  comments:    number;
   communities: number;
 };
 
-// ── Cache TTLs ────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-const ONE_HOUR_MS  = 60 * 60 * 1000;
-const FIVE_MIN_MS  =  5 * 60 * 1000;
+const EMPTY_COUNTS: EventCounts = {
+  session_start:     0,
+  engaged_session:   0,
+  post_created:      0,
+  comment_created:   0,
+  community_created: 0,
+};
+
+function parseEventRows(rows: { event_type: string; count: number }[]): EventCounts {
+  const out = { ...EMPTY_COUNTS };
+  for (const row of rows) {
+    if (row.event_type in out) {
+      (out as Record<string, number>)[row.event_type] = Number(row.count);
+    }
+  }
+  return out;
+}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function StatCard({
-  label,
-  basic,
-  engaged,
-  action,
+const EVENT_ROWS: { key: keyof EventCounts; label: string; description: string }[] = [
+  { key: "session_start",     label: "App Opens",           description: "Cold-starts and explicit logins (not background token refreshes)" },
+  { key: "engaged_session",   label: "Engaged Sessions",    description: "User stayed on feed ≥10 seconds" },
+  { key: "post_created",      label: "Posts Created",       description: "Successful post creations" },
+  { key: "comment_created",   label: "Comments Created",    description: "Successful comment creations" },
+  { key: "community_created", label: "Communities Created", description: "Successful community creations" },
+];
+
+function ActivityTable({
+  today,
+  week,
+  month,
   loading,
 }: {
-  label: string;
-  basic: number | null;
-  engaged: number | null;
-  action: number | null;
-  loading: boolean;
+  today:   EventCounts | null;
+  week:    EventCounts | null;
+  month:   EventCounts | null;
+  loading: { today: boolean; week: boolean; month: boolean };
 }) {
-  return (
+  const Skeleton = () => (
     <div
-      style={{
-        flex: 1,
-        minWidth: 160,
-        background: "#f9f9f9",
-        borderRadius: 8,
-        padding: "16px 20px",
-        border: "1px solid #eee",
-      }}
-    >
-      <p
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          color: "#888",
-          textTransform: "uppercase",
-          letterSpacing: 1,
-          marginBottom: 12,
-        }}
-      >
-        {label}
-      </p>
-      {loading ? (
-        <>
-          {["Basic", "Engaged", "Action"].map((tier) => (
-            <div key={tier} style={{ marginBottom: 8 }}>
-              <span style={{ fontSize: 12, color: "#aaa" }}>{tier}</span>
-              <div
-                style={{
-                  display: "inline-block",
-                  marginLeft: 8,
-                  width: 40,
-                  height: 14,
-                  background: "#e0e0e0",
-                  borderRadius: 4,
-                  verticalAlign: "middle",
-                }}
-              />
-            </div>
-          ))}
-        </>
-      ) : (
-        <>
-          <Row label="Basic"   value={basic}   title="App opened / session started" />
-          <Row label="Engaged" value={engaged} title="Spent ≥10 seconds in the app" />
-          <Row label="Action"  value={action}  title="Created a post, comment, or community" />
-        </>
-      )}
-    </div>
+      style={{ display: "inline-block", width: 36, height: 14, background: "#e0e0e0", borderRadius: 3 }}
+    />
   );
-}
 
-function Row({ label, value, title }: { label: string; value: number | null; title: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-      <span style={{ fontSize: 13, color: "#555", cursor: "help" }} title={title}>
-        {label}
-      </span>
-      <span style={{ fontSize: 14, fontWeight: 600, color: value == null ? "#ccc" : "#111" }}>
-        {value == null ? "—" : value.toLocaleString()}
-      </span>
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr>
+            <th
+              style={{
+                textAlign: "left",
+                padding: "6px 12px 10px 0",
+                fontWeight: 700,
+                fontSize: 11,
+                color: "#888",
+                textTransform: "uppercase",
+                letterSpacing: 0.8,
+                borderBottom: "1px solid #f0f0f0",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Activity
+            </th>
+            {[
+              { label: "Today",   sub: "since midnight UTC", col: "today" as const },
+              { label: "7 days",  sub: "today + prev 6",     col: "week"  as const },
+              { label: "30 days", sub: "today + prev 29",    col: "month" as const },
+            ].map(({ label, sub, col }) => (
+              <th
+                key={col}
+                style={{
+                  textAlign: "right",
+                  padding: "6px 0 10px 20px",
+                  fontWeight: 700,
+                  fontSize: 11,
+                  color: "#888",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  borderBottom: "1px solid #f0f0f0",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {label}
+                <div style={{ fontSize: 9, fontWeight: 400, color: "#bbb", textTransform: "none", letterSpacing: 0 }}>
+                  {sub}
+                </div>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {EVENT_ROWS.map(({ key, label, description }, i) => (
+            <tr
+              key={key}
+              style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}
+            >
+              <td
+                style={{
+                  padding: "9px 12px 9px 0",
+                  color: "#333",
+                  fontWeight: 500,
+                  cursor: "help",
+                  borderBottom: "1px solid #f5f5f5",
+                }}
+                title={description}
+              >
+                {label}
+              </td>
+              {[
+                { data: today, isLoading: loading.today },
+                { data: week,  isLoading: loading.week  },
+                { data: month, isLoading: loading.month },
+              ].map(({ data, isLoading }, ci) => (
+                <td
+                  key={ci}
+                  style={{
+                    textAlign: "right",
+                    padding: "9px 0 9px 20px",
+                    fontWeight: 600,
+                    color: "#111",
+                    borderBottom: "1px solid #f5f5f5",
+                  }}
+                >
+                  {isLoading ? <Skeleton /> : (data?.[key] ?? 0).toLocaleString()}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p style={{ fontSize: 11, color: "#bbb", marginTop: 8, marginBottom: 0 }}>
+        Counts are raw event occurrences (not unique users) · sourced from user_activity_events
+        · Today auto-refreshes every 30s
+      </p>
     </div>
   );
 }
 
-// Bar chart — 7 days per page, arrows navigate to older weeks.
-// `allDays` arrives newest-first from the RPC; offset=0 is the current week.
+// ── Bar chart ─────────────────────────────────────────────────────────────────
+
 function BarChart({ allDays, loading }: { allDays: DailyCount[]; loading: boolean }) {
-  const [offset, setOffset]   = useState(0);   // weeks back from today
+  const [offset, setOffset]   = useState(0);
   const [hovered, setHovered] = useState<string | null>(null);
 
-  const PAGE = 7;
+  const PAGE       = 7;
   const totalPages = Math.max(1, Math.ceil(allDays.length / PAGE));
-
-  // Slice newest-first, then reverse for left→right display
-  const pageDesc  = allDays.slice(offset * PAGE, offset * PAGE + PAGE);
-  const pageAsc   = [...pageDesc].reverse();
-  const max       = Math.max(...pageDesc.map((d) => d.posts), 1);
+  const pageDesc   = allDays.slice(offset * PAGE, offset * PAGE + PAGE);
+  const pageAsc    = [...pageDesc].reverse();
+  const max        = Math.max(...pageDesc.map((d) => d.posts), 1);
   const hoveredDay = pageDesc.find((d) => d.day === hovered) ?? null;
 
-  // Date range label for the current page
-  const rangeLabel = (() => {
-    if (pageAsc.length === 0) return "";
-    const fmt = (iso: string) =>
-      new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
-        month: "short", day: "numeric", timeZone: "UTC",
-      });
-    return `${fmt(pageAsc[0].day)} – ${fmt(pageAsc[pageAsc.length - 1].day)}`;
-  })();
+  const fmtDate = (iso: string, opts?: Intl.DateTimeFormatOptions) =>
+    new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
+      timeZone: "UTC",
+      ...opts,
+    });
+
+  const rangeLabel =
+    pageAsc.length === 0
+      ? ""
+      : `${fmtDate(pageAsc[0].day, { month: "short", day: "numeric" })} – ${fmtDate(pageAsc[pageAsc.length - 1].day, { month: "short", day: "numeric" })}`;
 
   if (loading) {
     return (
@@ -159,18 +251,10 @@ function BarChart({ allDays, loading }: { allDays: DailyCount[]; loading: boolea
   }
 
   if (allDays.length === 0) {
-    return <p style={{ fontSize: 13, color: "#aaa" }}>No post data yet.</p>;
+    return <p style={{ fontSize: 13, color: "#aaa" }}>No data yet.</p>;
   }
 
-  const ArrowBtn = ({
-    dir,
-    disabled,
-    onClick,
-  }: {
-    dir: "prev" | "next";
-    disabled: boolean;
-    onClick: () => void;
-  }) => (
+  const NavBtn = ({ dir, disabled, onClick }: { dir: "‹" | "›"; disabled: boolean; onClick: () => void }) => (
     <button
       type="button"
       onClick={onClick}
@@ -180,52 +264,43 @@ function BarChart({ allDays, loading }: { allDays: DailyCount[]; loading: boolea
         border: "1px solid",
         borderColor: disabled ? "#eee" : "#ddd",
         borderRadius: 4,
-        width: 24,
-        height: 24,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        width: 24, height: 24,
+        display: "flex", alignItems: "center", justifyContent: "center",
         cursor: disabled ? "default" : "pointer",
         color: disabled ? "#ccc" : "#555",
-        fontSize: 13,
-        lineHeight: 1,
-        padding: 0,
+        fontSize: 14, padding: 0,
       }}
     >
-      {dir === "prev" ? "‹" : "›"}
+      {dir}
     </button>
   );
 
   return (
     <div>
-      {/* Header row with nav */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 10,
-        }}
-      >
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <p style={{ fontSize: 13, color: "#555", fontWeight: 500, margin: 0 }}>
           Posts per day
+          <span style={{ fontSize: 11, color: "#aaa", marginLeft: 8, fontWeight: 400 }}>
+            (hover for details)
+          </span>
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 12, color: "#888" }}>{rangeLabel}</span>
-          <ArrowBtn
-            dir="prev"
+          <NavBtn
+            dir="‹"
             disabled={offset >= totalPages - 1}
             onClick={() => { setOffset((o) => o + 1); setHovered(null); }}
           />
-          <ArrowBtn
-            dir="next"
+          <NavBtn
+            dir="›"
             disabled={offset === 0}
             onClick={() => { setOffset((o) => o - 1); setHovered(null); }}
           />
         </div>
       </div>
 
-      {/* Tooltip panel */}
+      {/* Tooltip */}
       <div
         style={{
           minHeight: 52,
@@ -243,9 +318,7 @@ function BarChart({ allDays, loading }: { allDays: DailyCount[]; loading: boolea
         {hoveredDay ? (
           <>
             <span style={{ fontSize: 12, fontWeight: 700, color: "#fff", minWidth: 64 }}>
-              {new Date(hoveredDay.day + "T00:00:00Z").toLocaleDateString("en-US", {
-                month: "short", day: "numeric", timeZone: "UTC",
-              })}
+              {fmtDate(hoveredDay.day, { month: "short", day: "numeric" })}
             </span>
             {[
               { label: "Posts",       value: hoveredDay.posts       },
@@ -253,12 +326,8 @@ function BarChart({ allDays, loading }: { allDays: DailyCount[]; loading: boolea
               { label: "Communities", value: hoveredDay.communities },
             ].map(({ label, value }) => (
               <div key={label} style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginBottom: 2 }}>
-                  {label}
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>
-                  {value.toLocaleString()}
-                </div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginBottom: 2 }}>{label}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{value.toLocaleString()}</div>
               </div>
             ))}
           </>
@@ -277,15 +346,7 @@ function BarChart({ allDays, loading }: { allDays: DailyCount[]; loading: boolea
               key={d.day}
               onMouseEnter={() => setHovered(d.day)}
               onMouseLeave={() => setHovered(null)}
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                cursor: "default",
-                height: "100%",
-                justifyContent: "flex-end",
-              }}
+              style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", cursor: "default", height: "100%", justifyContent: "flex-end" }}
             >
               <div
                 style={{
@@ -301,29 +362,21 @@ function BarChart({ allDays, loading }: { allDays: DailyCount[]; loading: boolea
         })}
       </div>
 
-      {/* X-axis labels */}
+      {/* X-axis */}
       <div style={{ display: "flex", gap: 3, marginTop: 4 }}>
-        {pageAsc.map((d) => {
-          const label = new Date(d.day + "T00:00:00Z").toLocaleDateString("en-US", {
-            month: "numeric", day: "numeric", timeZone: "UTC",
-          });
-          return (
-            <div
-              key={d.day}
-              style={{
-                flex: 1,
-                textAlign: "center",
-                fontSize: 9,
-                color: hovered === d.day ? "#1565c0" : "#bbb",
-                fontWeight: hovered === d.day ? 700 : 400,
-                overflow: "hidden",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {label}
-            </div>
-          );
-        })}
+        {pageAsc.map((d) => (
+          <div
+            key={d.day}
+            style={{
+              flex: 1, textAlign: "center", fontSize: 9,
+              color: hovered === d.day ? "#1565c0" : "#bbb",
+              fontWeight: hovered === d.day ? 700 : 400,
+              overflow: "hidden", whiteSpace: "nowrap",
+            }}
+          >
+            {fmtDate(d.day, { month: "numeric", day: "numeric" })}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -331,35 +384,78 @@ function BarChart({ allDays, loading }: { allDays: DailyCount[]; loading: boolea
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const FIVE_MIN_MS    =  5 * 60 * 1000;
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+const TODAY_INTERVAL = 30 * 1000; // auto-refresh today's counts every 30s
+
 export function ActivityStats() {
-  // Stable reference — must not be recreated on every render or useCallback
-  // deps change every render, causing fetchContent to loop infinitely.
+  // Stable reference — must not be recreated on every render (would cause
+  // useCallback deps to change → fetchContent useEffect loops infinitely).
   const supabase = useMemo(() => createClient(), []);
 
-  // Live daily counts for bar chart (from get_daily_content_counts RPC).
-  const [barDays, setBarDays]           = useState<DailyCount[]>([]);
-  const [barLoading, setBarLoading]     = useState(true);
-  const barFetchedAt                    = useRef<number>(0);
+  // Activity counts per period
+  const [todayCounts, setTodayCounts]   = useState<EventCounts | null>(null);
+  const [weekCounts,  setWeekCounts]    = useState<EventCounts | null>(null);
+  const [monthCounts, setMonthCounts]   = useState<EventCounts | null>(null);
+  const [todayLoading,  setTodayLoading]  = useState(true);
+  const [weekLoading,   setWeekLoading]   = useState(true);
+  const [monthLoading,  setMonthLoading]  = useState(true);
+  const weekFetchedAt  = useRef<number>(0);
+  const monthFetchedAt = useRef<number>(0);
 
-  // Precise DAU/WAU/MAU — COUNT DISTINCT from user_activity_events.
-  const [precise, setPrecise]           = useState<PreciseMetrics | null>(null);
-  const [preciseLoading, setPreciseLoading] = useState(true);
-  const preciseFetchedAt                = useRef<number>(0);
+  // Bar chart
+  const [barDays,    setBarDays]    = useState<DailyCount[]>([]);
+  const [barLoading, setBarLoading] = useState(true);
+  const barFetchedAt = useRef<number>(0);
 
-  // Content counts for the selected period — direct COUNT on live tables.
-  const [content, setContent]           = useState<ContentMetrics | null>(null);
+  // Content Created
+  const [content,        setContent]        = useState<ContentMetrics | null>(null);
   const [contentLoading, setContentLoading] = useState(true);
-  const [contentError, setContentError] = useState<string | null>(null);
-  const [contentPeriod, setContentPeriod] = useState<"1d" | "7d" | "30d">("7d");
-
-  // Live today content — refreshed every 5 min.
-  const [liveToday, setLiveToday]       = useState<ContentMetrics | null>(null);
-  const [liveTodayLoading, setLiveTodayLoading] = useState(true);
-  const liveTodayFetchedAt              = useRef<number>(0);
+  const [contentError,   setContentError]   = useState<string | null>(null);
+  const [contentPeriod,  setContentPeriod]  = useState<"1d" | "7d" | "30d">("7d");
 
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
-  // ── Data fetchers ───────────────────────────────────────────────────────────
+  // ── Fetchers ──────────────────────────────────────────────────────────────
+
+  // Live today counts — called on mount and every 30s by the interval below.
+  const fetchToday = useCallback(async () => {
+    setTodayLoading(true);
+    try {
+      const { data, error } = await supabase.rpc("get_event_counts_period", { p_days: 1 });
+      if (!error && data) {
+        setTodayCounts(parseEventRows(data as { event_type: string; count: number }[]));
+        setLastRefreshed(new Date());
+      }
+    } catch { /* non-fatal */ }
+    finally { setTodayLoading(false); }
+  }, [supabase]);
+
+  const fetchWeek = useCallback(async () => {
+    if (Date.now() - weekFetchedAt.current < FIVE_MIN_MS) return;
+    setWeekLoading(true);
+    try {
+      const { data, error } = await supabase.rpc("get_event_counts_period", { p_days: 7 });
+      if (!error && data) {
+        setWeekCounts(parseEventRows(data as { event_type: string; count: number }[]));
+        weekFetchedAt.current = Date.now();
+      }
+    } catch { /* non-fatal */ }
+    finally { setWeekLoading(false); }
+  }, [supabase]);
+
+  const fetchMonth = useCallback(async () => {
+    if (Date.now() - monthFetchedAt.current < FIFTEEN_MIN_MS) return;
+    setMonthLoading(true);
+    try {
+      const { data, error } = await supabase.rpc("get_event_counts_period", { p_days: 30 });
+      if (!error && data) {
+        setMonthCounts(parseEventRows(data as { event_type: string; count: number }[]));
+        monthFetchedAt.current = Date.now();
+      }
+    } catch { /* non-fatal */ }
+    finally { setMonthLoading(false); }
+  }, [supabase]);
 
   const fetchBar = useCallback(async () => {
     if (Date.now() - barFetchedAt.current < FIVE_MIN_MS) return;
@@ -369,55 +465,11 @@ export function ActivityStats() {
       if (!error && data) {
         setBarDays(data as DailyCount[]);
         barFetchedAt.current = Date.now();
-        setLastRefreshed(new Date());
       }
-    } finally {
-      setBarLoading(false);
-    }
+    } catch { /* non-fatal */ }
+    finally { setBarLoading(false); }
   }, [supabase]);
 
-  const fetchPrecise = useCallback(async () => {
-    if (Date.now() - preciseFetchedAt.current < ONE_HOUR_MS) return;
-    setPreciseLoading(true);
-    try {
-      const [
-        dauBasic, dauEngaged, dauAction,
-        wauBasic, wauEngaged, wauAction,
-        mauBasic, mauEngaged, mauAction,
-      ] = await Promise.all([
-        supabase.rpc("count_distinct_active_users", { p_event: "session_start",  p_days: 1  }),
-        supabase.rpc("count_distinct_active_users", { p_event: "engaged_session",p_days: 1  }),
-        supabase.rpc("count_distinct_active_users_action",                      { p_days: 1  }),
-        supabase.rpc("count_distinct_active_users", { p_event: "session_start",  p_days: 7  }),
-        supabase.rpc("count_distinct_active_users", { p_event: "engaged_session",p_days: 7  }),
-        supabase.rpc("count_distinct_active_users_action",                      { p_days: 7  }),
-        supabase.rpc("count_distinct_active_users", { p_event: "session_start",  p_days: 30 }),
-        supabase.rpc("count_distinct_active_users", { p_event: "engaged_session",p_days: 30 }),
-        supabase.rpc("count_distinct_active_users_action",                      { p_days: 30 }),
-      ]);
-      setPrecise({
-        dau_basic:   dauBasic.data  ?? 0,
-        dau_engaged: dauEngaged.data ?? 0,
-        dau_action:  dauAction.data  ?? 0,
-        wau_basic:   wauBasic.data  ?? 0,
-        wau_engaged: wauEngaged.data ?? 0,
-        wau_action:  wauAction.data  ?? 0,
-        mau_basic:   mauBasic.data  ?? 0,
-        mau_engaged: mauEngaged.data ?? 0,
-        mau_action:  mauAction.data  ?? 0,
-      });
-      preciseFetchedAt.current = Date.now();
-    } catch {
-      // non-fatal
-    } finally {
-      setPreciseLoading(false);
-    }
-  }, [supabase]);
-
-  // Period windows anchored to UTC midnight:
-  //   1d  = today only (since midnight)
-  //   7d  = today + prev 6 days
-  //   30d = today + prev 29 days
   const fetchContent = useCallback(async (period: "1d" | "7d" | "30d") => {
     setContentLoading(true);
     setContentError(null);
@@ -429,19 +481,11 @@ export function ActivityStats() {
       const iso = since.toISOString();
 
       const [postsRes, commentsRes, communitiesRes] = await Promise.all([
-        supabase
-          .from("posts")
-          .select("id", { count: "exact", head: true })
-          .gte("created_at", iso)
-          .or("is_deleted.is.null,is_deleted.eq.false"),
-        supabase
-          .from("comments")
-          .select("id", { count: "exact", head: true })
-          .gte("created_at", iso)
-          .or("is_deleted.is.null,is_deleted.eq.false"),
-        supabase
-          .from("communities")
-          .select("id", { count: "exact", head: true })
+        supabase.from("posts").select("id", { count: "exact", head: true })
+          .gte("created_at", iso).or("is_deleted.is.null,is_deleted.eq.false"),
+        supabase.from("comments").select("id", { count: "exact", head: true })
+          .gte("created_at", iso).or("is_deleted.is.null,is_deleted.eq.false"),
+        supabase.from("communities").select("id", { count: "exact", head: true })
           .gte("created_at", iso),
       ]);
 
@@ -462,78 +506,35 @@ export function ActivityStats() {
     }
   }, [supabase]);
 
-  const fetchLiveToday = useCallback(async () => {
-    if (Date.now() - liveTodayFetchedAt.current < FIVE_MIN_MS) return;
-    setLiveTodayLoading(true);
-    try {
-      const since = new Date();
-      since.setUTCHours(0, 0, 0, 0);
-      const iso = since.toISOString();
-
-      const [postsRes, commentsRes, communitiesRes] = await Promise.all([
-        supabase
-          .from("posts")
-          .select("id", { count: "exact", head: true })
-          .gte("created_at", iso)
-          .or("is_deleted.is.null,is_deleted.eq.false"),
-        supabase
-          .from("comments")
-          .select("id", { count: "exact", head: true })
-          .gte("created_at", iso)
-          .or("is_deleted.is.null,is_deleted.eq.false"),
-        supabase
-          .from("communities")
-          .select("id", { count: "exact", head: true })
-          .gte("created_at", iso),
-      ]);
-
-      setLiveToday({
-        posts:       postsRes.count       ?? 0,
-        comments:    commentsRes.count    ?? 0,
-        communities: communitiesRes.count ?? 0,
-      });
-      liveTodayFetchedAt.current = Date.now();
-      setLastRefreshed(new Date());
-    } catch {
-      // non-fatal
-    } finally {
-      setLiveTodayLoading(false);
-    }
-  }, [supabase]);
-
-  // ── Effects ─────────────────────────────────────────────────────────────────
+  // ── Effects ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    fetchToday();
+    fetchWeek();
+    fetchMonth();
     fetchBar();
-    fetchPrecise();
-    fetchLiveToday();
-  }, [fetchBar, fetchPrecise, fetchLiveToday]);
+  }, [fetchToday, fetchWeek, fetchMonth, fetchBar]);
+
+  // Auto-refresh today every 30 seconds so DAU stays live.
+  useEffect(() => {
+    const id = setInterval(fetchToday, TODAY_INTERVAL);
+    return () => clearInterval(id);
+  }, [fetchToday]);
 
   useEffect(() => {
     fetchContent(contentPeriod);
   }, [contentPeriod, fetchContent]);
 
-  // ── Derived values ──────────────────────────────────────────────────────────
-
-  const dauBasic   = precise?.dau_basic   ?? null;
-  const dauEngaged = precise?.dau_engaged ?? null;
-  const dauAction  = precise?.dau_action  ?? null;
-  const wauBasic   = precise?.wau_basic   ?? null;
-  const wauEngaged = precise?.wau_engaged ?? null;
-  const wauAction  = precise?.wau_action  ?? null;
-  const mauBasic   = precise?.mau_basic   ?? null;
-  const mauEngaged = precise?.mau_engaged ?? null;
-  const mauAction  = precise?.mau_action  ?? null;
-
-  // ── Refresh ─────────────────────────────────────────────────────────────────
+  // ── Refresh ───────────────────────────────────────────────────────────────
 
   const refreshAll = () => {
-    barFetchedAt.current       = 0;
-    preciseFetchedAt.current   = 0;
-    liveTodayFetchedAt.current = 0;
+    weekFetchedAt.current  = 0;
+    monthFetchedAt.current = 0;
+    barFetchedAt.current   = 0;
+    fetchToday();
+    fetchWeek();
+    fetchMonth();
     fetchBar();
-    fetchPrecise();
-    fetchLiveToday();
     fetchContent(contentPeriod);
   };
 
@@ -542,41 +543,27 @@ export function ActivityStats() {
         const secs = Math.round((Date.now() - lastRefreshed.getTime()) / 1000);
         if (secs < 60) return `${secs}s ago`;
         const mins = Math.floor(secs / 60);
-        if (mins < 60) return `${mins}m ago`;
-        const hrs = Math.floor(mins / 60);
-        const rem = mins % 60;
-        return rem > 0 ? `${hrs}h ${rem}m ago` : `${hrs}h ago`;
+        return mins < 60 ? `${mins}m ago` : `${Math.floor(mins / 60)}h ago`;
       })()
     : null;
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <section style={{ marginBottom: 32 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <h2 style={{ fontSize: 18 }}>Activity Statistics</h2>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <h2 style={{ fontSize: 18, margin: 0 }}>Activity Statistics</h2>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {timeAgoLabel != null && (
+          {timeAgoLabel && (
             <span style={{ fontSize: 12, color: "#aaa" }}>Last refreshed: {timeAgoLabel}</span>
           )}
           <button
             type="button"
             onClick={refreshAll}
             style={{
-              background: "none",
-              border: "1px solid #ddd",
-              borderRadius: 6,
-              padding: "4px 10px",
-              fontSize: 12,
-              cursor: "pointer",
-              color: "#555",
+              background: "none", border: "1px solid #ddd", borderRadius: 6,
+              padding: "4px 10px", fontSize: 12, cursor: "pointer", color: "#555",
             }}
           >
             Refresh
@@ -592,41 +579,26 @@ export function ActivityStats() {
           padding: 20,
           display: "flex",
           flexDirection: "column",
-          gap: 20,
+          gap: 24,
         }}
       >
-        {/* DAU / WAU / MAU */}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <StatCard label="DAU (24h)"  basic={dauBasic}   engaged={dauEngaged} action={dauAction}  loading={preciseLoading} />
-          <StatCard label="WAU (7d)"   basic={wauBasic}   engaged={wauEngaged} action={wauAction}  loading={preciseLoading} />
-          <StatCard label="MAU (30d)"  basic={mauBasic}   engaged={mauEngaged} action={mauAction}  loading={preciseLoading} />
-        </div>
+        {/* Activity table: DAU / WAU / MAU */}
+        <ActivityTable
+          today={todayCounts}
+          week={weekCounts}
+          month={monthCounts}
+          loading={{ today: todayLoading, week: weekLoading, month: monthLoading }}
+        />
 
-        {/* Bar chart — live from get_daily_content_counts RPC */}
-        <BarChart allDays={barDays} loading={barLoading} />
+        {/* Bar chart */}
+        <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 20 }}>
+          <BarChart allDays={barDays} loading={barLoading} />
+        </div>
 
         {/* Content Created */}
         <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 14,
-              flexWrap: "wrap",
-              gap: 8,
-            }}
-          >
-            <p
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#888",
-                textTransform: "uppercase",
-                letterSpacing: 1,
-                margin: 0,
-              }}
-            >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: 1, margin: 0 }}>
               Content Created
             </p>
             <div style={{ display: "flex", gap: 4 }}>
@@ -636,12 +608,8 @@ export function ActivityStats() {
                   type="button"
                   onClick={() => setContentPeriod(p)}
                   style={{
-                    padding: "4px 12px",
-                    borderRadius: 6,
-                    border: "1px solid",
-                    fontSize: 12,
-                    fontWeight: contentPeriod === p ? 700 : 400,
-                    cursor: "pointer",
+                    padding: "4px 12px", borderRadius: 6, border: "1px solid", fontSize: 12,
+                    fontWeight: contentPeriod === p ? 700 : 400, cursor: "pointer",
                     borderColor: contentPeriod === p ? "#1565c0" : "#ddd",
                     background:  contentPeriod === p ? "#e3f2fd" : "#fff",
                     color:       contentPeriod === p ? "#1565c0" : "#555",
@@ -689,51 +657,6 @@ export function ActivityStats() {
               : "Last 30 days (today + previous 29)"}
             {" · "}non-deleted content · live from source tables
           </p>
-        </div>
-
-        {/* Tier legend */}
-        <div
-          style={{
-            borderTop: "1px solid #f0f0f0",
-            paddingTop: 16,
-            display: "flex",
-            gap: 20,
-            flexWrap: "wrap",
-          }}
-        >
-          {[
-            { tier: "Basic",   dot: "#90caf9", desc: "App opened / session started" },
-            { tier: "Engaged", dot: "#42a5f5", desc: "Stayed on the feed for ≥10 seconds" },
-            { tier: "Action",  dot: "#1565c0", desc: "Created a post, comment, or community" },
-          ].map(({ tier, dot, desc }) => (
-            <div
-              key={tier}
-              style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "#666", maxWidth: 240 }}
-            >
-              <span
-                style={{ width: 10, height: 10, borderRadius: "50%", background: dot, flexShrink: 0, marginTop: 2 }}
-              />
-              <span>
-                <strong style={{ color: "#333" }}>{tier}:</strong> {desc}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Today so far */}
-        <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 16, fontSize: 13, color: "#555" }}>
-          <strong>Today so far: </strong>
-          {liveTodayLoading ? (
-            <span style={{ color: "#aaa" }}>loading…</span>
-          ) : liveToday ? (
-            <>
-              Posts {liveToday.posts.toLocaleString()}
-              {" · "}Comments {liveToday.comments.toLocaleString()}
-              {" · "}Communities {liveToday.communities.toLocaleString()}
-            </>
-          ) : (
-            <span style={{ color: "#aaa" }}>—</span>
-          )}
         </div>
       </div>
     </section>

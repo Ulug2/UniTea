@@ -163,20 +163,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         case "INITIAL_SESSION":
         case "SIGNED_IN":
-        case "TOKEN_REFRESHED":
           if (newSession) setSession(newSession);
           setError(null);
-          // Set user context in Sentry
           if (newSession?.user) {
-            logger.setUser(
-              newSession.user.id,
-              newSession.user.email,
-              undefined,
-            );
-            // Fire-and-forget: fetch university_id then log session_start.
-            // INITIAL_SESSION covers cold-starts (existing session restored on app open).
-            // SIGNED_IN covers explicit logins. TOKEN_REFRESHED covers background refreshes.
-            // All three count as a DAU event — the user opened / is using the app.
+            logger.setUser(newSession.user.id, newSession.user.email, undefined);
+            // Log session_start on cold-start (INITIAL_SESSION) and explicit
+            // login (SIGNED_IN) only. TOKEN_REFRESHED is intentionally excluded:
+            // it fires every ~1 hour while the app is open and would inflate
+            // the "App Opens" count in analytics with background token renewals.
             void (async () => {
               try {
                 const { data } = await supabase
@@ -191,6 +185,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 // non-fatal
               }
             })();
+          }
+          break;
+
+        case "TOKEN_REFRESHED":
+          // Update session only — do NOT log a session_start event here.
+          // See INITIAL_SESSION/SIGNED_IN case above for the reason.
+          if (newSession) setSession(newSession);
+          setError(null);
+          if (newSession?.user) {
+            logger.setUser(newSession.user.id, newSession.user.email, undefined);
           }
           break;
 
