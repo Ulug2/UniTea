@@ -59,8 +59,8 @@ export function useCreateCommunity() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: communityKeys.mine(userId) });
       queryClient.invalidateQueries({ queryKey: communityKeys.all });
-      if (data?.university_id) {
-        logActivity("community_created", data.university_id);
+      if (userId && data?.university_id) {
+        logActivity("community_created", data.university_id, userId);
       }
     },
     onError: (error) => {

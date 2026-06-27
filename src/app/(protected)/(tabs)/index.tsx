@@ -536,10 +536,10 @@ export default function FeedScreen() {
 
   // Log engaged_session after 10s of continuous feed view
   useEffect(() => {
-    if (!feedScreenUniversityId) return;
-    const t = setTimeout(() => logActivity("engaged_session", feedScreenUniversityId), 10_000);
+    if (!feedScreenUniversityId || !currentUserId) return;
+    const t = setTimeout(() => logActivity("engaged_session", feedScreenUniversityId, currentUserId), 10_000);
     return () => clearTimeout(t);
-  }, [feedScreenUniversityId]);
+  }, [feedScreenUniversityId, currentUserId]);
 
   const bannerAnim = useRef(new Animated.Value(1)).current;
   const bannerHiddenRef = useRef(false);

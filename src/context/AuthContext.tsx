@@ -179,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   .eq("id", newSession.user.id)
                   .single();
                 if (data?.university_id) {
-                  logActivity("session_start", data.university_id);
+                  logActivity("session_start", data.university_id, newSession.user.id);
                 }
               } catch {
                 // non-fatal

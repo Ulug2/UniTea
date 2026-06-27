@@ -113,7 +113,7 @@ export function useCreateComment({ postId, viewerId }: UseCreateCommentOptions) 
         .single();
 
       if (profile?.university_id) {
-        logActivity("comment_created", profile.university_id);
+        logActivity("comment_created", profile.university_id, viewerId);
       }
 
       // Preserve post_specific_anon_id from server so anonymous comments show "User #" immediately.

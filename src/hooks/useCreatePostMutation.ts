@@ -274,8 +274,8 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
       } else {
         queryClient.invalidateQueries({ queryKey: ["posts", "feed"] });
       }
-      if (universityId) {
-        logActivity("post_created", universityId);
+      if (universityId && currentUserId) {
+        logActivity("post_created", universityId, currentUserId);
       }
     },
     onSettled: () => {
