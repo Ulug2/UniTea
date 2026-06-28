@@ -7,9 +7,13 @@ import {
   rateLimitExceededResponse,
 } from "../_shared/rateLimit.ts";
 
-// 10 lookups per minute per IP (this endpoint iterates all auth users — expensive)
-const EMAIL_CHECK_RATE_LIMIT_MAX = 10;
+// 5 lookups per minute per IP
+const EMAIL_CHECK_RATE_LIMIT_MAX = 5;
 const EMAIL_CHECK_RATE_LIMIT_WINDOW_SECONDS = 60;
+
+// 5 lookups per hour per email address — limits enumeration regardless of IP rotation
+const EMAIL_CHECK_PER_EMAIL_MAX = 5;
+const EMAIL_CHECK_PER_EMAIL_WINDOW_SECONDS = 3600;
 
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
@@ -41,12 +45,12 @@ serve(async (req) => {
   try {
     // Rate limit by IP before doing anything expensive
     const clientIp = getClientIp(req);
-    const allowed = await checkRateLimit(
+    const allowedByIp = await checkRateLimit(
       `email-check:${clientIp}`,
       EMAIL_CHECK_RATE_LIMIT_MAX,
       EMAIL_CHECK_RATE_LIMIT_WINDOW_SECONDS,
     );
-    if (!allowed) {
+    if (!allowedByIp) {
       return rateLimitExceededResponse(corsHeaders, EMAIL_CHECK_RATE_LIMIT_WINDOW_SECONDS);
     }
 
@@ -57,6 +61,16 @@ serve(async (req) => {
         JSON.stringify({ error: "Email required", exists: false, isVerified: false }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Per-email rate limit — throttles enumeration even when attackers rotate IPs.
+    const allowedByEmail = await checkRateLimit(
+      `email-check-addr:${normalized}`,
+      EMAIL_CHECK_PER_EMAIL_MAX,
+      EMAIL_CHECK_PER_EMAIL_WINDOW_SECONDS,
+    );
+    if (!allowedByEmail) {
+      return rateLimitExceededResponse(corsHeaders, EMAIL_CHECK_PER_EMAIL_WINDOW_SECONDS);
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;

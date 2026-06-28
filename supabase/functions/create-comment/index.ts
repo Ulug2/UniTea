@@ -257,7 +257,7 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
             type: "comment_reply",
             related_post_id: post_id,
             related_comment_id: data?.id, // Optional, for future use
-            related_user_id: user.id,
+            related_user_id: is_anonymous ? null : user.id,
             message: "Your post received a new comment.",
             is_read: false,
           })
