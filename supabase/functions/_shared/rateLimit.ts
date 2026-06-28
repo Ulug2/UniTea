@@ -1,6 +1,8 @@
 // Supabase Edge Function - Runs on Deno runtime
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const RATE_LIMIT_TIMEOUT_MS = 2000;
+
 /**
  * Check a sliding-window rate limit via the check_rate_limit() Postgres function.
  *
@@ -21,20 +23,35 @@ export async function checkRateLimit(
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { data, error } = await adminClient.rpc("check_rate_limit", {
-    p_key: key,
-    p_max_requests: maxRequests,
-    p_window_seconds: windowSeconds,
-  });
+  try {
+    // Race the DB call against a hard deadline so a slow or hung rate-limit
+    // table never blocks the calling function indefinitely.
+    const dbCall = adminClient.rpc("check_rate_limit", {
+      p_key: key,
+      p_max_requests: maxRequests,
+      p_window_seconds: windowSeconds,
+    });
 
-  if (error) {
-    // Fail open: if the rate-limit check itself errors, allow the request
-    // and log so we notice infra issues without blocking real users.
-    console.error("Rate limit check error:", error);
+    const timeout = new Promise<{ data: null; error: Error }>((resolve) =>
+      setTimeout(
+        () => resolve({ data: null, error: new Error("rate limit check timed out") }),
+        RATE_LIMIT_TIMEOUT_MS,
+      )
+    );
+
+    const { data, error } = await Promise.race([dbCall, timeout]);
+
+    if (error) {
+      // Fail open: allow the request but log so infra issues are visible.
+      console.error("Rate limit check error:", error.message ?? error);
+      return true;
+    }
+
+    return Boolean(data);
+  } catch (err) {
+    console.error("Rate limit check exception:", err);
     return true;
   }
-
-  return Boolean(data);
 }
 
 /** Extract the best-effort client IP from request headers. */

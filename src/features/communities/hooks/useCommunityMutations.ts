@@ -3,6 +3,7 @@ import { Alert } from "react-native";
 import { useAuth } from "../../../context/AuthContext";
 import { logger } from "../../../utils/logger";
 import { logActivity } from "../../../utils/activityLogger";
+import { supabase } from "../../../lib/supabase";
 import { communitiesTable } from "../data/client";
 import { communityKeys } from "../data/queryKeys";
 import { isRateLimitError } from "../../../utils/clientRateLimit";
@@ -37,24 +38,36 @@ export function useCreateCommunity() {
       const name = normalizeCommunityName(input.name);
       const description = normalizeCommunityDescription(input.description);
 
-      // university_id is intentionally omitted: the BEFORE INSERT trigger
-      // set_community_university_id() fills it from the creator's profile.
-      const payload = {
-        name,
-        description,
-        avatar_url: input.avatarUrl || null,
-        created_by: userId,
-      } satisfies Omit<CommunityInsert, "university_id">;
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("You must be logged in.");
 
-      const { data, error } = await communitiesTable()
-        .insert(payload as CommunityInsert)
-        .select(
-          "id, name, description, avatar_url, university_id, created_by, created_at",
-        )
-        .single();
+      const response = await fetch(`${supabaseUrl}/functions/v1/create-community`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+        },
+        body: JSON.stringify({
+          name,
+          description,
+          avatar_url: input.avatarUrl || null,
+        }),
+      });
 
-      if (error) throw error;
-      return data as Community;
+      const responseData = await response.json();
+
+      if (response.status === 429) {
+        const err = new Error(responseData.error ?? "Rate limit exceeded");
+        (err as any).isRateLimit = true;
+        throw err;
+      }
+      if (!response.ok) {
+        throw new Error(responseData.error ?? "Failed to create community");
+      }
+
+      return responseData as Community;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: communityKeys.mine(userId) });
@@ -65,7 +78,7 @@ export function useCreateCommunity() {
     },
     onError: (error) => {
       logger.error("Failed to create community", error as Error);
-      if (isRateLimitError(error)) {
+      if (isRateLimitError(error) || (error as any)?.isRateLimit) {
         Alert.alert("Slow down", "You're creating communities too quickly. Please wait before trying again.");
         return;
       }

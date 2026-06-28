@@ -30,7 +30,7 @@ serve(async (req: Request) => {
       );
     }
 
-    const supabase = createClient(
+    const callerClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
       { global: { headers: { Authorization: authHeader } } }
@@ -39,7 +39,7 @@ serve(async (req: Request) => {
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser();
+    } = await callerClient.auth.getUser();
 
     if (authError || !user) {
       return new Response(
@@ -57,13 +57,28 @@ serve(async (req: Request) => {
       );
     }
 
-    const { data: profile } = await supabase
+    // Use service role for all DB reads so admin/post lookups bypass RLS entirely.
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!serviceKey) {
+      console.error("delete-post: SUPABASE_SERVICE_ROLE_KEY not set");
+      return new Response(
+        JSON.stringify({ error: "Server configuration error" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      serviceKey,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const { data: profile } = await supabaseAdmin
       .from("profiles")
       .select("is_admin")
       .eq("id", user.id)
       .single();
 
-    const { data: post } = await supabase
+    const { data: post } = await supabaseAdmin
       .from("posts")
       .select("user_id, image_url, image_urls")
       .eq("id", post_id)
@@ -84,21 +99,6 @@ serve(async (req: Request) => {
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    // Use service role to bypass RLS (we already verified owner or admin above)
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!serviceKey) {
-      console.error("delete-post: SUPABASE_SERVICE_ROLE_KEY not set");
-      return new Response(
-        JSON.stringify({ error: "Server configuration error" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      serviceKey,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
 
     const { error: deleteError } = await supabaseAdmin
       .from("posts")

@@ -30,7 +30,7 @@ serve(async (req: Request) => {
       );
     }
 
-    const supabase = createClient(
+    const callerClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
       { global: { headers: { Authorization: authHeader } } }
@@ -39,7 +39,7 @@ serve(async (req: Request) => {
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser();
+    } = await callerClient.auth.getUser();
 
     if (authError || !user) {
       return new Response(
@@ -48,7 +48,22 @@ serve(async (req: Request) => {
       );
     }
 
-    const { data: profile } = await supabase
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!serviceKey) {
+      console.error("unban-user: SUPABASE_SERVICE_ROLE_KEY not set");
+      return new Response(
+        JSON.stringify({ error: "Server configuration error" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      serviceKey,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    // Admin check via service role — bypasses RLS so the result is the true DB value.
+    const { data: profile } = await supabaseAdmin
       .from("profiles")
       .select("is_admin")
       .eq("id", user.id)
@@ -77,20 +92,6 @@ serve(async (req: Request) => {
       banned_until: null,
       updated_at: new Date().toISOString(),
     };
-
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!serviceKey) {
-      console.error("unban-user: SUPABASE_SERVICE_ROLE_KEY not set");
-      return new Response(
-        JSON.stringify({ error: "Server configuration error" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      serviceKey,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
 
     const { error: updateError } = await supabaseAdmin
       .from("profiles")

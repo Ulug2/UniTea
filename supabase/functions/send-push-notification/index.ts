@@ -370,14 +370,22 @@ serve(async (req) => {
     const batchQueue: BatchEntry[] = [];
 
     // Chat notifications
+    // Note: related_user_id is NULL for anonymous chats — the notify_chat_message
+    // DB trigger sets it to NULL at INSERT time so the recipient never sees the
+    // sender's real identity in their notifications table, even briefly.
+    // We use related_chat_id for context resolution when related_user_id is null.
     for (const [userId, chatNotifications] of chatNotificationsByUser) {
       try {
         const settings = chatSettingsByUserId.get(userId);
         if (!settings?.push_token || settings.notify_chats !== true) continue;
 
         const latestChat = chatNotifications[0];
-        const senderId = latestChat.related_user_id;
-        if (!senderId) continue;
+        const senderId = latestChat.related_user_id as string | null;
+        const relatedChatId: string | null = latestChat.related_chat_id ?? null;
+
+        // For anonymous chats, related_user_id is null; we still have related_chat_id.
+        // For non-anonymous chats, both should be present.
+        if (!senderId && !relatedChatId) continue;
 
         const notificationIds = chatNotifications.map((n) => n.id);
 
@@ -400,32 +408,13 @@ serve(async (req) => {
 
         if (!verifyNotifications || verifyNotifications.length === 0) continue;
 
-        let relatedChatId: string | null = latestChat.related_chat_id ?? null;
-        let isAnonymousChat = false;
+        // Determine if chat is anonymous.
+        // senderId is null ↔ trigger already marked the chat as anonymous.
+        const isAnonymousChat = !senderId;
 
-        if (relatedChatId) {
-          const { data: chatRow } = await supabase
-            .from("chats")
-            .select("is_anonymous")
-            .eq("id", relatedChatId)
-            .single();
-          isAnonymousChat = Boolean((chatRow as any)?.is_anonymous);
-        } else if (senderId) {
-          const chatContext = await resolveChatContextForUsers(userId, senderId);
-          relatedChatId = chatContext.chatId;
-          isAnonymousChat = chatContext.isAnonymous;
-        }
-
-        if (isAnonymousChat && senderId) {
-          await supabase
-            .from("notifications")
-            .update({ related_user_id: null })
-            .in("id", notificationIds)
-            .eq("type", "chat_message")
-            .eq("related_user_id", senderId);
-        }
-
-        const senderUsername = senderUsernameById.get(senderId) ?? "Someone";
+        const senderUsername = senderId
+          ? (senderUsernameById.get(senderId) ?? "Someone")
+          : "Anonymous user";
         const unreadChatCount = unreadChatCountByUserId.get(userId) ?? 0;
 
         batchQueue.push({
