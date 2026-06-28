@@ -417,7 +417,7 @@ export default function CreatePostScreen() {
           imagePaths = await mapWithConcurrency(
             images,
             MAX_CONCURRENT_UPLOADS,
-            (localUri) => uploadImage(localUri, supabase),
+            (localUri) => uploadImage(localUri, supabase, "post-images", session?.user?.id),
           );
           imagePath = imagePaths[0];
         } catch (error: any) {

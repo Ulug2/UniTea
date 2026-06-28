@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app", "http://localhost:3000"];
+const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app", "http://localhost:3000", "https://moderation-unitee.vercel.app"];
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin");
