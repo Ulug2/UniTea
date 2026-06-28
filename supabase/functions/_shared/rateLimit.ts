@@ -54,13 +54,15 @@ export async function checkRateLimit(
   }
 }
 
-/** Extract the best-effort client IP from request headers. */
+/** Extract the client IP from the Cloudflare-injected header.
+ *
+ * Supabase edge functions run on Cloudflare infrastructure, which always
+ * sets cf-connecting-ip to the real client IP.  x-forwarded-for is NOT
+ * used as a fallback because it is a client-supplied header that can be
+ * trivially spoofed to bypass IP-based rate limits.
+ */
 export function getClientIp(req: Request): string {
-  return (
-    req.headers.get("cf-connecting-ip") ??
-    req.headers.get("x-forwarded-for")?.split(",")[0].trim() ??
-    "unknown"
-  );
+  return req.headers.get("cf-connecting-ip") ?? "unknown";
 }
 
 /** Build a 429 Too Many Requests response. */

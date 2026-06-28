@@ -111,6 +111,20 @@ serve(async (req: Request) => {
       );
     }
 
+    // Prevent admin lock-out: no admin may ban another admin account.
+    const { data: targetProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", target_user_id)
+      .single();
+
+    if (targetProfile?.is_admin === true) {
+      return new Response(
+        JSON.stringify({ error: "Cannot ban another admin account" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const isPermanent = duration === "permanent";
     let banned_until: string | null = null;
     if (!isPermanent && DURATIONS[duration as keyof typeof DURATIONS]) {

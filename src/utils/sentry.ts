@@ -1,13 +1,28 @@
 import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
 
-/**
- * Initialize Sentry for error tracking and monitoring
- * Only initializes in production builds (not in development)
- */
+const SENSITIVE_PARAMS = ["code", "token", "access_token", "refresh_token"];
+
+function scrubUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    let changed = false;
+    for (const param of SENSITIVE_PARAMS) {
+      if (parsed.searchParams.has(param)) {
+        parsed.searchParams.set(param, "[Filtered]");
+        changed = true;
+      }
+    }
+    return changed ? parsed.toString() : url;
+  } catch {
+    return url.replace(
+      new RegExp(`([?&])(${SENSITIVE_PARAMS.join("|")})=[^&#]*`, "gi"),
+      "$1$2=[Filtered]",
+    );
+  }
+}
+
 export function initSentry() {
-  // Get Sentry DSN from environment variables
-  // You'll need to set EXPO_PUBLIC_SENTRY_DSN in your .env or app.json
   const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
 
   if (!sentryDsn) {
@@ -17,7 +32,6 @@ export function initSentry() {
     return;
   }
 
-  // Only initialize in production (not in development to avoid noise)
   if (__DEV__) {
     console.log("[Sentry] Skipping initialization in development mode");
     return;
@@ -26,17 +40,37 @@ export function initSentry() {
   Sentry.init({
     dsn: sentryDsn,
     environment: "production",
-    debug: false, // Set to true for debugging Sentry itself
-    tracesSampleRate: 0.1, // 10% of transactions will be sent (adjust based on volume)
+    debug: false,
+    tracesSampleRate: 0.1,
     enableAutoSessionTracking: true,
-    sessionTrackingIntervalMillis: 30000, // Track sessions every 30 seconds
-    beforeSend(event, hint) {
-      // Filter out sensitive data or noisy errors if needed
-      // You can modify or drop events here before they're sent
+    sessionTrackingIntervalMillis: 30000,
+
+    beforeSend(event) {
+      // Scrub auth codes from the request URL and query string so password
+      // recovery ?code= parameters never appear in Sentry error events.
+      if (event.request?.url) {
+        event.request.url = scrubUrl(event.request.url);
+      }
+      if (event.request?.query_string && typeof event.request.query_string === "string") {
+        event.request.query_string = scrubUrl(`?${event.request.query_string}`).replace(/^\?/, "");
+      }
       return event;
     },
-    // Tracing is automatically enabled in v7.x with tracesSampleRate
-    // No need to manually add ReactNativeTracing integration
+
+    beforeBreadcrumb(breadcrumb) {
+      // Scrub auth codes from navigation and XHR breadcrumbs that Sentry
+      // auto-captures, which may include the full deep-link URL.
+      if (breadcrumb.data?.url && typeof breadcrumb.data.url === "string") {
+        breadcrumb.data.url = scrubUrl(breadcrumb.data.url);
+      }
+      if (breadcrumb.data?.to && typeof breadcrumb.data.to === "string") {
+        breadcrumb.data.to = scrubUrl(breadcrumb.data.to);
+      }
+      if (breadcrumb.data?.from && typeof breadcrumb.data.from === "string") {
+        breadcrumb.data.from = scrubUrl(breadcrumb.data.from);
+      }
+      return breadcrumb;
+    },
   });
 
   console.log("[Sentry] Initialized successfully");
