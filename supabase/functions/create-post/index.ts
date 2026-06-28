@@ -27,15 +27,16 @@ const MAX_POST_IMAGES = 5;
 
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
-function getCorsHeaders(req: Request) {
+function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin");
-  const allowOrigin =
-    origin && ALLOWED_ORIGINS.includes(origin) ? origin : "*";
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type",
   };
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
 }
 
 serve(async (req: Request) => {
@@ -198,6 +199,13 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
     if (normalizedImageUrls.length > 0) {
       try {
         for (const currentImageUrl of normalizedImageUrls) {
+          if (!currentImageUrl.startsWith(`${user.id}/`)) {
+            return new Response(
+              JSON.stringify({ error: "Invalid image path" }),
+              { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
           const { data: signedUrlData, error: signedUrlError } =
             await supabase.storage.from("post-images").createSignedUrl(currentImageUrl, 300);
 

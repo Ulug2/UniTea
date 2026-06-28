@@ -5,4 +5,4 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.profile-count]
-verify_jwt = false
+verify_jwt = true

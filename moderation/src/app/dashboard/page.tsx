@@ -104,6 +104,7 @@ export default function DashboardPage() {
     left: number;
   } | null>(null);
   const [statusLoading, setStatusLoading] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Matchmaking state
   const [eventPhase, setEventPhase] = useState<EventPhase | null>(null);
@@ -154,6 +155,7 @@ export default function DashboardPage() {
         router.replace("/login");
         return;
       }
+      setCurrentUserId(session.user.id);
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
@@ -416,6 +418,7 @@ export default function DashboardPage() {
       .update({
         status: newStatus,
         resolved_at: newStatus === "resolved" ? new Date().toISOString() : null,
+        reviewed_by: currentUserId,
       })
       .eq("id", reportId);
     if (error) {
@@ -432,6 +435,7 @@ export default function DashboardPage() {
                 status: newStatus,
                 resolved_at:
                   newStatus === "resolved" ? new Date().toISOString() : null,
+                reviewed_by: currentUserId,
               }
             : r,
         ),

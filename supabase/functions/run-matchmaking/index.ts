@@ -6,13 +6,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
-function getCorsHeaders(req: Request) {
+function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin");
-  const allowOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : "*";
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   };
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
 }
 
 // ── Scoring ──────────────────────────────────────────────────────────────────

@@ -10,15 +10,16 @@ const DURATIONS = {
   "1_year": 365 * 24 * 60 * 60 * 1000,
 } as const;
 
-function getCorsHeaders(req: Request) {
+function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin");
-  const allowOrigin =
-    origin && ALLOWED_ORIGINS.includes(origin) ? origin : "*";
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type",
   };
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
 }
 
 serve(async (req: Request) => {
