@@ -13,7 +13,7 @@ type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 type FlippableAvatarProps = {
   currentUser: Profile | null;
-  onAvatarPress: () => void;
+  onAvatarPress: (showingBadge: boolean) => void;
 };
 
 const AVATAR_WIDTH = scale(120);
@@ -63,7 +63,7 @@ export function FlippableAvatar({
         if (isHorizontalSwipe && isFoundingMemberRef.current) {
           flip();
         } else if (isTap) {
-          onAvatarPressRef.current();
+          onAvatarPressRef.current(isFlippedRef.current);
         }
       },
     }),

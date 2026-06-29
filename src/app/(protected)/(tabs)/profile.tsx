@@ -37,6 +37,7 @@ export default function ProfileScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [manageAccountVisible, setManageAccountVisible] = useState(false);
   const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
+  const [viewingBadge, setViewingBadge] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "all" | "anonymous" | "bookmarked"
   >("all");
@@ -299,7 +300,10 @@ export default function ProfileScreen() {
         userDisplayName={userDisplayName}
         userEmail={userEmail}
         totalVotes={totalVotes}
-        onAvatarPress={() => setAvatarPreviewVisible(true)}
+        onAvatarPress={(showingBadge) => {
+            setViewingBadge(showingBadge);
+            setAvatarPreviewVisible(true);
+          }}
       />
       <ProfileTabs
         theme={theme}
@@ -372,6 +376,7 @@ export default function ProfileScreen() {
         visible={avatarPreviewVisible}
         onClose={() => setAvatarPreviewVisible(false)}
         avatarUrl={currentUser?.avatar_url || null}
+        showBadge={viewingBadge}
       />
     </View>
   );

@@ -10,17 +10,20 @@ import SupabaseImage from "../../../components/SupabaseImage";
 import EntityAvatar from "../../../components/EntityAvatar";
 import { getAvatarForEntity } from "../../../utils/entityDisplay";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
+import { FOUNDING_FATHER_BADGE } from "../../../constants/images";
 
 type AvatarPreviewModalProps = {
   visible: boolean;
   onClose: () => void;
   avatarUrl: string | null;
+  showBadge?: boolean;
 };
 
 export function AvatarPreviewModal({
   visible,
   onClose,
   avatarUrl,
+  showBadge = false,
 }: AvatarPreviewModalProps) {
   return (
     <Modal
@@ -31,7 +34,13 @@ export function AvatarPreviewModal({
     >
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable onPress={(e) => e.stopPropagation()}>
-          {avatarUrl ? (
+          {showBadge ? (
+            <Image
+              source={FOUNDING_FATHER_BADGE}
+              style={styles.avatarPreview}
+              resizeMode="cover"
+            />
+          ) : avatarUrl ? (
             avatarUrl.startsWith("http") ? (
               <Image source={{ uri: avatarUrl }} style={styles.avatarPreview} />
             ) : (

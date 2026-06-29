@@ -146,7 +146,7 @@ export default function UserProfileModal({
               <View style={styles.avatarContainer}>
                 <FlippableAvatar
                   currentUser={profile ?? null}
-                  onAvatarPress={() => {}}
+                  onAvatarPress={(_showingBadge: boolean) => {}}
                 />
               </View>
 

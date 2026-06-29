@@ -15,7 +15,7 @@ type ProfileHeaderProps = {
   userDisplayName: string;
   userEmail: string;
   totalVotes: number;
-  onAvatarPress: () => void;
+  onAvatarPress: (showingBadge: boolean) => void;
 };
 
 export function ProfileHeader({
