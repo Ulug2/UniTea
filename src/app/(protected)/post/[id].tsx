@@ -39,7 +39,6 @@ import { ErrorBoundary } from "react-error-boundary";
 import { logger } from "../../../utils/logger";
 import {
   useBlocks,
-  isBlockedPost,
   hasBlockForScope,
 } from "../../../hooks/useBlocks";
 import type { PostsSummaryViewRow } from "../../../types/posts";
@@ -442,7 +441,8 @@ export default function PostDetailed() {
   };
 
   const handleBlockUser = () => {
-    if (!detailedPost?.user_id) return;
+    const authorId = detailedPost?.user_id;
+    if (!authorId) return;
 
     const isAnon = detailedPost.is_anonymous ?? false;
     const scope = isAnon ? "anonymous_only" : "profile_only";
@@ -457,7 +457,7 @@ export default function PostDetailed() {
         style: "destructive",
         onPress: () =>
           blockUserMutation.mutate(
-            { targetUserId: detailedPost.user_id, scope },
+            { targetUserId: authorId, scope },
             { onSuccess: () => closeScreen() },
           ),
       },
@@ -625,20 +625,11 @@ export default function PostDetailed() {
     );
   }
 
-  // Check if post author is blocked (scope-aware)
-  const isPostAuthorBlocked = isBlockedPost(
-    blocks,
-    detailedPost.user_id,
-    detailedPost.is_anonymous ?? false,
-  );
-  // Check if reposted post's original author is blocked (scope-aware)
-  const isRepostAuthorBlocked = detailedPost.original_user_id
-    ? isBlockedPost(
-        blocks,
-        detailedPost.original_user_id,
-        detailedPost.original_is_anonymous ?? false,
-      )
-    : false;
+  // Block detection is server-side in posts_summary_view (migration 20260628000004),
+  // so these work correctly even for anonymous posts where user_id is redacted.
+  const isPostAuthorBlocked = detailedPost.is_author_blocked_by_viewer === true;
+  const isRepostAuthorBlocked =
+    detailedPost.is_original_author_blocked_by_viewer === true;
 
   // Hide post if author or repost author is blocked
   if (isPostAuthorBlocked || isRepostAuthorBlocked) {

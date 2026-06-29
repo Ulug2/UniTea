@@ -287,18 +287,27 @@ export default function CreatePostScreen() {
   }, [reset, closeScreen, isLostFound]);
 
   const imageAspectRatiosRef = React.useRef<Record<string, number>>({});
+  // True from when the picker closes until the compressed URIs land in state.
+  // During this window images[] is stale, so we must block submission.
+  const [isProcessingImages, setIsProcessingImages] = React.useState(false);
 
   const pickImage = async () => {
-    const selected = await pickAndPrepareImages();
-    if (selected.length > 0) {
-      for (const { uri, aspectRatio } of selected) {
-        imageAspectRatiosRef.current[uri] = aspectRatio;
+    setIsProcessingImages(true);
+    try {
+      const selected = await pickAndPrepareImages();
+      if (selected.length > 0) {
+        logger.info("Image processing complete", { count: selected.length });
+        for (const { uri, aspectRatio } of selected) {
+          imageAspectRatiosRef.current[uri] = aspectRatio;
+        }
+        setImages((previous) => {
+          const merged = [...previous, ...selected.map((s) => s.uri)];
+          const unique = Array.from(new Set(merged));
+          return unique.slice(0, MAX_POST_IMAGES);
+        });
       }
-      setImages((previous) => {
-        const merged = [...previous, ...selected.map((s) => s.uri)];
-        const unique = Array.from(new Set(merged));
-        return unique.slice(0, MAX_POST_IMAGES);
-      });
+    } finally {
+      setIsProcessingImages(false);
     }
   };
 
@@ -366,8 +375,9 @@ export default function CreatePostScreen() {
   });
 
   const handlePost = async () => {
-    // Prevent multiple submissions
-    if (isSubmitting || createPostMutation.isPending) {
+    // Prevent multiple submissions and guard against the race window where the
+    // user taps Post before image processing (resize/compress) has finished.
+    if (isSubmitting || createPostMutation.isPending || isProcessingImages) {
       return;
     }
 
@@ -465,8 +475,9 @@ export default function CreatePostScreen() {
     }
   };
 
-  // Validation: For feed posts, just content. For L&F posts, content + location. For reposts, content is optional
-  const isPostButtonDisabled = !canSubmit;
+  // Disable Post while form is invalid OR while selected images are still
+  // being resized/compressed (before they land in state).
+  const isPostButtonDisabled = !canSubmit || isProcessingImages;
 
   const handleTogglePoll = () => {
     if (isPoll) {
@@ -1026,8 +1037,16 @@ export default function CreatePostScreen() {
                       color={theme.text}
                     />
                   </Pressable>
-                  <Pressable onPress={pickImage} style={styles.footerButton}>
-                    <Feather name="image" size={icon24} color={theme.text} />
+                  <Pressable
+                    onPress={pickImage}
+                    style={styles.footerButton}
+                    disabled={isProcessingImages}
+                  >
+                    {isProcessingImages ? (
+                      <ActivityIndicator size="small" color={theme.primary} />
+                    ) : (
+                      <Feather name="image" size={icon24} color={theme.text} />
+                    )}
                   </Pressable>
                 </View>
               </>
@@ -1035,8 +1054,16 @@ export default function CreatePostScreen() {
             {isLostFound && (
               <>
                 <View />
-                <Pressable onPress={pickImage} style={styles.footerButton}>
-                  <Feather name="image" size={icon24} color={theme.text} />
+                <Pressable
+                  onPress={pickImage}
+                  style={styles.footerButton}
+                  disabled={isProcessingImages}
+                >
+                  {isProcessingImages ? (
+                    <ActivityIndicator size="small" color={theme.primary} />
+                  ) : (
+                    <Feather name="image" size={icon24} color={theme.text} />
+                  )}
                 </Pressable>
               </>
             )}

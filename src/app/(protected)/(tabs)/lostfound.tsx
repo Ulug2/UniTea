@@ -34,7 +34,6 @@ import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useAuth } from "../../../context/AuthContext";
 import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
-import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
 import { saveLostFoundToStorage } from "../../../utils/feedPersistence";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
@@ -78,8 +77,6 @@ export default function LostFoundScreen() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [searchQuery]);
-
-  const { data: blocks = [] } = useBlocks();
 
   // Fetch lost & found posts using optimized view with pagination
   const {
@@ -134,22 +131,13 @@ export default function LostFoundScreen() {
       new Map(allPosts.map((post) => [post.post_id, post])).values(),
     );
 
-    // Scope-aware block filtering: anonymous_only hides anon posts, profile_only hides public posts
-    return uniquePosts.filter((post) => {
-      if (isBlockedPost(blocks, post.user_id, post.is_anonymous ?? false))
-        return false;
-      if (
-        post.original_user_id &&
-        isBlockedPost(
-          blocks,
-          post.original_user_id,
-          post.original_is_anonymous ?? false,
-        )
-      )
-        return false;
-      return true;
-    });
-  }, [postsData, blocks]);
+    // Block filtering is computed server-side in posts_summary_view (migration 20260628000004).
+    return uniquePosts.filter(
+      (post) =>
+        !post.is_author_blocked_by_viewer &&
+        !post.is_original_author_blocked_by_viewer,
+    );
+  }, [postsData]);
 
   // Filter by search: match content, category, or location (single pass, case-insensitive)
   const filteredPosts = useMemo(() => {
@@ -247,7 +235,8 @@ export default function LostFoundScreen() {
   const blockUserMutation = useBlockUser(currentUserId ?? null);
 
   const handleBlockUser = useCallback(() => {
-    if (!selectedPost) return;
+    if (!selectedPost?.userId) return;
+    const targetUserId = selectedPost.userId;
     Alert.alert(
       "Block User",
       "You will no longer see public posts or receive messages from this user.",
@@ -258,7 +247,7 @@ export default function LostFoundScreen() {
           style: "destructive",
           onPress: () =>
             blockUserMutation.mutate(
-              { targetUserId: selectedPost.userId, scope: "profile_only" },
+              { targetUserId, scope: "profile_only" },
               { onSuccess: () => setSelectedPost(null) },
             ),
         },

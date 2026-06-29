@@ -7,7 +7,7 @@ import { logger } from "../../../utils/logger";
 
 type InitiateParams = {
   postId: string;
-  postAuthorId: string;
+  postAuthorId: string | null | undefined;
   /**
    * Whether the post was posted anonymously.
    *
@@ -38,6 +38,10 @@ export function useInitiateAnonymousChat() {
 
       if (!isPostAnonymous) {
         // ── Non-anonymous: user-scoped chat ────────────────────────────────
+        // postAuthorId is always a real UUID for non-anonymous posts (C1 only
+        // redacts user_id for anonymous posts in posts_summary_view).
+        if (!postAuthorId) throw new Error("postAuthorId required for non-anonymous chats");
+
         // Canonical ordering: smaller UUID is always participant_1 so the pair
         // is unique regardless of who initiates first (mirrors matchmaking).
         const [p1, p2] =
@@ -88,46 +92,16 @@ export function useInitiateAnonymousChat() {
       }
 
       // ── Anonymous: post-scoped chat ─────────────────────────────────────
-      // Each anonymous post gets its own conversation thread.
-      const { data: existing, error: selectErr } = await supabase
-        .from("chats")
-        .select("id")
-        .eq("post_id", postId)
-        .eq("initiator_id", currentUserId)
-        .eq("is_anonymous", true)
-        .maybeSingle();
+      // The real author ID is redacted in posts_summary_view (C1 security fix),
+      // so we delegate to a SECURITY DEFINER RPC that looks up the author
+      // from the base posts table and performs the insert server-side.
+      const { data: chatId, error: rpcErr } = await (supabase as any).rpc(
+        "initiate_anonymous_chat",
+        { p_post_id: postId },
+      );
 
-      if (selectErr && selectErr.code !== "PGRST116") throw selectErr;
-      if (existing) return { chatId: existing.id };
-
-      const { data: created, error: insertErr } = await supabase
-        .from("chats")
-        .insert({
-          participant_1_id: currentUserId,
-          participant_2_id: postAuthorId,
-          post_id: postId,
-          initiator_id: currentUserId,
-          is_anonymous: true,
-        })
-        .select("id")
-        .single();
-
-      if (insertErr) {
-        if (insertErr.code === "23505") {
-          const { data: dup, error: dupErr } = await supabase
-            .from("chats")
-            .select("id")
-            .eq("post_id", postId)
-            .eq("initiator_id", currentUserId)
-            .eq("is_anonymous", true)
-            .single();
-          if (dupErr) throw dupErr;
-          return { chatId: dup.id };
-        }
-        throw insertErr;
-      }
-
-      return { chatId: created.id };
+      if (rpcErr) throw rpcErr;
+      return { chatId: chatId as string };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

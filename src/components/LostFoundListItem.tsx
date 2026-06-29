@@ -26,13 +26,13 @@ import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 export type LostFoundPostForMenu = {
   postId: string;
-  userId: string;
-  username: string;
+  userId: string | null | undefined;
+  username: string | null;
 };
 
 type LostFoundListItemProps = {
   postId: string;
-  userId: string;
+  userId: string | null | undefined;
   content: string;
   title: string | null;
   imageUrl: string | null;
@@ -41,7 +41,7 @@ type LostFoundListItemProps = {
   location: string | null;
   isAnonymous: boolean | null;
   createdAt: string | null;
-  username: string;
+  username: string | null;
   avatarUrl: string | null;
   isVerified: boolean | null;
   onLongPress?: (post: LostFoundPostForMenu) => void;
@@ -285,7 +285,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
           .from("chats")
           .insert({
             participant_1_id: currentUserId,
-            participant_2_id: userId,
+            participant_2_id: userId!, // L&F posts are never anonymous; userId is always set
             post_id: postId,
             // Leave last_message_at null until the first message is sent so empty
             // chats stay hidden and are cleaned up if abandoned.

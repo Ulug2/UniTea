@@ -4,7 +4,8 @@
 
 export type PostsSummaryViewRow = {
   post_id: string;
-  user_id: string;
+  // Null for other users' anonymous posts (C1 redaction).
+  user_id: string | null;
   content: string;
   title: string | null;
   image_url: string | null;
@@ -25,7 +26,8 @@ export type PostsSummaryViewRow = {
   updated_at: string | null;
   edited_at: string | null;
   view_count: number | null;
-  username: string;
+  // Null for other users' anonymous posts (C1 redaction).
+  username: string | null;
   avatar_url: string | null;
   is_verified: boolean | null;
   is_banned: boolean | null;
@@ -47,5 +49,10 @@ export type PostsSummaryViewRow = {
   original_image_aspect_ratio?: number | null;
   original_is_anonymous?: boolean | null;
   original_created_at?: string | null;
+  // Server-computed block flags (see migration 20260628000004).
+  // True when the calling user has a matching block against the post author,
+  // evaluated against the real user_id before C1 redaction.
+  is_author_blocked_by_viewer?: boolean;
+  is_original_author_blocked_by_viewer?: boolean;
 };
 

@@ -456,7 +456,8 @@ export default function LostFoundPostDetailed() {
     setIsCreatingChat(true);
 
     try {
-      const targetId = post.user_id;
+      // L&F posts are never anonymous so user_id is always present.
+      const targetId = post.user_id!;
 
       const existing = await retryOp(async () => {
         const { data, error } = await supabase
@@ -572,7 +573,7 @@ export default function LostFoundPostDetailed() {
     ? currentUserId === post.user_id
       ? "You (Anonymous)"
       : "Anonymous"
-    : post.username;
+    : (post.username ?? "Unknown");
 
   const initial = displayName.charAt(0).toUpperCase();
 

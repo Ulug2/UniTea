@@ -215,7 +215,7 @@ function createTextCacheKey(
 type PostListItemProps = {
   // Post data from view
   postId: string;
-  userId: string;
+  userId: string | null | undefined;
   content: string;
   title?: string | null;
   imageUrl: string | null;
@@ -232,7 +232,7 @@ type PostListItemProps = {
   viewCount?: number | null;
 
   // User data from view
-  username: string;
+  username: string | null;
   avatarUrl: string | null;
   isVerified: boolean | null;
   universityDomain?: string | null;

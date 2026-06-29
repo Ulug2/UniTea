@@ -29,7 +29,6 @@ import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useFilterContext } from "../../../context/FilterContext";
 import { useAuth } from "../../../context/AuthContext";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
-import { useBlocks, isBlockedPost } from "../../../hooks/useBlocks";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { saveFeedToStorage } from "../../../utils/feedPersistence";
 import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
@@ -92,7 +91,6 @@ function FeedPageContent({
   const [searchVisible, setSearchVisible] = useState(false);
   const searchHeightAnim = useRef(new Animated.Value(0)).current;
 
-  const { data: blocks = [] } = useBlocks();
   const { data: currentUser } = useMyProfile(currentUserId);
   const isAdmin = currentUser?.is_admin === true;
   const universityId = currentUser?.university_id;
@@ -124,29 +122,18 @@ function FeedPageContent({
       new Map(allPosts.map((post) => [post.post_id, post])).values(),
     );
 
-    // Scope-aware block filtering: anonymous_only hides anon posts, profile_only hides public posts
-    let filteredPosts = uniquePosts;
-    if (blocks.length > 0) {
-      filteredPosts = uniquePosts.filter((post) => {
-        if (isBlockedPost(blocks, post.user_id, post.is_anonymous ?? false))
-          return false;
-        if (
-          post.original_user_id &&
-          isBlockedPost(
-            blocks,
-            post.original_user_id,
-            post.original_is_anonymous ?? false,
-          )
-        )
-          return false;
-        return true;
-      });
-    }
+    // Block filtering is computed server-side in posts_summary_view so it works
+    // for anonymous posts where user_id is redacted (C1 + migration 20260628000004).
+    const filteredPosts = uniquePosts.filter(
+      (post) =>
+        !post.is_author_blocked_by_viewer &&
+        !post.is_original_author_blocked_by_viewer,
+    );
 
     return filteredPosts.filter(
       (post) => !hiddenPostIds.includes(post.post_id),
     );
-  }, [postsData, blocks, hiddenPostIds]);
+  }, [postsData, hiddenPostIds]);
 
   useEffect(() => {
     if (!__DEV__ || !ENABLE_FEED_DIAGNOSTICS) return;
