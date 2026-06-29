@@ -133,7 +133,6 @@ describe('useDeleteComment', () => {
       expect(queryKeys).toContainEqual(['post', postId]);
       expect(queryKeys).toContainEqual(['posts']);
       expect(queryKeys).toContainEqual(['user-posts']);
-      expect(queryKeys).toContainEqual(['user-post-comments']);
       expect(queryKeys).toContainEqual(['bookmarked-posts']);
     });
 

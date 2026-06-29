@@ -6,7 +6,10 @@
 
 jest.mock('../../../lib/supabase', () => ({ supabase: { from: jest.fn() } }));
 jest.mock('../../../context/AuthContext', () => ({ useAuth: jest.fn() }));
-jest.mock('../../../hooks/useBlocks');
+jest.mock('../../../hooks/useBlocks', () => {
+  const real = jest.requireActual('../../../hooks/useBlocks');
+  return { ...real, useBlocks: jest.fn() };
+});
 
 import React from 'react';
 import { renderHook, waitFor } from '@testing-library/react-native';
@@ -171,13 +174,18 @@ describe('useMyPosts — filteredPosts', () => {
       { post_id: 'good-post', created_at: new Date().toISOString() },
     ];
 
-    mockedUseBlocks.mockReturnValue({ data: ['blocked-user'], isSuccess: true } as any);
+    mockedUseBlocks.mockReturnValue({
+      data: [{ userId: 'blocked-user', scope: 'profile_only' }],
+      isSuccess: true,
+    } as any);
 
-    mockFrom
-      .mockReturnValueOnce(makeSupabaseChain([]))               // user-posts (not bookmarked tab)
-      .mockReturnValueOnce(makeBookmarkChain(bookmarks))        // bookmarks
-      .mockReturnValueOnce(makeSupabaseChain([blockedPost, goodPost])) // posts_summary_view
-      .mockReturnValue(makeSupabaseChain([]));                  // votes + comments
+    // Route by table name — posts_summary_view is called at mount (user-posts + total-votes)
+    // and async (bookmarks view), so order is non-deterministic. Return the same posts for
+    // all posts_summary_view calls; only bookmarks table uses a different response.
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'bookmarks') return makeBookmarkChain(bookmarks);
+      return makeSupabaseChain([blockedPost, goodPost]);
+    });
 
     const { result } = renderHook(
       () => useMyPosts('user-1', 'bookmarked'),
@@ -221,18 +229,13 @@ describe('useMyPosts — filteredPosts', () => {
 // ============================================================
 describe('useMyPosts — postScoresMap', () => {
   it('calculates correct score: 2 upvotes, 1 downvote → 1', async () => {
-    const post = makePost({ post_id: 'scored-post' });
-    const votes = [
-      { post_id: 'scored-post', vote_type: 'upvote' },
-      { post_id: 'scored-post', vote_type: 'upvote' },
-      { post_id: 'scored-post', vote_type: 'downvote' },
-    ];
+    // postScoresMap reads post.vote_score directly from posts_summary_view
+    const post = makePost({ post_id: 'scored-post', vote_score: 1 });
 
-    mockFrom
-      .mockReturnValueOnce(makeSupabaseChain([post]))   // user-posts
-      .mockReturnValueOnce(makeSupabaseChain([]))       // bookmarks
-      .mockReturnValueOnce(makeSupabaseChain(votes))    // votes
-      .mockReturnValue(makeSupabaseChain([]));          // comments
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'bookmarks') return makeSupabaseChain([]);
+      return makeSupabaseChain([post]);
+    });
 
     const { result } = renderHook(
       () => useMyPosts('user-1', 'all'),
@@ -267,18 +270,13 @@ describe('useMyPosts — postScoresMap', () => {
 // ============================================================
 describe('useMyPosts — commentCountsMap', () => {
   it('counts comments per post correctly', async () => {
-    const post = makePost({ post_id: 'commented-post' });
-    const comments = [
-      { post_id: 'commented-post' },
-      { post_id: 'commented-post' },
-      { post_id: 'commented-post' },
-    ];
+    // commentCountsMap reads post.comment_count directly from posts_summary_view
+    const post = makePost({ post_id: 'commented-post', comment_count: 3 });
 
-    mockFrom
-      .mockReturnValueOnce(makeSupabaseChain([post]))      // user-posts
-      .mockReturnValueOnce(makeSupabaseChain([]))          // bookmarks
-      .mockReturnValueOnce(makeSupabaseChain([]))          // votes
-      .mockReturnValueOnce(makeSupabaseChain(comments));   // comments
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'bookmarks') return makeSupabaseChain([]);
+      return makeSupabaseChain([post]);
+    });
 
     const { result } = renderHook(
       () => useMyPosts('user-1', 'all'),
@@ -292,11 +290,10 @@ describe('useMyPosts — commentCountsMap', () => {
   it('falls back to post.comment_count when no comments fetched (non-bookmarked)', async () => {
     const post = makePost({ post_id: 'comment-fallback', comment_count: 7 });
 
-    mockFrom
-      .mockReturnValueOnce(makeSupabaseChain([post])) // user-posts
-      .mockReturnValueOnce(makeSupabaseChain([]))     // bookmarks
-      .mockReturnValueOnce(makeSupabaseChain([]))     // votes
-      .mockReturnValueOnce(makeSupabaseChain([]));    // comments (empty)
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'bookmarks') return makeSupabaseChain([]);
+      return makeSupabaseChain([post]);
+    });
 
     const { result } = renderHook(
       () => useMyPosts('user-1', 'all'),
@@ -318,11 +315,12 @@ describe('useMyPosts — totalVotes', () => {
       makePost({ post_id: 'p2', vote_score: 3 }),
     ];
 
-    mockFrom
-      .mockReturnValueOnce(makeSupabaseChain(posts))
-      .mockReturnValueOnce(makeSupabaseChain([]))
-      .mockReturnValueOnce(makeSupabaseChain([]))
-      .mockReturnValue(makeSupabaseChain([]));
+    // Route by table — posts_summary_view is called 3 times (user-posts, total-votes,
+    // possibly bookmarks). Order is non-deterministic, so all calls return the same posts.
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'bookmarks') return makeSupabaseChain([]);
+      return makeSupabaseChain(posts);
+    });
 
     const { result } = renderHook(
       () => useMyPosts('user-1', 'all'),

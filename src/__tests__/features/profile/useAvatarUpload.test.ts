@@ -3,8 +3,12 @@ import { Alert } from 'react-native';
 import { useAvatarUpload } from '../../../features/profile/hooks/useAvatarUpload';
 
 // ----- module mocks -------------------------------------------------------
-jest.mock('expo-image-picker', () => ({
-  launchImageLibraryAsync: jest.fn(),
+jest.mock('../../../context/AuthContext', () => ({
+  useAuth: jest.fn(),
+}));
+
+jest.mock('../../../hooks/useImagePipeline', () => ({
+  useImagePipeline: jest.fn(),
 }));
 
 jest.mock('../../../utils/supabaseImages', () => ({
@@ -20,11 +24,13 @@ jest.mock('../../../lib/supabase', () => ({
   supabase: {},
 }));
 
-import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from '../../../context/AuthContext';
+import { useImagePipeline } from '../../../hooks/useImagePipeline';
 import { uploadImage } from '../../../utils/supabaseImages';
 import { useUpdateProfile } from '../../../features/profile/hooks/useUpdateProfile';
 
-const mockLaunch = ImagePicker.launchImageLibraryAsync as jest.Mock;
+const mockUseAuth = useAuth as jest.Mock;
+const mockUseImagePipeline = useImagePipeline as jest.Mock;
 const mockUploadImage = uploadImage as jest.Mock;
 const mockUseUpdateProfile = useUpdateProfile as jest.Mock;
 
@@ -33,10 +39,17 @@ const mockUseUpdateProfile = useUpdateProfile as jest.Mock;
 describe('useAvatarUpload', () => {
   let alertSpy: jest.SpyInstance;
   let mockMutateAsync: jest.Mock;
+  let mockPickAndPrepareImage: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
     alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    mockUseAuth.mockReturnValue({ session: null });
+
+    mockPickAndPrepareImage = jest.fn();
+    mockUseImagePipeline.mockReturnValue({ pickAndPrepareImage: mockPickAndPrepareImage });
+
     mockMutateAsync = jest.fn();
     mockUseUpdateProfile.mockReturnValue({
       isPending: false,
@@ -51,7 +64,7 @@ describe('useAvatarUpload', () => {
   // ── picker cancelled ───────────────────────────────────────────────────
   describe('when user cancels the picker', () => {
     it('returns { status: "cancelled" }', async () => {
-      mockLaunch.mockResolvedValue({ canceled: true, assets: [] });
+      mockPickAndPrepareImage.mockResolvedValue(null);
 
       const { result } = renderHook(() => useAvatarUpload());
       let outcome: { status: string } | undefined;
@@ -69,10 +82,7 @@ describe('useAvatarUpload', () => {
   // ── happy path ─────────────────────────────────────────────────────────
   describe('on successful avatar upload', () => {
     beforeEach(() => {
-      mockLaunch.mockResolvedValue({
-        canceled: false,
-        assets: [{ uri: 'file://photo.jpg' }],
-      });
+      mockPickAndPrepareImage.mockResolvedValue({ uri: 'file://photo.jpg', aspectRatio: 1 });
       mockUploadImage.mockResolvedValue('https://cdn.example/avatars/me.webp');
       mockMutateAsync.mockResolvedValue(undefined);
     });
@@ -122,10 +132,7 @@ describe('useAvatarUpload', () => {
   // ── uploadImage throws ────────────────────────────────────────────────
   describe('when uploadImage throws', () => {
     it('returns { status: "error" } and shows an alert', async () => {
-      mockLaunch.mockResolvedValue({
-        canceled: false,
-        assets: [{ uri: 'file://photo.jpg' }],
-      });
+      mockPickAndPrepareImage.mockResolvedValue({ uri: 'file://photo.jpg', aspectRatio: 1 });
       mockUploadImage.mockRejectedValue(new Error('Upload failed'));
 
       const { result } = renderHook(() => useAvatarUpload());
@@ -144,10 +151,7 @@ describe('useAvatarUpload', () => {
   // ── mutateAsync throws ────────────────────────────────────────────────
   describe('when mutateAsync throws', () => {
     it('returns { status: "error" } and shows an alert', async () => {
-      mockLaunch.mockResolvedValue({
-        canceled: false,
-        assets: [{ uri: 'file://photo.jpg' }],
-      });
+      mockPickAndPrepareImage.mockResolvedValue({ uri: 'file://photo.jpg', aspectRatio: 1 });
       mockUploadImage.mockResolvedValue('https://cdn.example/img.webp');
       mockMutateAsync.mockRejectedValue(new Error('Profile update failed'));
 

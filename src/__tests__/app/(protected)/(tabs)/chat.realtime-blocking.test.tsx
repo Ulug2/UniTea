@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 const mockUseBlocks = jest.fn();
 const onCallbacks: Array<(payload: any) => void> = [];
 
+jest.mock("../../../../hooks/usePushNotifications", () => ({
+  getCurrentViewedChatId: jest.fn(() => null),
+}));
+
 jest.mock("../../../../context/AuthContext", () => ({
   useAuth: () => ({ session: { user: { id: "u1" } } }),
 }));

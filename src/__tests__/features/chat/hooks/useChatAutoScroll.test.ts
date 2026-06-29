@@ -1,5 +1,8 @@
 /**
  * Tests for src/features/chat/hooks/useChatAutoScroll.ts
+ *
+ * onScroll uses a 100ms throttle (setTimeout). Tests use fake timers to advance
+ * past the timeout so state updates are applied synchronously.
  */
 
 import React from 'react';
@@ -16,6 +19,14 @@ function makeScrollEvent(y: number) {
   } as any;
 }
 
+beforeEach(() => {
+  jest.useFakeTimers();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+});
+
 describe('useChatAutoScroll', () => {
   it('isAtBottom starts true and pendingNewCount starts 0', () => {
     const ref = makeFlatListRef();
@@ -29,6 +40,7 @@ describe('useChatAutoScroll', () => {
     const { result } = renderHook(() => useChatAutoScroll(ref as any));
     act(() => {
       result.current.onScroll(makeScrollEvent(80));
+      jest.runAllTimers();
     });
     expect(result.current.isAtBottom).toBe(true);
   });
@@ -38,6 +50,7 @@ describe('useChatAutoScroll', () => {
     const { result } = renderHook(() => useChatAutoScroll(ref as any));
     act(() => {
       result.current.onScroll(makeScrollEvent(81));
+      jest.runAllTimers();
     });
     expect(result.current.isAtBottom).toBe(false);
   });
@@ -48,6 +61,7 @@ describe('useChatAutoScroll', () => {
     // Scroll away and add pending
     act(() => {
       result.current.onScroll(makeScrollEvent(200));
+      jest.runAllTimers();
     });
     act(() => {
       result.current.incrementPending();
@@ -56,6 +70,7 @@ describe('useChatAutoScroll', () => {
     // Scroll back to bottom
     act(() => {
       result.current.onScroll(makeScrollEvent(0));
+      jest.runAllTimers();
     });
     expect(result.current.pendingNewCount).toBe(0);
   });
@@ -92,6 +107,7 @@ describe('useChatAutoScroll', () => {
     expect(result.current.isAtBottomRef.current).toBe(true);
     act(() => {
       result.current.onScroll(makeScrollEvent(200));
+      jest.runAllTimers();
     });
     expect(result.current.isAtBottomRef.current).toBe(false);
   });

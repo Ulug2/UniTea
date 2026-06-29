@@ -10,6 +10,7 @@ jest.mock('../../../../utils/logger', () => ({
 }));
 jest.mock('../../../../features/chat/data/cache', () => ({
   applyMessageDeletion: jest.fn(),
+  updateChatSummaryFromMessages: jest.fn(),
 }));
 
 import React from 'react';

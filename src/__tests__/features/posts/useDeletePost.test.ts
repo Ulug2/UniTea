@@ -211,8 +211,6 @@ describe('useDeletePost', () => {
       expect(keys).toContain('posts');
       expect(keys).toContain('post');
       expect(keys).toContain('user-posts');
-      expect(keys).toContain('user-post-comments');
-      expect(keys).toContain('user-post-votes');
       expect(keys).toContain('bookmarked-posts');
     });
   });

@@ -98,10 +98,13 @@ describe('fetchChatMessagesPage', () => {
     const result = await fetchChatMessagesPage(chatId, 0, 20);
 
     expect(mockFrom).toHaveBeenCalledWith('chat_messages');
-    expect(chain.select).toHaveBeenCalledWith('*');
+    expect(chain.select).toHaveBeenCalledWith(
+      '*, reply_message:reply_to_id(id, content, image_url, user_id)'
+    );
     expect(chain.eq).toHaveBeenCalledWith('chat_id', chatId);
     expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
-    expect(result).toEqual(messages);
+    // result rows are mapped to ChatMessageVM; check the message IDs survive the transform
+    expect((result as any[]).map((r) => r.id)).toEqual(['m1', 'm2']);
   });
 
   it('returns empty array when data is null/empty', async () => {

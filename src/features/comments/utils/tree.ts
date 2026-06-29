@@ -25,7 +25,7 @@ export function buildCommentTree(
   if (!flatComments.length) return [];
 
   const filtered = flatComments.filter((c) => {
-    if (!c.user_id) return true;
+    if (!c.user_id) return false; // defensive: comments must have an author
     const isAnon = c.is_anonymous ?? false;
     return !blocks.some(
       (b) =>

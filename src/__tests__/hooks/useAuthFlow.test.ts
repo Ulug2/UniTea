@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react-native';
+import { renderHook, act, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import { useAuthFlow } from '../../hooks/useAuthFlow';
 
@@ -87,6 +87,10 @@ describe('useAuthFlow', () => {
       kind: 'unknown',
       rawMessage: err instanceof Error ? err.message : String(err),
     }));
+
+    // Reset functions.invoke so implementations from previous tests don't leak
+    // (clearAllMocks clears call counts but NOT mockResolvedValue implementations)
+    mockFunctionsInvoke.mockReset();
   });
 
   afterEach(() => {
@@ -333,7 +337,7 @@ describe('useAuthFlow', () => {
       const { result } = renderHook(() => useAuthFlow(CONFIG));
       act(() => {
         result.current.setEmail('new@nu.edu.kz');
-        result.current.setPassword('secure123');
+        result.current.setPassword('Secure123');
         result.current.setPrivacyAccepted(true);
       });
 
@@ -350,7 +354,7 @@ describe('useAuthFlow', () => {
       const { result } = renderHook(() => useAuthFlow(CONFIG));
       act(() => {
         result.current.setEmail('new@nu.edu.kz');
-        result.current.setPassword('secure123');
+        result.current.setPassword('Secure123');
         result.current.setPrivacyAccepted(true);
       });
 
@@ -373,6 +377,8 @@ describe('useAuthFlow', () => {
     });
 
     it('calls resetPasswordForEmail and shows alert on success', async () => {
+      // Stub check-email-exists to return "exists" so the early-return guard doesn't fire
+      mockFunctionsInvoke.mockResolvedValue({ data: { exists: true, isVerified: true } });
       mockResetPw.mockResolvedValue({ error: null });
 
       const { result } = renderHook(() => useAuthFlow(CONFIG));
@@ -388,6 +394,7 @@ describe('useAuthFlow', () => {
     });
 
     it('switches mode to "login" after successful reset', async () => {
+      mockFunctionsInvoke.mockResolvedValue({ data: { exists: true, isVerified: true } });
       mockResetPw.mockResolvedValue({ error: null });
 
       const { result } = renderHook(() => useAuthFlow(CONFIG));
@@ -402,6 +409,7 @@ describe('useAuthFlow', () => {
     });
 
     it('sets emailError when resetPasswordForEmail returns error', async () => {
+      mockFunctionsInvoke.mockResolvedValue({ data: { exists: true, isVerified: true } });
       mockNormalizeAuthError.mockReturnValueOnce({
         message: 'Email not found',
         kind: 'unknown',
@@ -441,7 +449,7 @@ describe('useAuthFlow', () => {
     });
 
     it('hides showResendOption after successfully resending', async () => {
-      // First trigger showResendOption=true via applyAuthError
+      // Trigger showResendOption=true by signing in with an unconfirmed email
       mockNormalizeAuthError.mockReturnValue({
         message: 'Verify email',
         kind: 'email_not_confirmed',
@@ -452,14 +460,16 @@ describe('useAuthFlow', () => {
       const { result } = renderHook(() => useAuthFlow(CONFIG));
       act(() => { result.current.setEmail('a@nu.edu.kz'); result.current.setPassword('pass'); });
       await act(async () => { await result.current.signInWithEmail(); });
-      expect(result.current.showResendOption).toBe(true);
+      // React 18 batches async state updates; waitFor ensures the update is flushed
+      await waitFor(() => expect(result.current.showResendOption).toBe(true));
 
-      // Now resend
+      // Now resend — check-email-exists: exists but not yet verified (safe to resend)
       mockNormalizeAuthError.mockReturnValue({
         message: 'Unknown error',
         kind: 'unknown',
         rawMessage: 'unknown',
       });
+      mockFunctionsInvoke.mockResolvedValue({ data: { exists: true, isVerified: false } });
       mockResend.mockResolvedValue({ error: null });
       await act(async () => { await result.current.resendVerificationEmail(); });
 

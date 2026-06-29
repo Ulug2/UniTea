@@ -97,7 +97,7 @@ describe('useBlockUser', () => {
       });
     });
 
-    it('calls router.back() after successful block', async () => {
+    it('does not call router.back() — navigation is the caller\'s responsibility', async () => {
       const chain = buildChain({ data: null, error: null });
       mockFrom.mockReturnValueOnce(chain);
 
@@ -109,7 +109,7 @@ describe('useBlockUser', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(mockRouter.back).toHaveBeenCalledTimes(1);
+      expect(mockRouter.back).not.toHaveBeenCalled();
     });
 
     it('invalidates all expected query keys on success', async () => {

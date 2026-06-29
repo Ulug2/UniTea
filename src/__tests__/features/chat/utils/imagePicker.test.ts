@@ -1,14 +1,13 @@
 /**
  * Tests for src/features/chat/utils/imagePicker.ts
+ *
+ * pickChatImage picks an image from the library and returns the raw URI without
+ * any compression or manipulation (chat images are sent as-is for speed).
  */
 
 jest.mock('expo-image-picker', () => ({
   requestMediaLibraryPermissionsAsync: jest.fn(),
   launchImageLibraryAsync: jest.fn(),
-}));
-jest.mock('expo-image-manipulator', () => ({
-  manipulateAsync: jest.fn(),
-  SaveFormat: { WEBP: 'webp' },
 }));
 jest.mock('../../../../utils/logger', () => ({
   logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn() },
@@ -16,24 +15,20 @@ jest.mock('../../../../utils/logger', () => ({
 
 import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
 import { logger } from '../../../../utils/logger';
 import { pickChatImage } from '../../../../features/chat/utils/imagePicker';
 
 const mockRequestPerms = ImagePicker.requestMediaLibraryPermissionsAsync as jest.Mock;
 const mockLaunchLibrary = ImagePicker.launchImageLibraryAsync as jest.Mock;
-const mockManipulate = ImageManipulator.manipulateAsync as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-  // Default: permissions granted, picker returns an asset, manipulate returns URI
   mockRequestPerms.mockResolvedValue({ status: 'granted' });
   mockLaunchLibrary.mockResolvedValue({
     canceled: false,
     assets: [{ uri: 'file://picked.jpg' }],
   });
-  mockManipulate.mockResolvedValue({ uri: 'file://manipulated.webp' });
 });
 
 afterEach(() => {
@@ -41,17 +36,15 @@ afterEach(() => {
 });
 
 describe('pickChatImage', () => {
-  it('returns { localUri } on happy path', async () => {
+  it('returns { localUri } with the raw picker URI on happy path', async () => {
     const result = await pickChatImage();
-    expect(result).toEqual({ localUri: 'file://manipulated.webp' });
+    expect(result).toEqual({ localUri: 'file://picked.jpg' });
   });
 
-  it('calls manipulateAsync with resize width 1080 and compress 0.7 as WEBP', async () => {
+  it('passes allowsEditing: false to the image picker', async () => {
     await pickChatImage();
-    expect(mockManipulate).toHaveBeenCalledWith(
-      'file://picked.jpg',
-      [{ resize: { width: 1080 } }],
-      expect.objectContaining({ compress: 0.7, format: 'webp' })
+    expect(mockLaunchLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({ allowsEditing: false })
     );
   });
 

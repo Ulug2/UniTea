@@ -2,6 +2,20 @@
  * Tests for src/features/chat/hooks/useChatMessagesRealtime.ts
  */
 
+const mockFromChain = {
+  update: jest.fn().mockReturnThis(),
+  eq: jest.fn().mockReturnThis(),
+};
+Object.defineProperty(mockFromChain, 'then', {
+  get() {
+    const p = Promise.resolve({ error: null });
+    return p.then.bind(p);
+  },
+  configurable: true,
+});
+jest.mock('../../../../lib/supabase', () => ({
+  supabase: { from: jest.fn(() => mockFromChain) },
+}));
 jest.mock('../../../../features/chat/data/realtime', () => ({
   subscribeToChatMessages: jest.fn(),
 }));
