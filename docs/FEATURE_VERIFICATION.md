@@ -37,8 +37,8 @@ This document is the single source of truth for feature verification. Every feat
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 11 | Auth — Forgot / Reset password | ✅ | reset-password screen had 0 tests despite being the most security-sensitive screen in the app — added 12 |
-| 12 | Feed — Community filter + search | ⚠️ | Logic is inline in `CommunityFilterBar`/screen, not an extracted unit — no automated coverage |
+| 11 | Auth — Forgot / Reset password | ✅ | reset-password screen had 0 tests despite being the most security-sensitive screen in the app — added 12. Also fixed: tap-outside-to-dismiss keyboard was missing on the New Password form |
+| 12 | Feed — Community filter + search | ⚠️ | Fixed a real cross-feed cache leak: post/bookmark invalidation used the broad `["posts","feed"]` prefix instead of scoping to the affected community, so Campus Feed could transiently reflect another community's state until a manual refresh. Filter bar UI itself still has no dedicated coverage |
 | 13 | Feed — Block filtering (server-side, anonymous + profile scope) | ✅ | useBlocks, useBlockUser, useUnblockAll all covered |
 | 14 | Feed — Report post | ✅ | useReportPost covered |
 | 15 | Feed — Hide post (session-local) | ✅ | FilterContext had 0 tests — added 7 |
@@ -318,12 +318,12 @@ For each completed feature, record what was verified, any bugs found, root cause
 - `reset-password.tsx`: confirm-gate (defends against email-scanner link prefetch) → `verifyOtp`/`exchangeCodeForSession` → set-new-password form → `updateUser` → global `signOut({scope: "global"})` → success
 - Real-time password requirement checklist shared with Sign Up / Change Password
 
-**Verified:** The `reset-password.tsx` screen — despite ending in a global session revocation across every device — had zero test coverage. Full component test covering all 6 screen states and their transitions.
-**Bugs found:** None — logic was already correct (built and manually verified earlier this session).
-**Fix applied:** N/A
+**Verified:** The `reset-password.tsx` screen — despite ending in a global session revocation across every device — had zero test coverage. Full component test covering all 6 screen states and their transitions. Also confirmed Supabase's recovery token/link behavior: `verifyOtp`/`exchangeCodeForSession` consumes the token on first successful use (strictly single-use; a second tap of the same email link always fails), and requesting a new reset email invalidates any prior unused token. The established Supabase session survives app kill/restart, so a failed `updateUser` after successful verification can be retried without needing a new link.
+**Bugs found:** On the "Set New Password" form, tapping outside the password inputs did not dismiss the keyboard — there was no touch handler anywhere on the screen calling `Keyboard.dismiss()` (no `TouchableWithoutFeedback`/`Pressable` wrapper, no `ScrollView` with `keyboardShouldPersistTaps`). The only way to close the keyboard was the return key.
+**Fix applied:** Wrapped the form state's outer container in a `Pressable` with `onPress={Keyboard.dismiss}`. Nested `CustomInput`s and buttons correctly claim their own touch responder first, so this only fires on genuine background taps, and the OS handles the standard slide-down dismiss animation on both platforms automatically.
 **Tests added:** `src/__tests__/app/reset-password.test.tsx` — 12 tests: no-token → link_error, confirm-gate requires explicit tap before calling verifyOtp/exchangeCodeForSession, error/throw during verification → link_error, form validation gating, successful submit → updateUser + global signOut + success screen, updateUser error/throw handling, and "Back to Sign In" from every reachable state.
-**Known limitations:** `ForgotPasswordModal.tsx` itself (the email-entry step) is not separately tested — its only real logic is a single `resetPasswordForEmail` call already exercised via `useAuthFlow.test.ts`'s `resetPassword` describe block.
-**Last verified:** 2026-07-03
+**Known limitations:** `ForgotPasswordModal.tsx` itself (the email-entry step) is not separately tested — its only real logic is a single `resetPasswordForEmail` call already exercised via `useAuthFlow.test.ts`'s `resetPassword` describe block. The keyboard-dismiss fix has no dedicated RNTL test (simulating a background tap + asserting `Keyboard.dismiss` was called is low-value relative to a manual device check); verified by code inspection only.
+**Last verified:** 2026-07-04
 
 ---
 
@@ -336,12 +336,12 @@ For each completed feature, record what was verified, any bugs found, root cause
 - Selecting a pill sets `communityId`, which is part of `useFeedPosts`'s query key (covered — see Feature 4)
 - Per-tab search bar, pull-down to reveal
 
-**Verified:** Manually. `useFeedPosts`'s own community-scoping behavior (`community_id IS NULL` vs a specific id) is covered by Feature 4's tests, but the filter bar UI itself (`CommunityFilterBar`) and `useMyCommunities` have no dedicated tests.
-**Bugs found:** None during this pass.
-**Fix applied:** N/A
-**Tests added:** None — logic is presentation-only in the component; the underlying query behavior it drives is already covered.
-**Known limitations:** No automated coverage for the filter bar component or `useMyCommunities`. Low risk given the query logic it feeds is already tested.
-**Last verified:** 2026-07-03
+**Verified:** Manually, plus a full trace of the switching architecture (query key construction, per-community component mounting/keying, CSS layering of inactive panes) prompted by a user report of Community-feed posts briefly appearing in the Campus Feed until a manual refresh. `useFeedPosts`'s own community-scoping behavior (`community_id IS NULL` vs a specific id) is covered by Feature 4's tests. Confirmed the query keys, component instances (`key={feedKey}` per community, `display:"none"` — a true unmount-from-rendering, not just opacity — for inactive panes), and post-creation targeting (`resolvedCommunityId` threaded consistently from `create-post.tsx`) are all correctly isolated.
+**Bugs found:** `useCreatePostMutation`'s `onMutate` correctly scoped its *optimistic* cache write to the specific community, but `onSuccess`/`onSettled` invalidated the broad `["posts","feed"]` prefix — matching every filter × every community ever visited in the session, since visited feeds stay mounted (and therefore "active") indefinitely. `useBookmarkToggle` did the same. Because an invalidated-but-not-force-refetched query only becomes consistent again on its next natural trigger, this is the most plausible mechanism for Campus Feed transiently reflecting the wrong state until a manual pull-to-refresh forced a clean, correctly-scoped refetch. Separately, `useBookmarkToggle` invalidating `["posts","feed"]` was dead weight regardless — bookmark state is only ever read from `["bookmarks", postId]` and `["user-posts", viewerId]`, never from feed cache rows.
+**Fix applied:** Added `feedKeys.belongsToCommunity(communityId)` — a predicate matching only cache entries (any filter/search text) for one specific community or Campus. `useCreatePostMutation`'s `onMutate` (`cancelQueries`), `onSuccess`, and `onSettled` now scope to this predicate instead of the `["posts","feed"]` prefix, so creating a post never touches any other community's or Campus's cache. `useBookmarkToggle` no longer invalidates the feed cache at all.
+**Tests added:** `src/__tests__/features/communities/queryKeys.test.ts` — 6 tests for `belongsToCommunity` (matches same community/Campus across any filter/search, rejects a different community, rejects Campus↔community cross-matches, rejects unrelated/malformed keys, independent predicates per call). Updated `useCreatePostMutation.test.ts`'s success-invalidation test to assert the predicate's matching behavior instead of an exact key, and `useBookmarkToggle.test.ts` to assert the feed cache is never touched.
+**Known limitations:** Still no automated coverage for the filter bar component or `useMyCommunities` themselves (presentation-only, low risk). The scoping predicate matches on `communityId` alone, not `universityId` — safe in practice since a single session never has more than one university's feeds cached simultaneously, but worth revisiting if that assumption ever changes.
+**Last verified:** 2026-07-04
 
 ---
 

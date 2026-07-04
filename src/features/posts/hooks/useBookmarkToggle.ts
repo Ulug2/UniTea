@@ -44,8 +44,12 @@ export function useBookmarkToggle({ postId, viewerId }: UseBookmarkToggleOptions
     },
     onSuccess: () => {
       if (!viewerId || !postId) return;
+      // Bookmark state is only ever read from ["bookmarks", postId] (post
+      // detail) and ["user-posts", viewerId] (profile's Bookmarked tab) —
+      // never from the feed cache, so there's nothing to invalidate there.
+      // Invalidating ["posts","feed"] used to force every mounted community's
+      // (and Campus's) feed to refetch simultaneously for no reason.
       queryClient.invalidateQueries({ queryKey: ["bookmarks", postId] });
-      queryClient.invalidateQueries({ queryKey: ["posts", "feed"] });
       queryClient.invalidateQueries({
         queryKey: ["user-posts", viewerId],
         refetchType: "none",

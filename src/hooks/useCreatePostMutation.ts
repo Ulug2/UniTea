@@ -167,7 +167,13 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         effectiveCommunityId,
       );
 
-      await queryClient.cancelQueries({ queryKey: ["posts", "feed"] });
+      // Scoped to this community/Campus only — cancelling the broad
+      // ["posts","feed"] prefix would abort in-flight fetches for every
+      // other mounted feed too, which could leave them stuck showing stale
+      // data until a manual refresh restarted the aborted request.
+      await queryClient.cancelQueries({
+        predicate: feedKeys.belongsToCommunity(effectiveCommunityId),
+      });
       const previousData = queryClient.getQueryData(feedCacheKey);
 
       const tempId = `temp-${Date.now()}`;
@@ -268,20 +274,28 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
           : "Failed to create post. Please try again.";
       Alert.alert("Error", message);
     },
-    onSuccess: () => {
+    onSuccess: (_data, _variables, context) => {
       if (isLostFound) {
         queryClient.invalidateQueries({ queryKey: ["posts", "lost_found"] });
       } else {
-        queryClient.invalidateQueries({ queryKey: ["posts", "feed"] });
+        // Scoped to the community (or Campus Feed) this post actually
+        // belongs to — invalidating the broad ["posts","feed"] prefix would
+        // force every other mounted community's feed to refetch too, and
+        // briefly show whatever was last cached anywhere until it settled.
+        const communityId = context?.feedCacheKey?.[5] ?? null;
+        queryClient.invalidateQueries({
+          predicate: feedKeys.belongsToCommunity(communityId),
+        });
       }
       if (universityId && currentUserId) {
         logActivity("post_created", universityId, currentUserId);
       }
     },
-    onSettled: () => {
+    onSettled: (_data, _error, _variables, context) => {
       if (!isLostFound) {
+        const communityId = context?.feedCacheKey?.[5] ?? null;
         queryClient.invalidateQueries({
-          queryKey: ["posts", "feed"],
+          predicate: feedKeys.belongsToCommunity(communityId),
           refetchType: "none",
         });
       }

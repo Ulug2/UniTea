@@ -102,7 +102,7 @@ describe('useBookmarkToggle', () => {
       );
     });
 
-    it('invalidates the correct query keys on success', async () => {
+    it('invalidates the correct query keys on success, and never touches the feed cache', async () => {
       const chain = buildChain({ data: null, error: null });
       mockFrom.mockReturnValueOnce(chain);
 
@@ -119,8 +119,12 @@ describe('useBookmarkToggle', () => {
 
       const queryKeys = invalidateSpy.mock.calls.map((c) => (c[0] as any)?.queryKey);
       expect(queryKeys).toContainEqual(['bookmarks', postId]);
-      expect(queryKeys).toContainEqual(['posts', 'feed']);
       expect(queryKeys.some((k: any) => k?.[0] === 'user-posts' && k?.[1] === viewerId)).toBe(true);
+      // Bookmark state is never read from the feed cache (only from
+      // ["bookmarks", postId] and ["user-posts", viewerId]) — invalidating
+      // it used to force every mounted community's feed to refetch for no
+      // reason.
+      expect(queryKeys.some((k: any) => k?.[0] === 'posts' && k?.[1] === 'feed')).toBe(false);
     });
   });
 

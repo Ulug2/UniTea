@@ -176,7 +176,7 @@ describe('useCreatePostMutation', () => {
       expect(opts.headers['Authorization']).toBe(`Bearer ${ACCESS_TOKEN}`);
     });
 
-    it('invalidates ["posts","feed"] on success', async () => {
+    it('invalidates only the affected community\'s (here, Campus\'s) feed caches on success — not every mounted feed', async () => {
       mockFetchSuccess({ id: 'post-1' });
       const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
 
@@ -185,12 +185,24 @@ describe('useCreatePostMutation', () => {
         { wrapper: createWrapper() }
       );
 
-      act(() => { result.current.mutate(defaultVars); });
+      act(() => { result.current.mutate(defaultVars); }); // no communityId → Campus Feed
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      const queryKeys = invalidateSpy.mock.calls.map((c) => (c[0] as any)?.queryKey);
-      expect(queryKeys).toContainEqual(['posts', 'feed']);
+      const predicateCall = invalidateSpy.mock.calls.find(
+        (c) => typeof (c[0] as any)?.predicate === 'function',
+      );
+      expect(predicateCall).toBeDefined();
+      const predicate = (predicateCall![0] as any).predicate;
+
+      // Matches Campus Feed's own cache entries, regardless of filter/search text...
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', null] })).toBe(true);
+      expect(predicate({ queryKey: ['posts', 'feed', 'hot', 'search', 'uni-1', null] })).toBe(true);
+      // ...but never a different community's cache — this is the regression
+      // guard for posts leaking into/invalidating another feed's cache.
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', 'other-community'] })).toBe(
+        false,
+      );
     });
 
     it('sends image_urls and keeps first item as image_url', async () => {

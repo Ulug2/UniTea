@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -235,7 +236,11 @@ export default function ResetPasswordScreen() {
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: theme.background }]}
     >
-      <View style={styles.centeredContainer}>
+      <Pressable
+        style={styles.centeredContainer}
+        onPress={Keyboard.dismiss}
+        accessible={false}
+      >
         <View style={[styles.card, { backgroundColor: theme.card }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>
             Set New Password
@@ -328,7 +333,7 @@ export default function ResetPasswordScreen() {
             </Text>
           </Pressable>
         </View>
-      </View>
+      </Pressable>
     </SafeAreaView>
   );
 }
