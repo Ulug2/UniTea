@@ -24,7 +24,7 @@ This document is the single source of truth for feature verification. Every feat
 | 2 | Auth — Email verification flow (callback + resend with cooldown) | ✅ | Callback screen had zero coverage — added 12 tests |
 | 3 | Auth — Session persistence (user stays logged in across restarts) | ✅ | 12 tests (AuthContext) |
 | 4 | Feed — Main feed loads (Hot/New/Top tabs, infinite scroll) | ✅ | useFeedPosts had zero coverage — added 14 tests |
-| 5 | Feed — Post creation (text, anonymous toggle, image upload, AI moderation) | ✅ | 18 tests (useCreatePostMutation) + form-state/pipeline tests |
+| 5 | Feed — Post creation (text, anonymous toggle, image upload, AI moderation) | ✅ | 19 tests (useCreatePostMutation) + form-state/pipeline tests. Fixed: temp post is now reconciled in place with the real server row on success instead of left stale/duplicated |
 | 6 | Feed — Vote (upvote/downvote) with optimistic update | ✅ | useVote + usePostScore + votes util all covered |
 | 7 | Post Detail — View post + threaded comments | ⚠️ | Comment fetch/tree logic well tested; screen-level block-redirect ("Post Not Found") not covered — see Feature 7 notes |
 | 8 | Post Detail — Add comment (with anonymous toggle) | ✅ | useCreateComment covered |
@@ -193,12 +193,12 @@ For each completed feature, record what was verified, any bugs found, root cause
 - Loading overlay modal during mutation
 - Repost preview card in repost mode
 
-**Verified:** `useCreatePostMutation.test.ts` (18 tests) covers guards (auth, required fields per post type), Edge Function call shape, image URL handling, optimistic insert + rollback on failure, and error surfacing. `useCreatePostFormState.test.ts` and `useImagePipeline.test.ts` cover form state and the aspect-ratio-at-pick-time compression pipeline respectively.
-**Bugs found:** None during this pass.
-**Fix applied:** N/A
-**Tests added:** None needed — existing coverage is thorough and behavior-focused.
+**Verified:** `useCreatePostMutation.test.ts` (19 tests) covers guards (auth, required fields per post type), Edge Function call shape, image URL handling, optimistic insert + rollback on failure, error surfacing, and temp-ID reconciliation on success. `useCreatePostFormState.test.ts` and `useImagePipeline.test.ts` cover form state and the aspect-ratio-at-pick-time compression pipeline respectively.
+**Bugs found:** On success, the optimistic temp post (`post_id: temp-...`) was left in the cache and reconciled only by invalidating the feed (a full refetch swap) — a visible flicker/reflow, and a narrow window where a realtime-triggered refetch could show the temp post and the real server post simultaneously, since they don't share an id and the feed's dedupe is by `post_id`.
+**Fix applied:** `onMutate` now also returns the constructed `optimisticPost` object in its context. `onSuccess` patches that exact cache entry in place — matching by the temp id — merging the server's response (the raw `posts` row: real id, timestamps, server-normalized content) over the optimistic values, while preserving client-resolved display fields the response doesn't carry (username, avatar, community name, vote/comment counts). `onSettled` still marks the community's feed stale (`refetchType: "none"`) so it eventually converges on the full `posts_summary_view`-computed fields on its own next natural refetch.
+**Tests added:** One new test — "reconciles the temp post in place with the real server row on success" — replays every captured cache write in order and asserts exactly one post remains, with the real id and server content, but client-resolved fields intact.
 **Known limitations:** The `create-post` Edge Function's server-side OpenAI moderation logic is not covered by this repo's Jest suite (Deno runtime, separate deploy target) — out of scope for this app's test suite.
-**Last verified:** 2026-07-03
+**Last verified:** 2026-07-04
 
 ---
 

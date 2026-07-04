@@ -260,7 +260,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         };
       });
 
-      return { previousData, tempId, feedCacheKey };
+      return { previousData, tempId, feedCacheKey, optimisticPost };
     },
     onError: (error, _variables, context) => {
       logger.error("Error creating post", error as Error);
@@ -274,17 +274,33 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
           : "Failed to create post. Please try again.";
       Alert.alert("Error", message);
     },
-    onSuccess: (_data, _variables, context) => {
+    onSuccess: (data, _variables, context) => {
       if (isLostFound) {
         queryClient.invalidateQueries({ queryKey: ["posts", "lost_found"] });
-      } else {
-        // Scoped to the community (or Campus Feed) this post actually
-        // belongs to — invalidating the broad ["posts","feed"] prefix would
-        // force every other mounted community's feed to refetch too, and
-        // briefly show whatever was last cached anywhere until it settled.
-        const communityId = context?.feedCacheKey?.[5] ?? null;
-        queryClient.invalidateQueries({
-          predicate: feedKeys.belongsToCommunity(communityId),
+      } else if (context?.feedCacheKey && context.optimisticPost) {
+        // Reconcile the temp post in place with the real server row instead
+        // of invalidating. `data` is the raw `posts` row (not the full
+        // posts_summary_view), so this only overwrites fields the server
+        // actually returned (id, timestamps, normalized content, etc.) —
+        // display-only fields resolved client-side (username, avatar,
+        // community name, vote/comment counts) are left untouched. This
+        // avoids a visible flicker/replace, and — since the cache entry's
+        // post_id now matches the real id — avoids a transient duplicate if
+        // the realtime "new post" listener also refetches this feed before
+        // the temp id would otherwise have been cleared.
+        const { tempId, optimisticPost, feedCacheKey } = context;
+        queryClient.setQueryData(feedCacheKey, (oldData: any) => {
+          if (!oldData?.pages) return oldData;
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page: any[]) =>
+              page.map((post) =>
+                post.post_id === tempId
+                  ? { ...optimisticPost, ...data, post_id: data.id }
+                  : post,
+              ),
+            ),
+          };
         });
       }
       if (universityId && currentUserId) {

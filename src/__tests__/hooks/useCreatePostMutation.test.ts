@@ -405,6 +405,68 @@ describe('useCreatePostMutation', () => {
       expect(tempPost?.title).toBe('Feed heading');
     });
 
+    it('reconciles the temp post in place with the real server row on success, instead of leaving the temp id or requiring a refetch', async () => {
+      const capturedCalls: Array<{ key: unknown; value: unknown }> = [];
+      const originalSetQueryData = queryClient.setQueryData.bind(queryClient);
+      jest.spyOn(queryClient, 'setQueryData').mockImplementation(
+        (key: any, value: any) => {
+          capturedCalls.push({ key, value });
+          return originalSetQueryData(key, value);
+        }
+      );
+
+      // Server echoes back the authoritative row: real id, and content after
+      // its own normalization (trailing space collapsed) — different from
+      // what the client optimistically guessed.
+      mockFetchSuccess({
+        id: 'real-post-id-42',
+        content: 'Optimistic content',
+        created_at: '2026-01-01T00:00:00.000Z',
+      });
+
+      const { result } = renderHook(
+        () =>
+          useCreatePostMutation({
+            isLostFound: false,
+            currentUserId: USER_ID,
+            communityName: 'Chess Club',
+          }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.mutate({ ...defaultVars, postContent: 'Optimistic content  ' });
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      // Replay every captured setQueryData call for the feed cache key, in
+      // order, the same way React Query would apply them.
+      let state: any;
+      for (const call of capturedCalls) {
+        if (JSON.stringify(call.key) !== JSON.stringify(DEFAULT_FEED_CACHE_KEY)) continue;
+        state = typeof call.value === 'function' ? (call.value as Function)(state) : call.value;
+      }
+
+      const posts = state?.pages?.flat() ?? [];
+      // Exactly one post — reconciled in place, not appended alongside a
+      // lingering temp entry.
+      expect(posts).toHaveLength(1);
+      const finalPost = posts[0];
+
+      // Real id replaces the temp id.
+      expect(finalPost.post_id).toBe('real-post-id-42');
+      expect(finalPost.post_id).not.toMatch(/^temp-/);
+      // Server-authoritative fields win...
+      expect(finalPost.content).toBe('Optimistic content');
+      expect(finalPost.created_at).toBe('2026-01-01T00:00:00.000Z');
+      // ...but client-resolved display fields the server response doesn't
+      // carry are preserved, not wiped out.
+      expect(finalPost.community_name).toBe('Chess Club');
+      expect(finalPost.vote_score).toBe(0);
+      expect(finalPost.comment_count).toBe(0);
+    });
+
     it('does NOT add optimistic post for lost&found (isLostFound=true)', async () => {
       (global.fetch as jest.Mock).mockImplementationOnce(
         () =>
