@@ -109,6 +109,12 @@ function FeedPageContent({
     activeSearchQuery,
     universityId,
     communityId,
+    // Every account belongs to a university, so an undefined universityId here
+    // just means the profile hasn't loaded yet — not that the user has none.
+    // Without this gate, the query fires immediately with no university
+    // filter, briefly rendering posts from every university before the
+    // properly-scoped (possibly empty) result replaces it.
+    enabled: !!universityId,
   });
 
   // Flatten pages into single array, remove duplicates, filter blocked users, and sort by engagement for "hot"
@@ -395,8 +401,8 @@ function FeedPageContent({
 
 type CommunityFeedPagerProps = {
   communityId: string | null;
-  selectedFilter: string;
-  setSelectedFilter: (filter: string) => void;
+  selectedFilter: FeedFilterType;
+  setSelectedFilter: (filter: FeedFilterType) => void;
   searchQueryByFilter: Record<FeedFilterType, string>;
   setSearchQueryByFilter: React.Dispatch<
     React.SetStateAction<Record<FeedFilterType, string>>
@@ -421,7 +427,7 @@ function CommunityFeedPager({
   const { theme } = useTheme();
   const pagerRef = useRef<ScrollView>(null);
   const resolvedInitialPageIndex = Math.max(
-    FEED_FILTER_ORDER.indexOf(selectedFilter as FeedFilterType),
+    FEED_FILTER_ORDER.indexOf(selectedFilter),
     0,
   );
   const [activePageIndex, setActivePageIndex] = useState(
@@ -429,9 +435,7 @@ function CommunityFeedPager({
   );
 
   useEffect(() => {
-    const pageIndex = FEED_FILTER_ORDER.indexOf(
-      selectedFilter as FeedFilterType,
-    );
+    const pageIndex = FEED_FILTER_ORDER.indexOf(selectedFilter);
     if (pageIndex < 0) return;
     setActivePageIndex(pageIndex);
     pagerRef.current?.scrollTo({

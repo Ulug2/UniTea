@@ -233,6 +233,114 @@ describe('useChatSendMessage', () => {
     });
   });
 
+  describe('reply threading', () => {
+    const repliedToMessage = {
+      id: 'original-msg',
+      chat_id: 'chat-1',
+      user_id: 'other-user',
+      content: 'the original message',
+      image_url: null,
+      created_at: new Date().toISOString(),
+      is_read: true,
+      deleted_by_receiver: null,
+      deleted_by_sender: null,
+    };
+
+    it('includes reply_to_id in the insert payload', async () => {
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'a reply', replyToId: 'original-msg' });
+      });
+
+      const insertChain = mockFrom.mock.results[0].value;
+      await waitFor(() =>
+        expect(insertChain.insert).toHaveBeenCalledWith(
+          expect.objectContaining({ reply_to_id: 'original-msg' }),
+        ),
+      );
+    });
+
+    it('populates the optimistic message\'s replyToMessage from the cache when the original is present', async () => {
+      queryClient.setQueryData(['chat-messages', 'chat-1'], {
+        pages: [[repliedToMessage]],
+        pageParams: [0],
+      });
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'a reply', replyToId: 'original-msg' });
+      });
+
+      await waitFor(() => expect(mockAddOptimistic).toHaveBeenCalled());
+      const optimisticMessage = mockAddOptimistic.mock.calls[0][2];
+      expect(optimisticMessage.replyToMessage).toEqual({
+        id: 'original-msg',
+        content: 'the original message',
+        image_url: null,
+        user_id: 'other-user',
+      });
+    });
+
+    it('leaves replyToMessage null when the original message is not in cache', async () => {
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'a reply', replyToId: 'not-cached' });
+      });
+
+      await waitFor(() => expect(mockAddOptimistic).toHaveBeenCalled());
+      const optimisticMessage = mockAddOptimistic.mock.calls[0][2];
+      expect(optimisticMessage.replyToMessage).toBeNull();
+    });
+
+    it('prefers the server-joined reply_message over the optimistic preview on success', async () => {
+      const insertChain = buildInsertChain({
+        data: {
+          ...fakeMessage,
+          reply_to_id: 'original-msg',
+          reply_message: {
+            id: 'original-msg',
+            content: 'server-fresh content',
+            image_url: null,
+            user_id: 'other-user',
+          },
+        },
+        error: null,
+      });
+      const updateChain = buildInsertChain({ data: null, error: null });
+      mockFrom.mockReset();
+      mockFrom.mockReturnValueOnce(insertChain).mockReturnValueOnce(updateChain);
+
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'a reply', replyToId: 'original-msg' });
+      });
+
+      await waitFor(() => expect(mockReplaceOptimistic).toHaveBeenCalled());
+      const confirmedMessage = mockReplaceOptimistic.mock.calls[0][3];
+      expect(confirmedMessage.replyToMessage).toEqual({
+        id: 'original-msg',
+        content: 'server-fresh content',
+        image_url: null,
+        user_id: 'other-user',
+      });
+    });
+  });
+
   describe('client-side rate limit', () => {
     it('shows rate limit Alert after 10 messages in 60s', async () => {
       // Provide unlimited successful chains (10 messages × 2 from() calls each)

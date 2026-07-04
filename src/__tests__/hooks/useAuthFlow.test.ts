@@ -53,7 +53,7 @@ const mockResend = supabase.auth.resend as jest.Mock;
 const mockFunctionsInvoke = supabase.functions.invoke as jest.Mock;
 
 // ----- constants ----------------------------------------------------------
-const CONFIG = { timeoutMs: 5000, rateLimitCooldownMs: 30000, minPasswordLength: 6, emailRequestCooldownSeconds: 60 };
+const CONFIG = { timeoutMs: 5000, rateLimitCooldownMs: 30000, emailRequestCooldownSeconds: 60 };
 
 // --------------------------------------------------------------------------
 
@@ -317,7 +317,7 @@ describe('useAuthFlow', () => {
       expect(result.current.privacyError).not.toBe('');
     });
 
-    it('sets passwordError when password is too short', async () => {
+    it('sets passwordError when password does not meet requirements', async () => {
       const { result } = renderHook(() => useAuthFlow(CONFIG));
       act(() => {
         result.current.setEmail('a@nu.edu.kz');
@@ -327,7 +327,7 @@ describe('useAuthFlow', () => {
 
       await act(async () => { await result.current.signUpWithEmail(); });
 
-      expect(result.current.passwordError).toContain('6 characters');
+      expect(result.current.passwordError).toBe('Please meet all password requirements.');
     });
 
     it('shows Verify alert when signup succeeds with no session', async () => {
@@ -337,7 +337,7 @@ describe('useAuthFlow', () => {
       const { result } = renderHook(() => useAuthFlow(CONFIG));
       act(() => {
         result.current.setEmail('new@nu.edu.kz');
-        result.current.setPassword('Secure123');
+        result.current.setPassword('Secure123!');
         result.current.setPrivacyAccepted(true);
       });
 
@@ -354,7 +354,7 @@ describe('useAuthFlow', () => {
       const { result } = renderHook(() => useAuthFlow(CONFIG));
       act(() => {
         result.current.setEmail('new@nu.edu.kz');
-        result.current.setPassword('Secure123');
+        result.current.setPassword('Secure123!');
         result.current.setPrivacyAccepted(true);
       });
 

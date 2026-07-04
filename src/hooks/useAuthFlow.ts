@@ -3,6 +3,7 @@ import { Alert } from "react-native";
 import { supabase } from "../lib/supabase";
 import { logger } from "../utils/logger";
 import { normalizeAuthError } from "../utils/authErrors";
+import { isPasswordValid } from "../utils/passwordValidation";
 import { useRateLimit } from "./useRateLimit";
 import { useTimeoutRace } from "./useTimeoutRace";
 import { useSplashDuring } from "./useSplashDuring";
@@ -24,17 +25,12 @@ type EmailRegistrationStatus = {
 export type UseAuthFlowConfig = {
   timeoutMs: number;
   rateLimitCooldownMs: number;
-  minPasswordLength: number;
   emailRequestCooldownSeconds: number;
 };
 
 export function useAuthFlow(config: UseAuthFlowConfig) {
-  const {
-    timeoutMs,
-    rateLimitCooldownMs,
-    minPasswordLength,
-    emailRequestCooldownSeconds,
-  } = config;
+  const { timeoutMs, rateLimitCooldownMs, emailRequestCooldownSeconds } =
+    config;
   const { race } = useTimeoutRace();
   const splash = useSplashDuring();
   const rateLimit = useRateLimit({ cooldownMs: rateLimitCooldownMs });
@@ -464,16 +460,8 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       );
       return;
     }
-    if (password.length < minPasswordLength) {
-      setPasswordError(`Password must be at least ${minPasswordLength} characters long.`);
-      return;
-    }
-    if (!/[A-Z]/.test(password)) {
-      setPasswordError("Password must contain at least one uppercase letter.");
-      return;
-    }
-    if (!/[a-z]/.test(password)) {
-      setPasswordError("Password must contain at least one lowercase letter.");
+    if (!isPasswordValid(password)) {
+      setPasswordError("Please meet all password requirements.");
       return;
     }
     if (!checkEmailRequestCooldownOrAlert()) return;
@@ -587,7 +575,6 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     email,
     password,
     privacyAccepted,
-    minPasswordLength,
     sanitizeEmail,
     isAllowedDomain,
     checkEmailRequestCooldownOrAlert,

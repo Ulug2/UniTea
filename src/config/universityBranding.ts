@@ -29,7 +29,13 @@ let preloadPromise: Promise<void> | null = null;
 /** Warm bundled university avatars into memory before first render needs them. */
 export function preloadUniversityAvatars(): Promise<void> {
   if (!preloadPromise) {
-    preloadPromise = Asset.loadAsync(UNIVERSITY_AVATAR_ASSETS).then(() => undefined);
+    // Every UNIVERSITY_BRANDING avatar above is a local require() (a numeric
+    // module id at runtime), never a remote {uri} source — Asset.loadAsync
+    // only accepts number/string module ids, which is narrower than the
+    // ImageSourcePropType used for rendering elsewhere (e.g. <Image source>).
+    preloadPromise = Asset.loadAsync(UNIVERSITY_AVATAR_ASSETS as number[]).then(
+      () => undefined,
+    );
   }
   return preloadPromise;
 }

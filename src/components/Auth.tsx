@@ -16,6 +16,7 @@ import Animated, {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import CustomInput from "./CustomInput";
+import PasswordRequirementsList from "./PasswordRequirementsList";
 import { useTheme } from "../context/ThemeContext";
 import { PRIVACY_URL, TERMS_URL } from "../constants/links";
 import { useAuthFlow } from "../hooks/useAuthFlow";
@@ -54,7 +55,6 @@ const BORDER_RADIUS = {
 const AUTH_CONFIG = {
   TIMEOUT_MS: 30000, // 30 seconds
   RATE_LIMIT_COOLDOWN_MS: 300000, // 5 minutes
-  MIN_PASSWORD_LENGTH: 8,
   EMAIL_REQUEST_COOLDOWN_SECONDS: 60,
 } as const;
 
@@ -92,7 +92,6 @@ export default function Auth() {
   } = useAuthFlow({
     timeoutMs: AUTH_CONFIG.TIMEOUT_MS,
     rateLimitCooldownMs: AUTH_CONFIG.RATE_LIMIT_COOLDOWN_MS,
-    minPasswordLength: AUTH_CONFIG.MIN_PASSWORD_LENGTH,
     emailRequestCooldownSeconds: AUTH_CONFIG.EMAIL_REQUEST_COOLDOWN_SECONDS,
   });
 
@@ -269,6 +268,10 @@ export default function Auth() {
                 </Pressable>
               }
             />
+          )}
+
+          {mode === "signup" && (
+            <PasswordRequirementsList password={password} />
           )}
 
           {mode === "login" && (

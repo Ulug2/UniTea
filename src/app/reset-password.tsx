@@ -13,78 +13,75 @@ import { supabase } from "../lib/supabase";
 import { useTheme } from "../context/ThemeContext";
 import { logger } from "../utils/logger";
 import CustomInput from "../components/CustomInput";
+import PasswordRequirementsList from "../components/PasswordRequirementsList";
+import { isPasswordValid } from "../utils/passwordValidation";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
-type ScreenState = "form" | "loading" | "success" | "link_error";
+type ScreenState = "confirm" | "verifying" | "form" | "loading" | "success" | "link_error";
 
 export default function ResetPasswordScreen() {
   const { theme } = useTheme();
-  const params = useLocalSearchParams<{ code?: string }>();
+  const params = useLocalSearchParams<{
+    code?: string;
+    token_hash?: string;
+    type?: string;
+  }>();
   const code = typeof params.code === "string" ? params.code : undefined;
+  const tokenHash =
+    typeof params.token_hash === "string" ? params.token_hash : undefined;
 
   const [screenState, setScreenState] = useState<ScreenState>(
-    code ? "form" : "link_error",
+    tokenHash || code ? "confirm" : "link_error",
   );
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [passwordError, setPasswordError] = useState("");
-  const [confirmError, setConfirmError] = useState("");
   const [generalError, setGeneralError] = useState("");
 
-  const validatePasswords = useCallback((): boolean => {
-    let valid = true;
-
-    if (newPassword.length < 8) {
-      setPasswordError("Password must be at least 8 characters.");
-      valid = false;
-    } else if (!/[A-Z]/.test(newPassword)) {
-      setPasswordError("Password must contain at least one uppercase letter.");
-      valid = false;
-    } else if (!/[a-z]/.test(newPassword)) {
-      setPasswordError("Password must contain at least one lowercase letter.");
-      valid = false;
-    } else {
-      setPasswordError("");
-    }
-
-    if (newPassword !== confirmPassword) {
-      setConfirmError("Passwords do not match.");
-      valid = false;
-    } else {
-      setConfirmError("");
-    }
-
-    return valid;
-  }, [newPassword, confirmPassword]);
-
-  const handleSubmit = useCallback(async () => {
+  // Gated behind an explicit tap so an email-client link scanner (Gmail/
+  // Outlook "Safe Links", Mail Privacy Protection, etc.) prefetching the
+  // email's URL can't silently burn the single-use recovery token before the
+  // user ever sees this screen — a scanner fetches HTML, it doesn't tap
+  // buttons.
+  const handleConfirm = useCallback(async () => {
+    setScreenState("verifying");
     setGeneralError("");
-    if (!validatePasswords()) return;
-    if (!code) {
-      setScreenState("link_error");
-      return;
-    }
-
-    setScreenState("loading");
-    logger.breadcrumb("Password recovery: exchanging code", "auth");
+    logger.breadcrumb("Password recovery: verifying token", "auth");
 
     try {
-      // Exchange the recovery code for a session.
-      const { error: exchangeError } =
-        await supabase.auth.exchangeCodeForSession(code);
+      const { error } = tokenHash
+        ? await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: "recovery",
+          })
+        : await supabase.auth.exchangeCodeForSession(code!);
 
-      if (exchangeError) {
-        logger.error(
-          "[ResetPassword] Code exchange failed",
-          exchangeError as Error,
-        );
+      if (error) {
+        logger.error("[ResetPassword] Verification failed", error as Error);
         setScreenState("link_error");
         return;
       }
 
-      // Apply the new password.
+      setScreenState("form");
+    } catch (err) {
+      logger.error("[ResetPassword] Unexpected verification error", err as Error);
+      setScreenState("link_error");
+    }
+  }, [tokenHash, code]);
+
+  const canSubmit = isPasswordValid(newPassword, {
+    confirmPassword,
+    checkMatch: true,
+  });
+
+  const handleSubmit = useCallback(async () => {
+    if (!canSubmit) return;
+
+    setGeneralError("");
+    setScreenState("loading");
+
+    try {
       const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword,
       });
@@ -112,7 +109,7 @@ export default function ResetPasswordScreen() {
       setGeneralError("Something went wrong. Please try again.");
       setScreenState("form");
     }
-  }, [code, newPassword, validatePasswords]);
+  }, [canSubmit, newPassword]);
 
   if (screenState === "success") {
     return (
@@ -183,6 +180,57 @@ export default function ResetPasswordScreen() {
     );
   }
 
+  if (screenState === "confirm" || screenState === "verifying") {
+    return (
+      <SafeAreaView
+        style={[styles.safeArea, { backgroundColor: theme.background }]}
+      >
+        <View style={styles.centeredContainer}>
+          <View style={[styles.card, { backgroundColor: theme.card }]}>
+            <Ionicons
+              name="lock-closed-outline"
+              size={moderateScale(48)}
+              color={theme.primary}
+              style={styles.errorIcon}
+            />
+            <Text style={[styles.cardTitle, { color: theme.text }]}>
+              Reset Your Password
+            </Text>
+            <Text
+              style={[styles.cardSubtitle, { color: theme.secondaryText }]}
+            >
+              Tap continue to verify this link and set a new password.
+            </Text>
+            <Pressable
+              style={[
+                styles.primaryButton,
+                { backgroundColor: theme.primary },
+                screenState === "verifying" && styles.disabledButton,
+              ]}
+              onPress={handleConfirm}
+              disabled={screenState === "verifying"}
+            >
+              {screenState === "verifying" ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Continue</Text>
+              )}
+            </Pressable>
+            <Pressable
+              style={styles.backLink}
+              onPress={() => router.replace("/(auth)")}
+              disabled={screenState === "verifying"}
+            >
+              <Text style={[styles.backLinkText, { color: theme.primary }]}>
+                Back to Sign In
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: theme.background }]}
@@ -207,13 +255,11 @@ export default function ResetPasswordScreen() {
             value={newPassword}
             onChangeText={(t) => {
               setNewPassword(t);
-              if (passwordError) setPasswordError("");
               if (generalError) setGeneralError("");
             }}
             secureTextEntry={!showPassword}
             placeholder="Enter new password"
             autoCapitalize="none"
-            errorMessage={passwordError}
             editable={screenState === "form"}
             rightElement={
               <Pressable onPress={() => setShowPassword((p) => !p)}>
@@ -230,14 +276,10 @@ export default function ResetPasswordScreen() {
             label="Confirm New Password"
             leftIcon={{ type: "font-awesome", name: "lock" }}
             value={confirmPassword}
-            onChangeText={(t) => {
-              setConfirmPassword(t);
-              if (confirmError) setConfirmError("");
-            }}
+            onChangeText={setConfirmPassword}
             secureTextEntry={!showConfirm}
             placeholder="Confirm new password"
             autoCapitalize="none"
-            errorMessage={confirmError}
             editable={screenState === "form"}
             rightElement={
               <Pressable onPress={() => setShowConfirm((p) => !p)}>
@@ -250,14 +292,24 @@ export default function ResetPasswordScreen() {
             }
           />
 
+          <PasswordRequirementsList
+            password={newPassword}
+            confirmPassword={confirmPassword}
+            checkMatch
+          />
+
           <Pressable
             style={[
               styles.primaryButton,
-              { backgroundColor: theme.primary },
-              screenState === "loading" && styles.disabledButton,
+              {
+                backgroundColor:
+                  canSubmit && screenState === "form"
+                    ? theme.primary
+                    : theme.border,
+              },
             ]}
             onPress={handleSubmit}
-            disabled={screenState === "loading"}
+            disabled={!canSubmit || screenState === "loading"}
           >
             {screenState === "loading" ? (
               <ActivityIndicator color="#fff" size="small" />

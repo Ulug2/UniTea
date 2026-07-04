@@ -134,6 +134,7 @@ export type Database = {
           deleted_by_receiver: boolean | null
           deleted_by_sender: boolean | null
           id: string
+          image_aspect_ratio: number | null
           image_url: string | null
           is_read: boolean | null
           reply_to_id: string | null
@@ -146,6 +147,7 @@ export type Database = {
           deleted_by_receiver?: boolean | null
           deleted_by_sender?: boolean | null
           id?: string
+          image_aspect_ratio?: number | null
           image_url?: string | null
           is_read?: boolean | null
           reply_to_id?: string | null
@@ -158,6 +160,7 @@ export type Database = {
           deleted_by_receiver?: boolean | null
           deleted_by_sender?: boolean | null
           id?: string
+          image_aspect_ratio?: number | null
           image_url?: string | null
           is_read?: boolean | null
           reply_to_id?: string | null
@@ -395,6 +398,53 @@ export type Database = {
           },
         ]
       }
+      daily_stats_snapshots: {
+        Row: {
+          comments_created: number
+          communities_created: number
+          computed_at: string
+          dau_action: number
+          dau_basic: number
+          dau_engaged: number
+          id: string
+          posts_created: number
+          snapshot_date: string
+          university_id: string | null
+        }
+        Insert: {
+          comments_created?: number
+          communities_created?: number
+          computed_at?: string
+          dau_action?: number
+          dau_basic?: number
+          dau_engaged?: number
+          id?: string
+          posts_created?: number
+          snapshot_date: string
+          university_id?: string | null
+        }
+        Update: {
+          comments_created?: number
+          communities_created?: number
+          computed_at?: string
+          dau_action?: number
+          dau_basic?: number
+          dau_engaged?: number
+          id?: string
+          posts_created?: number
+          snapshot_date?: string
+          university_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_stats_snapshots_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: false
+            referencedRelation: "universities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       launch_event_config: {
         Row: {
           id: number
@@ -583,6 +633,7 @@ export type Database = {
           is_read: boolean | null
           message: string
           push_sent: boolean | null
+          related_chat_id: string | null
           related_comment_id: string | null
           related_post_id: string | null
           related_user_id: string | null
@@ -595,6 +646,7 @@ export type Database = {
           is_read?: boolean | null
           message: string
           push_sent?: boolean | null
+          related_chat_id?: string | null
           related_comment_id?: string | null
           related_post_id?: string | null
           related_user_id?: string | null
@@ -607,6 +659,7 @@ export type Database = {
           is_read?: boolean | null
           message?: string
           push_sent?: boolean | null
+          related_chat_id?: string | null
           related_comment_id?: string | null
           related_post_id?: string | null
           related_user_id?: string | null
@@ -614,6 +667,20 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "notifications_related_chat_id_fkey"
+            columns: ["related_chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_related_chat_id_fkey"
+            columns: ["related_chat_id"]
+            isOneToOne: false
+            referencedRelation: "user_chats_summary"
+            referencedColumns: ["chat_id"]
+          },
           {
             foreignKeyName: "notifications_related_comment_id_fkey"
             columns: ["related_comment_id"]
@@ -813,6 +880,46 @@ export type Database = {
             foreignKeyName: "post_stats_post_id_fkey"
             columns: ["post_id"]
             isOneToOne: true
+            referencedRelation: "posts_summary_view"
+            referencedColumns: ["post_id"]
+          },
+        ]
+      }
+      post_vote_milestones: {
+        Row: {
+          milestone: number
+          post_id: string
+          triggered_at: string
+        }
+        Insert: {
+          milestone: number
+          post_id: string
+          triggered_at?: string
+        }
+        Update: {
+          milestone?: number
+          post_id?: string
+          triggered_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_vote_milestones_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_vote_milestones_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts_summary_view"
+            referencedColumns: ["original_post_id"]
+          },
+          {
+            foreignKeyName: "post_vote_milestones_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
             referencedRelation: "posts_summary_view"
             referencedColumns: ["post_id"]
           },
@@ -1093,6 +1200,45 @@ export type Database = {
         }
         Relationships: []
       }
+      user_activity_events: {
+        Row: {
+          event_type: string
+          id: string
+          occurred_at: string
+          university_id: string
+          user_id: string
+        }
+        Insert: {
+          event_type: string
+          id?: string
+          occurred_at?: string
+          university_id: string
+          user_id: string
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          university_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_activity_events_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: false
+            referencedRelation: "universities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_activity_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       votes: {
         Row: {
           comment_id: string | null
@@ -1228,9 +1374,11 @@ export type Database = {
           image_url: string | null
           image_urls: string[] | null
           is_anonymous: boolean | null
+          is_author_blocked_by_viewer: boolean | null
           is_banned: boolean | null
           is_deleted: boolean | null
           is_edited: boolean | null
+          is_original_author_blocked_by_viewer: boolean | null
           is_verified: boolean | null
           location: string | null
           original_author_avatar: string | null
@@ -1375,8 +1523,8 @@ export type Database = {
       check_message_rate_limit: {
         Args: {
           p_chat_id: string
-          p_max_messages?: number
-          p_time_window_minutes?: number
+          p_max_messages: number
+          p_time_window_minutes: number
           p_user_id: string
         }
         Returns: boolean
@@ -1389,15 +1537,70 @@ export type Database = {
         }
         Returns: boolean
       }
+      compute_daily_stats: { Args: { target_date: string }; Returns: Json }
+      count_distinct_active_users: {
+        Args: { p_days: number; p_event: string }
+        Returns: number
+      }
+      count_distinct_active_users_action: {
+        Args: { p_days: number }
+        Returns: number
+      }
+      count_today_dau: { Args: { p_since: string }; Returns: number }
       delete_user_account: { Args: never; Returns: undefined }
+      get_analytics_summary: {
+        Args: never
+        Returns: {
+          dau_app_opens: number
+          dau_comments: number
+          dau_communities: number
+          dau_posts: number
+          mau_app_opens: number
+          mau_comments: number
+          mau_communities: number
+          mau_posts: number
+          wau_app_opens: number
+          wau_comments: number
+          wau_communities: number
+          wau_posts: number
+        }[]
+      }
       get_community_university_id: {
         Args: { p_community_id: string }
         Returns: string
+      }
+      get_daily_content_counts: {
+        Args: { p_days?: number }
+        Returns: {
+          comments: number
+          communities: number
+          day: string
+          posts: number
+        }[]
+      }
+      get_daily_stats_chart: {
+        Args: { p_days?: number }
+        Returns: {
+          comments: number
+          communities: number
+          dau: number
+          et_date: string
+          posts: number
+        }[]
+      }
+      get_event_counts_period: {
+        Args: { p_days: number }
+        Returns: {
+          count: number
+          event_type: string
+        }[]
       }
       get_my_is_admin: { Args: never; Returns: boolean }
       get_my_match: { Args: never; Returns: Json }
       get_my_university_id: { Args: never; Returns: string }
       get_repost_count: { Args: { post_id: string }; Returns: number }
+      initiate_anonymous_chat: { Args: { p_post_id: string }; Returns: string }
+      reset_matchmaking_event: { Args: never; Returns: Json }
     }
     Enums: {
       [_ in never]: never

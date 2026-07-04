@@ -29,6 +29,7 @@ export type ChatMessageVM = ChatMessageRow & {
     messageText: string;
     imageUrl?: string | null;
     localImageUri?: string | null;
+    imageAspectRatio?: number | null;
     /** Preserved across retry so replies survive failed-send recovery. */
     replyToId?: string | null;
   } | null;

@@ -27,7 +27,7 @@ beforeEach(() => {
   mockRequestPerms.mockResolvedValue({ status: 'granted' });
   mockLaunchLibrary.mockResolvedValue({
     canceled: false,
-    assets: [{ uri: 'file://picked.jpg' }],
+    assets: [{ uri: 'file://picked.jpg', width: 1200, height: 800 }],
   });
 });
 
@@ -36,9 +36,18 @@ afterEach(() => {
 });
 
 describe('pickChatImage', () => {
-  it('returns { localUri } with the raw picker URI on happy path', async () => {
+  it('returns { localUri, aspectRatio } with the raw picker URI and computed ratio on happy path', async () => {
     const result = await pickChatImage();
-    expect(result).toEqual({ localUri: 'file://picked.jpg' });
+    expect(result).toEqual({ localUri: 'file://picked.jpg', aspectRatio: 1.5 });
+  });
+
+  it('returns aspectRatio: null when the picker does not report dimensions', async () => {
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file://picked.jpg' }],
+    });
+    const result = await pickChatImage();
+    expect(result).toEqual({ localUri: 'file://picked.jpg', aspectRatio: null });
   });
 
   it('passes allowsEditing: false to the image picker', async () => {

@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import SupabaseImage from "../../../components/SupabaseImage";
 import EntityAvatar from "../../../components/EntityAvatar";
+import { PinchToZoom } from "../../../components/PinchToZoom";
 import { getAvatarForEntity } from "../../../utils/entityDisplay";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { FOUNDING_FATHER_BADGE } from "../../../constants/images";
@@ -34,28 +35,30 @@ export function AvatarPreviewModal({
     >
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable onPress={(e) => e.stopPropagation()}>
-          {showBadge ? (
-            <Image
-              source={FOUNDING_FATHER_BADGE}
-              style={styles.avatarPreview}
-              resizeMode="cover"
-            />
-          ) : avatarUrl ? (
-            avatarUrl.startsWith("http") ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatarPreview} />
-            ) : (
-              <SupabaseImage
-                path={avatarUrl}
-                bucket="avatars"
-                style={styles.avatarPreview}
+          <PinchToZoom style={styles.avatarPreviewWrap}>
+            {showBadge ? (
+              <Image
+                source={FOUNDING_FATHER_BADGE}
+                style={styles.avatarImage}
+                resizeMode="cover"
               />
-            )
-          ) : (
-            <EntityAvatar
-              descriptor={getAvatarForEntity("student", {})}
-              style={styles.avatarPreview}
-            />
-          )}
+            ) : avatarUrl ? (
+              avatarUrl.startsWith("http") ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+              ) : (
+                <SupabaseImage
+                  path={avatarUrl}
+                  bucket="avatars"
+                  style={styles.avatarImage}
+                />
+              )
+            ) : (
+              <EntityAvatar
+                descriptor={getAvatarForEntity("student", {})}
+                style={styles.avatarImage}
+              />
+            )}
+          </PinchToZoom>
         </Pressable>
       </Pressable>
     </Modal>
@@ -69,9 +72,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  avatarPreview: {
+  avatarPreviewWrap: {
     width: scale(220),
     height: verticalScale(220),
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
     borderRadius: moderateScale(110),
   },
 });

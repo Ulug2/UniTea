@@ -1,4 +1,5 @@
 import "react-native-reanimated";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Slot, useRouter } from "expo-router";
 import {
   useFonts,
@@ -98,6 +99,12 @@ async function prefetchInitialData(userId: string, queryClient: any) {
 
     if (feedData) {
       // Campus Feed key includes communityId === null (see feedKeys.list).
+      // Only seed the "new" key here — this fetch is sorted by created_at
+      // with no hot_score ordering or 7-day window, so it is NOT valid
+      // placeholder data for "hot". Seeding it under the hot key too used to
+      // cause a flash of New-shaped posts in the Hot tab on cold start,
+      // followed by the real (possibly empty) hot-filtered result replacing
+      // it once the background refetch resolved.
       queryClient.setQueryData(
         ["posts", "feed", "new", "", universityId, null],
         {
@@ -105,23 +112,6 @@ async function prefetchInitialData(userId: string, queryClient: any) {
           pageParams: [0],
         }
       );
-
-      if (
-        !queryClient.getQueryData([
-          "posts",
-          "feed",
-          "hot",
-          "",
-          universityId,
-          null,
-        ])
-      ) {
-        queryClient.setQueryData(
-          ["posts", "feed", "hot", "", universityId, null],
-          { pages: [feedData], pageParams: [0] },
-          { updatedAt: 0 }
-        );
-      }
     }
 
     // Prefetch blocked users
@@ -413,14 +403,16 @@ const styles = StyleSheet.create({
 
 export default function RootLayout() {
   return (
-    <ErrorBoundary fallback={<RecoveryFallback />}>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <AuthProvider>
-            <RootLayoutContent />
-          </AuthProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary fallback={<RecoveryFallback />}>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <AuthProvider>
+              <RootLayoutContent />
+            </AuthProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

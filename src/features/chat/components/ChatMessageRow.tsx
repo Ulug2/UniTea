@@ -240,24 +240,28 @@ function ChatMessageRowInner({
               }
               onLongPress={() => onLongPress(item)}
             >
-              {item.id.startsWith("temp-") ? (
-                <View
-                  style={[
-                    chatDetailStyles.messageImageLoadingSize,
-                    chatDetailStyles.messageImageLoading,
-                  ]}
-                >
-                  <ActivityIndicator size="large" color="#999" />
+              {/*
+                Same rendering path whether the message is still sending
+                (temp-) or confirmed: the image is already uploaded by the
+                time the optimistic bubble exists (upload happens before the
+                mutation fires), and image_aspect_ratio is known from the
+                moment the image was picked. Using one path with a fixed,
+                pre-computed size everywhere means the bubble never resizes
+                between "sending" → "sent" → "reopened later".
+              */}
+              <ResponsiveImage
+                source={item.image_url}
+                bucket="chat-images"
+                sourceKind="auto"
+                mode="chatBubble"
+                knownAspectRatio={item.image_aspect_ratio}
+                borderRadius={0}
+                backgroundColor="#F3F4F6"
+              />
+              {item.id.startsWith("temp-") && (
+                <View style={chatDetailStyles.messageImageSendingOverlay}>
+                  <ActivityIndicator size="small" color="#fff" />
                 </View>
-              ) : (
-                <ResponsiveImage
-                  source={item.image_url}
-                  bucket="chat-images"
-                  sourceKind="auto"
-                  mode="single"
-                  borderRadius={0}
-                  backgroundColor="#F3F4F6"
-                />
               )}
               {/* Image-only: float timestamp pill over bottom-right corner */}
               {!item.content && (

@@ -21,6 +21,7 @@ type ChatComposerProps = {
   onSend: () => void;
   onPickImage: () => void;
   selectedImageUri: string | null;
+  selectedImageAspectRatio?: number | null;
   onRemoveImage: () => void;
   isSending: boolean;
   disabled: boolean;
@@ -53,6 +54,7 @@ export function ChatComposer({
   onSend,
   onPickImage,
   selectedImageUri,
+  selectedImageAspectRatio,
   onRemoveImage,
   isSending,
   disabled,
@@ -136,6 +138,7 @@ export function ChatComposer({
             source={selectedImageUri}
             sourceKind="uri"
             mode="single"
+            knownAspectRatio={selectedImageAspectRatio}
             borderRadius={moderateScale(12)}
             backgroundColor="#F3F4F6"
             style={styleSet.imagePreview}

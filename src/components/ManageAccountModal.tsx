@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Modal,
   View,
@@ -17,6 +17,8 @@ import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../context/ThemeContext";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
+import PasswordRequirementsList from "./PasswordRequirementsList";
+import { isPasswordValid } from "../utils/passwordValidation";
 
 interface ManageAccountModalProps {
   visible: boolean;
@@ -28,9 +30,12 @@ interface ManageAccountModalProps {
   onUpdateUsername: (username: string) => void;
   onUpdatePassword: (currentPassword: string, newPassword: string, confirmPassword: string) => void;
   onForgotPassword?: () => void;
+  passwordFormError?: string;
+  onClearPasswordFormError?: () => void;
   isDeleting?: boolean;
   isUnblocking?: boolean;
   isUpdating?: boolean;
+  isUpdatingPassword?: boolean;
   currentUsername?: string;
 }
 
@@ -46,9 +51,12 @@ export default function ManageAccountModal({
   onUpdateUsername,
   onUpdatePassword,
   onForgotPassword,
+  passwordFormError,
+  onClearPasswordFormError,
   isDeleting = false,
   isUnblocking = false,
   isUpdating = false,
+  isUpdatingPassword = false,
   currentUsername = "",
 }: ManageAccountModalProps) {
   const { theme, isDark } = useTheme();
@@ -64,6 +72,9 @@ export default function ManageAccountModal({
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Android: lift the bottom sheet above the keyboard manually since
   // adjustResize is broken with edgeToEdgeEnabled:true on API 30+.
@@ -90,6 +101,9 @@ export default function ManageAccountModal({
       setCurrentPassword("");
       setPassword("");
       setConfirmPassword("");
+      setShowCurrentPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
       setAndroidKeyboardInset(0);
     } else {
       setUsername(currentUsername);
@@ -104,16 +118,38 @@ export default function ManageAccountModal({
     setCurrentView("menu");
   };
 
+  const canSavePassword =
+    !!currentPassword &&
+    isPasswordValid(password, { confirmPassword, checkMatch: true });
+
   const handlePasswordSave = () => {
-    if (!currentPassword || !password || !confirmPassword) {
+    if (!canSavePassword) {
       return;
     }
+    // Stay on this view until the mutation resolves — see the effect below,
+    // which advances to "menu" on success or leaves the inline error visible
+    // on failure. Resetting synchronously here would hide server errors
+    // (e.g. "incorrect current password") since the view would already be gone.
     onUpdatePassword(currentPassword, password, confirmPassword);
-    setCurrentPassword("");
-    setPassword("");
-    setConfirmPassword("");
-    setCurrentView("menu");
   };
+
+  // Advance back to the menu only once the password mutation actually
+  // succeeds (isUpdatingPassword flips false with no error set).
+  const wasUpdatingPasswordRef = useRef(isUpdatingPassword);
+  useEffect(() => {
+    if (
+      currentView === "password" &&
+      wasUpdatingPasswordRef.current &&
+      !isUpdatingPassword &&
+      !passwordFormError
+    ) {
+      setCurrentPassword("");
+      setPassword("");
+      setConfirmPassword("");
+      setCurrentView("menu");
+    }
+    wasUpdatingPasswordRef.current = isUpdatingPassword;
+  }, [isUpdatingPassword, passwordFormError, currentView]);
 
   const renderMenu = () => (
     <>
@@ -368,25 +404,41 @@ export default function ManageAccountModal({
         <Text style={[styles.label, { color: theme.secondaryText }]}>
           Current Password
         </Text>
-        <TextInput
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.background,
-              color: theme.text,
-              borderColor: theme.border,
-            },
-          ]}
-          placeholder="Enter current password"
-          placeholderTextColor={theme.secondaryText}
-          keyboardAppearance={keyboardAppearance}
-          value={currentPassword}
-          onChangeText={setCurrentPassword}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          textContentType="password"
-        />
+        <View style={styles.passwordInputWrapper}>
+          <TextInput
+            style={[
+              styles.input,
+              styles.passwordInput,
+              {
+                backgroundColor: theme.background,
+                color: theme.text,
+                borderColor: theme.border,
+              },
+            ]}
+            placeholder="Enter current password"
+            placeholderTextColor={theme.secondaryText}
+            keyboardAppearance={keyboardAppearance}
+            value={currentPassword}
+            onChangeText={(text) => {
+              setCurrentPassword(text);
+              onClearPasswordFormError?.();
+            }}
+            secureTextEntry={!showCurrentPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="password"
+          />
+          <Pressable
+            style={styles.eyeButton}
+            onPress={() => setShowCurrentPassword((prev) => !prev)}
+          >
+            <Ionicons
+              name={showCurrentPassword ? "eye-off-outline" : "eye-outline"}
+              size={moderateScale(20)}
+              color={theme.secondaryText}
+            />
+          </Pressable>
+        </View>
 
         {onForgotPassword && (
           <Pressable
@@ -395,6 +447,7 @@ export default function ManageAccountModal({
               setPassword("");
               setConfirmPassword("");
               setCurrentView("menu");
+              onClearPasswordFormError?.();
               onForgotPassword();
             }}
             style={styles.forgotPasswordLink}
@@ -413,25 +466,38 @@ export default function ManageAccountModal({
         >
           New Password
         </Text>
-        <TextInput
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.background,
-              color: theme.text,
-              borderColor: theme.border,
-            },
-          ]}
-          placeholder="Enter new password"
-          placeholderTextColor={theme.secondaryText}
-          keyboardAppearance={keyboardAppearance}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          textContentType="newPassword"
-        />
+        <View style={styles.passwordInputWrapper}>
+          <TextInput
+            style={[
+              styles.input,
+              styles.passwordInput,
+              {
+                backgroundColor: theme.background,
+                color: theme.text,
+                borderColor: theme.border,
+              },
+            ]}
+            placeholder="Enter new password"
+            placeholderTextColor={theme.secondaryText}
+            keyboardAppearance={keyboardAppearance}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showNewPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="newPassword"
+          />
+          <Pressable
+            style={styles.eyeButton}
+            onPress={() => setShowNewPassword((prev) => !prev)}
+          >
+            <Ionicons
+              name={showNewPassword ? "eye-off-outline" : "eye-outline"}
+              size={moderateScale(20)}
+              color={theme.secondaryText}
+            />
+          </Pressable>
+        </View>
 
         <Text
           style={[
@@ -441,40 +507,62 @@ export default function ManageAccountModal({
         >
           Confirm New Password
         </Text>
-        <TextInput
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.background,
-              color: theme.text,
-              borderColor: theme.border,
-            },
-          ]}
-          placeholder="Confirm new password"
-          placeholderTextColor={theme.secondaryText}
-          keyboardAppearance={keyboardAppearance}
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          textContentType="newPassword"
+        <View style={styles.passwordInputWrapper}>
+          <TextInput
+            style={[
+              styles.input,
+              styles.passwordInput,
+              {
+                backgroundColor: theme.background,
+                color: theme.text,
+                borderColor: theme.border,
+              },
+            ]}
+            placeholder="Confirm new password"
+            placeholderTextColor={theme.secondaryText}
+            keyboardAppearance={keyboardAppearance}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry={!showConfirmPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="newPassword"
+          />
+          <Pressable
+            style={styles.eyeButton}
+            onPress={() => setShowConfirmPassword((prev) => !prev)}
+          >
+            <Ionicons
+              name={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
+              size={moderateScale(20)}
+              color={theme.secondaryText}
+            />
+          </Pressable>
+        </View>
+
+        <PasswordRequirementsList
+          password={password}
+          confirmPassword={confirmPassword}
+          checkMatch
         />
+
+        {!!passwordFormError && (
+          <Text style={styles.passwordFormError}>{passwordFormError}</Text>
+        )}
 
         <Pressable
           style={[
             styles.saveButton,
             {
-              backgroundColor:
-                currentPassword && password && confirmPassword && !isUpdating
-                  ? theme.primary
-                  : theme.border,
+              backgroundColor: canSavePassword && !isUpdatingPassword
+                ? theme.primary
+                : theme.border,
             },
           ]}
           onPress={handlePasswordSave}
-          disabled={!currentPassword || !password || !confirmPassword || isUpdating}
+          disabled={!canSavePassword || isUpdatingPassword}
         >
-          {isUpdating ? (
+          {isUpdatingPassword ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <Text style={styles.saveButtonText}>Save</Text>
@@ -600,6 +688,25 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(16),
     fontFamily: "Poppins_400Regular",
     marginBottom: verticalScale(16),
+  },
+  passwordInputWrapper: {
+    justifyContent: "center",
+  },
+  passwordInput: {
+    paddingRight: moderateScale(44),
+  },
+  eyeButton: {
+    position: "absolute",
+    right: moderateScale(14),
+    top: 0,
+    bottom: verticalScale(16),
+    justifyContent: "center",
+  },
+  passwordFormError: {
+    fontSize: moderateScale(13),
+    color: "#EF4444",
+    fontFamily: "Poppins_400Regular",
+    marginBottom: verticalScale(8),
   },
   saveButton: {
     paddingVertical: verticalScale(14),

@@ -18,9 +18,24 @@ export function redirectSystemPath({
 }): string {
   try {
     const parsed = Linking.parse(path);
-    if (!parsed.path) return path;
 
-    const segments = parsed.path.split("/").filter(Boolean);
+    // For a custom URL scheme (myunitea://post/abc), Linking.parse treats the
+    // first path component as `hostname`, not `path` — e.g.
+    // { hostname: "post", path: "abc" } — whereas for https:// Universal
+    // Links the same position is the real domain and the route name stays in
+    // `path` (e.g. { hostname: "unitea.app", path: "post/abc" }). Without
+    // accounting for this, myunitea://reset-password?token_hash=... (used by
+    // the web fallback page's deep-link handoff) silently fails to match any
+    // branch below and falls through unrewritten.
+    const isCustomScheme =
+      !!parsed.scheme && parsed.scheme !== "https" && parsed.scheme !== "http";
+    const effectivePath = isCustomScheme
+      ? [parsed.hostname, parsed.path].filter(Boolean).join("/")
+      : parsed.path;
+
+    if (!effectivePath) return path;
+
+    const segments = effectivePath.split("/").filter(Boolean);
     const queryParams = (parsed as { queryParams?: Record<string, unknown> })
       .queryParams ?? {};
 
@@ -61,15 +76,21 @@ export function redirectSystemPath({
       return `/post/${segments[1]}?fromDeeplink=1`;
     }
 
-    // Password recovery deep link: /reset-password?code=XXXXX
-    // Route to the standalone reset-password screen which handles the PKCE
-    // code exchange, password update, and global session invalidation.
+    // Password recovery deep link: /reset-password?token_hash=XXXXX&type=recovery
+    // (or the legacy ?code=XXXXX PKCE form). Routes to the standalone
+    // reset-password screen, which gates verification behind an explicit tap
+    // before exchanging the token/code, then handles the password update and
+    // global session invalidation.
     if (segments[0] === "reset-password") {
+      const tokenHash = readParam("token_hash") ?? readFromRaw("token_hash");
+      if (tokenHash) {
+        return `/reset-password?token_hash=${encodeURIComponent(tokenHash)}&type=recovery`;
+      }
       const code = readParam("code") ?? readFromRaw("code");
       if (code) {
         return `/reset-password?code=${encodeURIComponent(code)}`;
       }
-      // No code — screen will show the expired/invalid link state.
+      // No token — screen will show the expired/invalid link state.
       return "/reset-password";
     }
   } catch {

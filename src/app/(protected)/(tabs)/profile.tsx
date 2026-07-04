@@ -9,11 +9,12 @@ import {
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
 import { useState, useEffect, useCallback } from "react";
-import { router, useNavigation } from "expo-router";
+import { useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../../context/AuthContext";
 import ManageAccountModal from "../../../components/ManageAccountModal";
 import NotificationSettingsModal from "../../../components/NotificationSettingsModal";
+import ForgotPasswordModal from "../../../components/ForgotPasswordModal";
 import { ProfileHeader } from "../../../features/profile/components/ProfileHeader";
 import { ProfileTabs } from "../../../features/profile/components/ProfileTabs";
 import { ProfilePostsList } from "../../../features/profile/components/ProfilePostsList";
@@ -28,6 +29,7 @@ import { useUpdateProfile } from "../../../features/profile/hooks/useUpdateProfi
 import { useUpdatePassword } from "../../../features/profile/hooks/useUpdatePassword";
 import { useDeleteAccount } from "../../../features/profile/hooks/useDeleteAccount";
 import { useAvatarUpload } from "../../../features/profile/hooks/useAvatarUpload";
+import { isPasswordValid } from "../../../utils/passwordValidation";
 import { moderateScale, scale } from "../../../utils/scaling";
 
 export default function ProfileScreen() {
@@ -36,6 +38,8 @@ export default function ProfileScreen() {
   const navigation = useNavigation();
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [manageAccountVisible, setManageAccountVisible] = useState(false);
+  const [forgotPasswordVisible, setForgotPasswordVisible] = useState(false);
+  const [passwordFormError, setPasswordFormError] = useState("");
   const [avatarPreviewVisible, setAvatarPreviewVisible] = useState(false);
   const [viewingBadge, setViewingBadge] = useState(false);
   const [activeTab, setActiveTab] = useState<
@@ -208,30 +212,19 @@ export default function ProfileScreen() {
     updateProfileMutation.mutate({ username: newUsername.trim() });
   };
 
-  // Handle password update (requires current password verification)
+  // Handle password update (requires current password verification).
+  // Field-level validation is enforced live in ManageAccountModal via
+  // PasswordRequirementsList; this guard is defense-in-depth only.
   const handlePasswordUpdate = (
     currentPassword: string,
     newPassword: string,
     confirmPassword: string,
   ) => {
-    if (!currentPassword) {
-      Alert.alert("Error", "Please enter your current password.");
-      return;
-    }
-    if (!newPassword || newPassword.length < 8) {
-      Alert.alert("Error", "Password must be at least 8 characters long.");
-      return;
-    }
-    if (!/[A-Z]/.test(newPassword)) {
-      Alert.alert("Error", "Password must contain at least one uppercase letter.");
-      return;
-    }
-    if (!/[a-z]/.test(newPassword)) {
-      Alert.alert("Error", "Password must contain at least one lowercase letter.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match.");
+    setPasswordFormError("");
+    if (
+      !currentPassword ||
+      !isPasswordValid(newPassword, { confirmPassword, checkMatch: true })
+    ) {
       return;
     }
     updatePasswordMutation.mutate(
@@ -245,31 +238,15 @@ export default function ProfileScreen() {
             err instanceof Error
               ? err.message
               : "Failed to update password. Please try again.";
-          Alert.alert("Error", message);
+          setPasswordFormError(message);
         },
       },
     );
   };
 
-  const handleForgotPasswordFromProfile = async () => {
+  const handleForgotPasswordFromProfile = () => {
     setManageAccountVisible(false);
-    const email = session?.user?.email;
-    if (!email) return;
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: "https://unitea.app/reset-password",
-      });
-      if (error) {
-        Alert.alert("Error", "Could not send reset email. Please try again.");
-      } else {
-        Alert.alert(
-          "Password Reset Email Sent",
-          `We've sent a password reset link to ${email}. Follow the link in the email to set a new password.`,
-        );
-      }
-    } catch {
-      Alert.alert("Error", "Could not send reset email. Please try again.");
-    }
+    setForgotPasswordVisible(true);
   };
 
   // Show loading while fetching profile to prevent "User" flicker
@@ -348,7 +325,10 @@ export default function ProfileScreen() {
       {/* Manage Account Modal */}
       <ManageAccountModal
         visible={manageAccountVisible}
-        onClose={() => setManageAccountVisible(false)}
+        onClose={() => {
+          setManageAccountVisible(false);
+          setPasswordFormError("");
+        }}
         onLogout={signOut}
         onDeleteAccount={handleDeleteAccount}
         onUnblockAll={handleUnblockAll}
@@ -356,6 +336,8 @@ export default function ProfileScreen() {
         onUpdateUsername={handleUsernameUpdate}
         onUpdatePassword={handlePasswordUpdate}
         onForgotPassword={handleForgotPasswordFromProfile}
+        passwordFormError={passwordFormError}
+        onClearPasswordFormError={() => setPasswordFormError("")}
         isDeleting={deleteAccountMutation.isPending}
         isUnblocking={unblockAllMutation.isPending}
         isUpdating={
@@ -363,6 +345,7 @@ export default function ProfileScreen() {
           updateProfileMutation.isPending ||
           updatePasswordMutation.isPending
         }
+        isUpdatingPassword={updatePasswordMutation.isPending}
         currentUsername={currentUser?.username || ""}
       />
 
@@ -370,6 +353,11 @@ export default function ProfileScreen() {
       <NotificationSettingsModal
         visible={notificationsVisible}
         onClose={() => setNotificationsVisible(false)}
+      />
+
+      <ForgotPasswordModal
+        visible={forgotPasswordVisible}
+        onClose={() => setForgotPasswordVisible(false)}
       />
 
       <AvatarPreviewModal

@@ -15,7 +15,9 @@ type SupabaseImageProps = {
   loadingIndicatorColor?: string;
   /** Called when the image has finished loading (or when there is no image to load) */
   onLoad?: () => void;
-} & Omit<ComponentProps<typeof Image>, "source" | "onLoad">;
+  /** Called when the image fails to load, including when the source URL itself can't be resolved */
+  onError?: () => void;
+} & Omit<ComponentProps<typeof Image>, "source" | "onLoad" | "onError">;
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 
@@ -47,6 +49,7 @@ function SupabaseImage({
   loadingBackgroundColor = "#F0F0F0",
   loadingIndicatorColor,
   onLoad,
+  onError,
   ...imageProps
 }: SupabaseImageProps) {
   const isKnownPublic = PUBLIC_BUCKETS.has(bucket);
@@ -63,6 +66,8 @@ function SupabaseImage({
   const isMountedRef = useRef(true);
   const onLoadRef = useRef(onLoad);
   onLoadRef.current = onLoad;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -181,13 +186,21 @@ function SupabaseImage({
   // MUST be called before any early returns (Rules of Hooks)
   const imageSource = useMemo(() => ({ uri: imageUrl || undefined }), [imageUrl]);
 
-  // Notify parent when there is no image to load (so feed can count this as "loaded")
+  // When resolution finishes with no URL: if a path was actually given, that's
+  // a real failure (e.g. signed URL fetch threw) — report it as an error
+  // rather than silently rendering a blank box forever. If no path was given
+  // at all, there was nothing to load, so count it as "loaded" (existing
+  // behavior feed image counters rely on).
   // Must run unconditionally (Rules of Hooks)
   useEffect(() => {
     if (!isLoading && !imageUrl) {
-      onLoadRef.current?.();
+      if (path) {
+        onErrorRef.current?.();
+      } else {
+        onLoadRef.current?.();
+      }
     }
-  }, [isLoading, imageUrl]);
+  }, [isLoading, imageUrl, path]);
 
   if (isLoading) {
     return (
@@ -225,6 +238,10 @@ function SupabaseImage({
     onLoadRef.current?.();
   };
 
+  const handleError = () => {
+    onErrorRef.current?.();
+  };
+
   return (
     <Image
       source={imageSource}
@@ -232,6 +249,7 @@ function SupabaseImage({
       transition={transition}
       cachePolicy="disk"
       onLoad={handleLoad}
+      onError={handleError}
       {...imageProps}
     />
   );

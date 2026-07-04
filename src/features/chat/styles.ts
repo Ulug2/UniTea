@@ -152,14 +152,11 @@ export const chatDetailStyles = StyleSheet.create({
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
   },
-  messageImageLoading: {
-    backgroundColor: "#F3F4F6",
+  messageImageSendingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.25)",
     justifyContent: "center",
     alignItems: "center",
-  },
-  messageImageLoadingSize: {
-    width: scale(225),
-    height: verticalScale(300),
   },
   messageTime: {
     fontSize: moderateScale(12),

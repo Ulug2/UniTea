@@ -85,6 +85,9 @@ export default function ChatDetailScreen() {
    */
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImageAspectRatio, setSelectedImageAspectRatio] = useState<
+    number | null
+  >(null);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [fullScreenImagePath, setFullScreenImagePath] = useState<string | null>(
     null,
@@ -156,9 +159,10 @@ export default function ChatDetailScreen() {
       pendingMessageIdsRef: pendingMessageIds,
       optimisticImageUrisRef: optimisticImageUris,
       flatListRef,
-      onRestoreInput: (messageText, localImageUri) => {
+      onRestoreInput: (messageText, localImageUri, imageAspectRatio) => {
         setMessage(messageText);
         setSelectedImage(localImageUri);
+        setSelectedImageAspectRatio(imageAspectRatio ?? null);
       },
     },
   );
@@ -677,16 +681,21 @@ export default function ChatDetailScreen() {
     send({
       text: message,
       localImageUri: selectedImage,
+      imageAspectRatio: selectedImageAspectRatio,
       replyToId: replyingTo?.message.id ?? null,
     });
     setMessage("");
     setSelectedImage(null);
+    setSelectedImageAspectRatio(null);
     setReplyingTo(null);
-  }, [message, selectedImage, replyingTo, send]);
+  }, [message, selectedImage, selectedImageAspectRatio, replyingTo, send]);
 
   const handlePickImage = useCallback(async () => {
     const result = await pickChatImage();
-    if (result) setSelectedImage(result.localUri);
+    if (result) {
+      setSelectedImage(result.localUri);
+      setSelectedImageAspectRatio(result.aspectRatio);
+    }
   }, []);
 
   // Block user mutation
@@ -1224,7 +1233,11 @@ export default function ChatDetailScreen() {
           onSend={handleSend}
           onPickImage={handlePickImage}
           selectedImageUri={selectedImage}
-          onRemoveImage={() => setSelectedImage(null)}
+          selectedImageAspectRatio={selectedImageAspectRatio}
+          onRemoveImage={() => {
+            setSelectedImage(null);
+            setSelectedImageAspectRatio(null);
+          }}
           isSending={isSending}
           disabled={!message.trim() && !selectedImage}
           textColor={theme.text}

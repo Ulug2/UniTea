@@ -20,13 +20,22 @@ const RATE_LIMIT_MESSAGES = 10;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const PENDING_CLEANUP_MS = 5000;
 
-type SendParams = { text: string; localImageUri?: string | null; replyToId?: string | null };
+type SendParams = {
+  text: string;
+  localImageUri?: string | null;
+  imageAspectRatio?: number | null;
+  replyToId?: string | null;
+};
 
 type Options = {
   pendingMessageIdsRef: React.MutableRefObject<Set<string>>;
   optimisticImageUrisRef: React.MutableRefObject<Map<string, string>>;
   flatListRef?: React.RefObject<{ scrollToOffset: (p: { offset: number; animated: boolean }) => void } | null>;
-  onRestoreInput?: (messageText: string, localImageUri: string | null) => void;
+  onRestoreInput?: (
+    messageText: string,
+    localImageUri: string | null,
+    imageAspectRatio: number | null,
+  ) => void;
 };
 
 type MutationContext = {
@@ -128,10 +137,16 @@ export function useChatSendMessage(
   const mutation = useMutation<
     { newMessage: ChatMessageVM; now: string },
     Error,
-    { messageText: string; imageUrl?: string | null; localImageUri?: string | null; replyToId?: string | null },
+    {
+      messageText: string;
+      imageUrl?: string | null;
+      localImageUri?: string | null;
+      imageAspectRatio?: number | null;
+      replyToId?: string | null;
+    },
     MutationContext | undefined
   >({
-    mutationFn: async ({ messageText, imageUrl, replyToId }) => {
+    mutationFn: async ({ messageText, imageUrl, imageAspectRatio, replyToId }) => {
       if (!chatId || !currentUserId) {
         throw new Error("Missing chat ID or user ID");
       }
@@ -180,6 +195,7 @@ export function useChatSendMessage(
           user_id: currentUserId,
           content: messageText?.trim() ?? "",
           image_url: imageUrl ?? null,
+          image_aspect_ratio: imageAspectRatio ?? null,
           reply_to_id: replyToId ?? null,
         })
         .select("*, reply_message:reply_to_id(id, content, image_url, user_id)")
@@ -200,7 +216,7 @@ export function useChatSendMessage(
 
       return { newMessage: newMessage as ChatMessageVM, now: newMessage.created_at ?? new Date().toISOString() };
     },
-    onMutate: async ({ messageText, imageUrl, localImageUri, replyToId }) => {
+    onMutate: async ({ messageText, imageUrl, localImageUri, imageAspectRatio, replyToId }) => {
       if (!chatId || !currentUserId) throw new Error("Missing chat ID or user ID");
 
       const cachedBlocks =
@@ -252,6 +268,7 @@ export function useChatSendMessage(
         user_id: currentUserId,
         content: messageText || "",
         image_url: imageUrl || null,
+        image_aspect_ratio: imageAspectRatio ?? null,
         created_at: now,
         is_read: false,
         deleted_by_receiver: null,
@@ -263,6 +280,7 @@ export function useChatSendMessage(
           messageText,
           imageUrl: imageUrl ?? null,
           localImageUri: localImageUri ?? null,
+          imageAspectRatio: imageAspectRatio ?? null,
           replyToId: replyToId ?? null,
         },
       };
@@ -433,7 +451,11 @@ export function useChatSendMessage(
       const isPgrst204 =
         (error as { code?: string })?.code === "PGRST204" || msg.includes("Could not find");
       if (variables && onRestoreInput) {
-        onRestoreInput(variables.messageText ?? "", variables.localImageUri ?? null);
+        onRestoreInput(
+          variables.messageText ?? "",
+          variables.localImageUri ?? null,
+          variables.imageAspectRatio ?? null,
+        );
       }
       Alert.alert(
         "Error",
@@ -467,7 +489,7 @@ export function useChatSendMessage(
         }
       }
 
-      const { text: messageText, localImageUri, replyToId } = params;
+      const { text: messageText, localImageUri, imageAspectRatio, replyToId } = params;
       if (!messageText?.trim() && !localImageUri) return;
 
       isSendingRef.current = true;
@@ -506,7 +528,13 @@ export function useChatSendMessage(
       }
 
       mutation.mutate(
-        { messageText: messageText?.trim() ?? "", imageUrl, localImageUri, replyToId: replyToId ?? null },
+        {
+          messageText: messageText?.trim() ?? "",
+          imageUrl,
+          localImageUri,
+          imageAspectRatio: imageAspectRatio ?? null,
+          replyToId: replyToId ?? null,
+        },
         {
           onSettled: () => {
             isSendingRef.current = false;
@@ -532,6 +560,7 @@ export function useChatSendMessage(
       send({
         text: payload?.messageText ?? msg.content ?? "",
         localImageUri: localUri ?? null,
+        imageAspectRatio: payload?.imageAspectRatio ?? msg.image_aspect_ratio ?? null,
         replyToId: payload?.replyToId ?? null,
       });
     },
