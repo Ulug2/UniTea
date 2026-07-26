@@ -42,3 +42,4 @@ android/app/google-services.json
 # generated native folders
 /ios
 /android
+db_backups/
