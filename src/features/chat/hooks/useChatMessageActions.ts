@@ -17,6 +17,7 @@ type ChatMessageActionsOptions = {
 export function useChatMessageActions(
   chatId: string,
   currentUserId: string | undefined,
+  isAnonymous: boolean,
   options?: ChatMessageActionsOptions
 ) {
   const queryClient = useQueryClient();
@@ -40,21 +41,36 @@ export function useChatMessageActions(
         throw new Error("Only the sender can delete a message for everyone");
       }
 
-      const update: { deleted_by_sender?: boolean; deleted_by_receiver?: boolean } = {};
-      if (action === "delete_for_me") {
-        if (isSender) update.deleted_by_sender = true;
-        else update.deleted_by_receiver = true;
+      if (isAnonymous) {
+        // A plain UPDATE can't locate the row for anonymous chats (Phase 1
+        // — the base table's SELECT policy, which UPDATE also relies on to
+        // find its target, is deliberately false for anonymous rows). The
+        // RPC re-derives sender/participancy server-side rather than
+        // trusting the client-supplied `isSender` — see its migration
+        // comment for why that's not a behavior change for any honest
+        // caller.
+        const { error } = await (supabase as any).rpc(
+          "set_anonymous_chat_message_deletion",
+          { p_message_id: messageId, p_action: action }
+        );
+        if (error) throw error;
       } else {
-        update.deleted_by_sender = true;
-        update.deleted_by_receiver = true;
+        const update: { deleted_by_sender?: boolean; deleted_by_receiver?: boolean } = {};
+        if (action === "delete_for_me") {
+          if (isSender) update.deleted_by_sender = true;
+          else update.deleted_by_receiver = true;
+        } else {
+          update.deleted_by_sender = true;
+          update.deleted_by_receiver = true;
+        }
+
+        const { error } = await supabase
+          .from("chat_messages")
+          .update(update)
+          .eq("id", messageId);
+
+        if (error) throw error;
       }
-
-      const { error } = await supabase
-        .from("chat_messages")
-        .update(update)
-        .eq("id", messageId);
-
-      if (error) throw error;
 
       // When a message is deleted for everyone neither party can see it, so the
       // image file is no longer needed. Delete it from storage (non-fatal).

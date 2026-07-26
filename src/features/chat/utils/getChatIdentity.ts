@@ -6,6 +6,37 @@ export type ChatIdentity = {
 };
 
 /**
+ * Safely derives the counterpart's id and whether the chat is anonymous
+ * from a two-participant chat/chat-summary row.
+ *
+ * chat.is_anonymous is checked first and short-circuits before
+ * otherUserId is ever dereferenced: for anonymous chats,
+ * chats_view/user_chats_summary null out the counterpart's participant
+ * column by design, so any check on otherUserId's *value* (e.g. a legacy
+ * "anonymous-..." fake-id prefix convention) must never run first, or it
+ * throws on null. The legacy check is kept as a fallback only, for any
+ * pre-`is_anonymous`-column rows that might still use that convention.
+ */
+export function resolveOtherParticipant(
+  chat: {
+    participant_1_id?: string | null;
+    participant_2_id?: string | null;
+    is_anonymous?: boolean | null;
+  },
+  currentUserId: string | undefined,
+): { otherUserId: string | null; isAnonymous: boolean } {
+  const otherUserId =
+    (chat.participant_1_id === currentUserId
+      ? chat.participant_2_id
+      : chat.participant_1_id) ?? null;
+
+  const isAnonymous =
+    chat.is_anonymous === true || otherUserId?.startsWith("anonymous-") === true;
+
+  return { otherUserId: isAnonymous ? null : otherUserId, isAnonymous };
+}
+
+/**
  * Resolves the display name and avatar for the "other" user in a chat,
  * respecting pseudo-anonymous masking rules:
  *

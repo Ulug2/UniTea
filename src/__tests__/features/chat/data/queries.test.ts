@@ -97,10 +97,8 @@ describe('fetchChatMessagesPage', () => {
 
     const result = await fetchChatMessagesPage(chatId, 0, 20);
 
-    expect(mockFrom).toHaveBeenCalledWith('chat_messages');
-    expect(chain.select).toHaveBeenCalledWith(
-      '*, reply_message:reply_to_id(id, content, image_url, user_id)'
-    );
+    expect(mockFrom).toHaveBeenCalledWith('chat_messages_view');
+    expect(chain.select).toHaveBeenCalledWith('*');
     expect(chain.eq).toHaveBeenCalledWith('chat_id', chatId);
     expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
     // result rows are mapped to ChatMessageVM; check the message IDs survive the transform

@@ -99,6 +99,46 @@ export default function ChatDetailScreen() {
   const isAdmin = currentUser?.is_admin === true;
   const queryClient = useQueryClient();
 
+  // Fetch chat data.
+  // Reads chats_view rather than the chats base table: the view nulls the
+  // counterpart's participant column for anonymous chats, and — because
+  // anonymous chats rows are unreadable via the base table by design
+  // (Phase 1 migration) — the view is the only path that works for them
+  // at all. Non-anonymous chats get identical data either way.
+  //
+  // Declared early (before useChatSendMessage etc.) specifically so
+  // isChatAnonymous, derived right below, is available to pass into those
+  // hooks — hook call order can't be reshuffled based on data that
+  // arrives later in the same component.
+  const { data: chat, isLoading: isLoadingChat } = useQuery<Chat | null>({
+    queryKey: ["chat", id],
+    queryFn: async () => {
+      if (!id) return null;
+
+      const { data, error } = await (supabase as any)
+        .from("chats_view")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: Boolean(id),
+    staleTime: 1000 * 60 * 10, // Chat stays fresh for 10 minutes
+    gcTime: 1000 * 60 * 60, // Cache for 1 hour
+    retry: 2,
+  });
+
+  // Get other user ID
+  const otherUserId =
+    chat?.participant_1_id === currentUserId
+      ? chat?.participant_2_id
+      : chat?.participant_1_id;
+
+  const isLegacyAnonymous = otherUserId?.startsWith("anonymous-");
+  const isChatAnonymous = isLegacyAnonymous || chat?.is_anonymous === true;
+
   // Subscribe to chat list unread counters so we can mark messages as read
   // without scanning the full `messages` array on every realtime update.
   const { data: chatSummaries } = useQuery<any[]>({
@@ -155,6 +195,7 @@ export default function ChatDetailScreen() {
   const { send, retry, isSending } = useChatSendMessage(
     id ?? "",
     currentUserId ?? "",
+    isChatAnonymous,
     {
       pendingMessageIdsRef: pendingMessageIds,
       optimisticImageUrisRef: optimisticImageUris,
@@ -196,36 +237,6 @@ export default function ChatDetailScreen() {
       hideSubscription.remove();
     };
   }, []);
-
-  // Fetch chat data
-  const { data: chat, isLoading: isLoadingChat } = useQuery<Chat | null>({
-    queryKey: ["chat", id],
-    queryFn: async () => {
-      if (!id) return null;
-
-      const { data, error } = await supabase
-        .from("chats")
-        .select("*")
-        .eq("id", id)
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-    enabled: Boolean(id),
-    staleTime: 1000 * 60 * 10, // Chat stays fresh for 10 minutes
-    gcTime: 1000 * 60 * 60, // Cache for 1 hour
-    retry: 2,
-  });
-
-  // Get other user ID
-  const otherUserId =
-    chat?.participant_1_id === currentUserId
-      ? chat?.participant_2_id
-      : chat?.participant_1_id;
-
-  const isLegacyAnonymous = otherUserId?.startsWith("anonymous-");
-  const isChatAnonymous = isLegacyAnonymous || chat?.is_anonymous === true;
 
   // Tell the notification handler which chat is active so it can suppress banners
   // for this exact conversation.  We set BOTH chatId (primary — works for anonymous
@@ -305,7 +316,8 @@ export default function ChatDetailScreen() {
     chatId: string | null;
     isEmpty: boolean;
     userId: string | null;
-  }>({ chatId: null, isEmpty: false, userId: null });
+    isAnonymous: boolean;
+  }>({ chatId: null, isEmpty: false, userId: null, isAnonymous: false });
   emptyChatCleanupRef.current = {
     chatId: id ?? null,
     // Only empty when the chat is loaded, has never had a message, and none are
@@ -316,27 +328,39 @@ export default function ChatDetailScreen() {
       !isLoadingMessages &&
       messages.length === 0,
     userId: currentUserId ?? null,
+    isAnonymous: isChatAnonymous,
   };
   useEffect(() => {
     return () => {
-      const { chatId, isEmpty, userId } = emptyChatCleanupRef.current;
+      const { chatId, isEmpty, userId, isAnonymous } =
+        emptyChatCleanupRef.current;
       if (!isEmpty || !chatId || !userId) return;
 
-      supabase
-        .from("chats")
-        .delete()
-        .eq("id", chatId)
-        .is("last_message_at", null)
-        .then(({ error }) => {
-          if (error) {
-            logger.warn("Failed to clean up empty chat", {
-              chatId,
-              userId,
-              component: "ChatDetailScreen",
-              error: error.message,
-            });
-          }
-        });
+      // Anonymous chats: the base-table DELETE below can't locate the row
+      // (Phase 1 — same reason the message DELETE/RETURNING paths can't),
+      // so this reuses delete_anonymous_chat (Phase 4) instead, exactly
+      // the same operation as the "Delete Chat" menu action, just applied
+      // to a chat with zero messages.
+      const deletePromise = isAnonymous
+        ? (supabase as any).rpc("delete_anonymous_chat", {
+            p_chat_id: chatId,
+          })
+        : supabase
+            .from("chats")
+            .delete()
+            .eq("id", chatId)
+            .is("last_message_at", null);
+
+      deletePromise.then(({ error }: { error: unknown }) => {
+        if (error) {
+          logger.warn("Failed to clean up empty chat", {
+            chatId,
+            userId,
+            component: "ChatDetailScreen",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
 
       queryClient.setQueryData<any[]>(["chat-summaries", userId], (old) =>
         old ? old.filter((s) => s?.chat_id !== chatId) : old,
@@ -403,6 +427,7 @@ export default function ChatDetailScreen() {
   const { openMessageActionSheet } = useChatMessageActions(
     id ?? "",
     currentUserId ?? undefined,
+    isChatAnonymous,
     { onReply: handleReply },
   );
 
@@ -414,7 +439,7 @@ export default function ChatDetailScreen() {
     }
   }, [scrollToBottom, incrementPending]);
 
-  useChatMessagesRealtime(id ?? "", currentUserId ?? "", {
+  useChatMessagesRealtime(id ?? "", currentUserId ?? "", isChatAnonymous, {
     pendingMessageIdsRef: pendingMessageIds,
     onIncomingMessage: handleIncomingMessage,
   });
@@ -495,30 +520,39 @@ export default function ChatDetailScreen() {
       }
 
       // Server update (fire-and-forget; UI already reflects the new state).
-      supabase
-        .from("chat_messages")
-        .update({ is_read: true })
-        .eq("chat_id", id)
-        .eq("is_read", false)
-        .neq("user_id", currentUserId)
-        .then(({ error }) => {
-          if (error) {
-            logger.error("Error marking messages as read", error, {
-              userId: currentUserId,
-              chatId: id,
-              component: "ChatDetailScreen",
-              operation: "markAsRead",
-            });
-            queryClient.invalidateQueries({
-              queryKey: ["chat-summaries", currentUserId],
-            });
-            queryClient.invalidateQueries({
-              queryKey: ["global-unread-count", currentUserId],
-            });
-          }
-        });
+      // Anonymous chats: a plain UPDATE can't locate the rows (Phase 1 —
+      // the base table's SELECT policy, which UPDATE also relies on to
+      // find its target, is deliberately false for anonymous rows), so
+      // this routes through mark_anonymous_chat_read (Phase 4) instead.
+      const markReadPromise = isChatAnonymous
+        ? (supabase as any).rpc("mark_anonymous_chat_read", {
+            p_chat_id: id,
+          })
+        : supabase
+            .from("chat_messages")
+            .update({ is_read: true })
+            .eq("chat_id", id)
+            .eq("is_read", false)
+            .neq("user_id", currentUserId);
+
+      markReadPromise.then(({ error }: { error: unknown }) => {
+        if (error) {
+          logger.error("Error marking messages as read", error, {
+            userId: currentUserId,
+            chatId: id,
+            component: "ChatDetailScreen",
+            operation: "markAsRead",
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["chat-summaries", currentUserId],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["global-unread-count", currentUserId],
+          });
+        }
+      });
     },
-    [id, currentUserId, queryClient],
+    [id, currentUserId, isChatAnonymous, queryClient],
   );
 
   // On every focus: immediately fire mark-as-read regardless of what the cache
@@ -698,11 +732,29 @@ export default function ChatDetailScreen() {
     }
   }, []);
 
-  // Block user mutation
+  // Block user mutation.
+  // Anonymous chats: the client no longer holds the partner's real id
+  // (Phase 1), so blocking goes through block_chat_partner (Phase 2),
+  // which resolves the real target server-side from the chat_id alone.
+  // Non-anonymous chats keep the direct insert unchanged — the client
+  // already legitimately holds that id.
   const blockUserMutation = useMutation({
-    mutationFn: async (blockedUserId: string) => {
+    mutationFn: async (blockedUserId: string | null) => {
       if (!currentUserId) {
         throw new Error("User not authenticated");
+      }
+
+      if (isChatAnonymous) {
+        const { error } = await (supabase as any).rpc("block_chat_partner", {
+          p_chat_id: id,
+          p_scope: "profile_only",
+        });
+        if (error) throw error;
+        return;
+      }
+
+      if (!blockedUserId) {
+        throw new Error("Missing user to block");
       }
 
       const { error } = await supabase.from("blocks").insert({
@@ -749,11 +801,30 @@ export default function ChatDetailScreen() {
     },
   });
 
-  // Delete chat mutation
+  // Delete chat mutation.
+  // Anonymous chats: routed entirely through delete_anonymous_chat (Phase
+  // 4) — the base-table participant check, message DELETE, its
+  // soft-delete fallback, and the chats-row DELETE below all depend on
+  // SELECT-visibility that's deliberately false for anonymous rows
+  // (Phase 1), so none of that two-layer safety net has a working layer
+  // left for them; the RPC re-verifies participancy and deletes both
+  // server-side in one call. Non-anonymous chats keep the exact existing
+  // flow, unchanged.
   const deleteChatMutation = useMutation({
     mutationFn: async () => {
       if (!id || !currentUserId) {
         throw new Error("Missing chat ID or user ID");
+      }
+
+      if (isChatAnonymous) {
+        const { error } = await (supabase as any).rpc(
+          "delete_anonymous_chat",
+          { p_chat_id: id },
+        );
+        if (error) {
+          throw new Error(`Failed to delete chat: ${error.message}`);
+        }
+        return { deletedChat: null, deletedMessagesCount: 0 };
       }
 
       // Verify user is a participant in this chat (for RLS)
@@ -969,7 +1040,10 @@ export default function ChatDetailScreen() {
   });
 
   const handleHeaderMenu = useCallback(() => {
-    if (!otherUserId) return;
+    // otherUserId is null for anonymous chats by design (Phase 1) — the
+    // menu should still be available for them, routed through
+    // block_chat_partner instead of a direct id.
+    if (!isChatAnonymous && !otherUserId) return;
 
     const blockLabel = isChatAnonymous
       ? "Are you sure you want to block this user?"
@@ -986,7 +1060,7 @@ export default function ChatDetailScreen() {
           {
             text: "Block",
             style: "destructive",
-            onPress: () => blockUserMutation.mutate(otherUserId!),
+            onPress: () => blockUserMutation.mutate(otherUserId ?? null),
           },
         ]);
       },
@@ -1030,7 +1104,7 @@ export default function ChatDetailScreen() {
               {
                 text: "Block",
                 style: "destructive",
-                onPress: () => blockUserMutation.mutate(otherUserId!),
+                onPress: () => blockUserMutation.mutate(otherUserId ?? null),
               },
             ]);
           },
@@ -1180,8 +1254,10 @@ export default function ChatDetailScreen() {
             ? () => setProfileModalVisible(true)
             : undefined
         }
-        onMenuPress={otherUserId ? handleHeaderMenu : undefined}
-        showMenu={!!otherUserId}
+        onMenuPress={
+          isChatAnonymous || otherUserId ? handleHeaderMenu : undefined
+        }
+        showMenu={isChatAnonymous || !!otherUserId}
         iconColor={theme.text}
         styles={dynamicStyles}
       />

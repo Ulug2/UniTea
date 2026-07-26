@@ -118,7 +118,7 @@ describe('useChatSendMessage', () => {
         },
       ]);
 
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
 
@@ -136,7 +136,7 @@ describe('useChatSendMessage', () => {
 
     it('does not call supabase when chatId is empty', async () => {
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
       await act(async () => {
@@ -147,7 +147,7 @@ describe('useChatSendMessage', () => {
 
     it('does not call supabase when currentUserId is undefined', async () => {
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', undefined, opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', undefined, false, opts), {
         wrapper: createWrapper(),
       });
       await act(async () => {
@@ -158,7 +158,7 @@ describe('useChatSendMessage', () => {
 
     it('does nothing when text is empty and no image', async () => {
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
       await act(async () => {
@@ -171,7 +171,7 @@ describe('useChatSendMessage', () => {
   describe('happy path — text message', () => {
     it('calls addOptimisticMessage then replaceOptimisticMessage on success', async () => {
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
 
@@ -187,7 +187,7 @@ describe('useChatSendMessage', () => {
 
     it('inserts into chat_messages with correct fields', async () => {
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
 
@@ -202,7 +202,7 @@ describe('useChatSendMessage', () => {
   describe('happy path — image message', () => {
     it('calls uploadImage first then inserts message with image_url', async () => {
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
 
@@ -219,7 +219,7 @@ describe('useChatSendMessage', () => {
     it('shows alert and returns early when uploadImage fails', async () => {
       mockUploadImage.mockRejectedValue(new Error('upload failed'));
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
 
@@ -248,7 +248,7 @@ describe('useChatSendMessage', () => {
 
     it('includes reply_to_id in the insert payload', async () => {
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
 
@@ -270,7 +270,7 @@ describe('useChatSendMessage', () => {
         pageParams: [0],
       });
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
 
@@ -290,7 +290,7 @@ describe('useChatSendMessage', () => {
 
     it('leaves replyToMessage null when the original message is not in cache', async () => {
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
 
@@ -322,7 +322,7 @@ describe('useChatSendMessage', () => {
       mockFrom.mockReturnValueOnce(insertChain).mockReturnValueOnce(updateChain);
 
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
 
@@ -354,7 +354,7 @@ describe('useChatSendMessage', () => {
       });
 
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
 
@@ -390,7 +390,7 @@ describe('useChatSendMessage', () => {
       mockFrom.mockReturnValue(failChain);
 
       const opts = makeOptions();
-      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', opts), {
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
         wrapper: createWrapper(),
       });
 
@@ -401,6 +401,69 @@ describe('useChatSendMessage', () => {
       await waitFor(() => {
         expect(mockMarkFailed).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('anonymous chats', () => {
+    it('inserts without requesting RETURNING, then re-fetches via chat_messages_view', async () => {
+      // First from() call: bare insert, resolved via .then (no .select()/.single()
+      // requested — RETURNING is unavailable for anonymous inserts, Phase 1).
+      const insertChain = buildInsertChain({ data: null, error: null });
+      // Second from() call: the follow-up read of the confirmed row.
+      const viewChain = buildInsertChain({
+        data: { ...fakeMessage, id: 'ignored-because-generated-client-side' },
+        error: null,
+      });
+      mockFrom.mockReset();
+      mockFrom.mockReturnValueOnce(insertChain).mockReturnValueOnce(viewChain);
+
+      const opts = makeOptions();
+      const { result } = renderHook(
+        () => useChatSendMessage('chat-1', 'u1', true, opts),
+        { wrapper: createWrapper() },
+      );
+
+      await act(async () => {
+        await result.current.send({ text: 'hello anonymously' });
+      });
+
+      await waitFor(() => {
+        expect(mockFrom).toHaveBeenNthCalledWith(1, 'chat_messages');
+        expect(mockFrom).toHaveBeenNthCalledWith(2, 'chat_messages_view');
+      });
+
+      // The insert payload includes a client-generated id (a valid uuid v4),
+      // since RETURNING can't tell us the server-assigned one.
+      const insertedRow = insertChain.insert.mock.calls[0][0];
+      expect(insertedRow.id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
+      expect(insertChain.select).not.toHaveBeenCalled();
+
+      // The view fetch is filtered by that same generated id.
+      expect(viewChain.eq).toHaveBeenCalledWith('id', insertedRow.id);
+    });
+
+    it('does not attempt to update chats.last_message_at directly (handled server-side by the broadcast trigger)', async () => {
+      const insertChain = buildInsertChain({ data: null, error: null });
+      const viewChain = buildInsertChain({ data: fakeMessage, error: null });
+      mockFrom.mockReset();
+      mockFrom.mockReturnValueOnce(insertChain).mockReturnValueOnce(viewChain);
+
+      const opts = makeOptions();
+      const { result } = renderHook(
+        () => useChatSendMessage('chat-1', 'u1', true, opts),
+        { wrapper: createWrapper() },
+      );
+
+      await act(async () => {
+        await result.current.send({ text: 'hello anonymously' });
+      });
+
+      await waitFor(() => expect(mockFrom).toHaveBeenCalledTimes(2));
+      // Only chat_messages (insert) and chat_messages_view (follow-up) —
+      // no third call to update the chats table.
+      expect(mockFrom).not.toHaveBeenCalledWith('chats');
     });
   });
 });

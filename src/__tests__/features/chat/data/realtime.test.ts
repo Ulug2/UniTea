@@ -46,16 +46,17 @@ beforeEach(() => {
   (supabase.channel as jest.Mock).mockReturnValue(ch);
 });
 
-describe('subscribeToChatMessages', () => {
+describe('subscribeToChatMessages (non-anonymous, postgres_changes)', () => {
   const chatId = 'chat-xyz';
+  const userId = 'user-a';
 
   it('creates a channel with the correct name', () => {
-    subscribeToChatMessages(chatId, { onRawInsert: jest.fn() });
+    subscribeToChatMessages(chatId, userId, false, { onRawInsert: jest.fn() });
     expect(supabase.channel).toHaveBeenCalledWith(`chat-${chatId}`);
   });
 
   it('subscribes to postgres_changes INSERT on chat_messages with correct filter', () => {
-    subscribeToChatMessages(chatId, { onRawInsert: jest.fn() });
+    subscribeToChatMessages(chatId, userId, false, { onRawInsert: jest.fn() });
     const ch = getChannelMock();
     expect(ch.on).toHaveBeenCalledWith(
       'postgres_changes',
@@ -70,7 +71,7 @@ describe('subscribeToChatMessages', () => {
 
   it('calls the callback with the new message payload on INSERT', () => {
     const cb = jest.fn();
-    subscribeToChatMessages(chatId, { onRawInsert: cb });
+    subscribeToChatMessages(chatId, userId, false, { onRawInsert: cb });
     const ch = getChannelMock();
 
     // Extract the callback passed to .on()
@@ -82,7 +83,61 @@ describe('subscribeToChatMessages', () => {
   });
 
   it('returns a cleanup function that calls unsubscribe and removeChannel', () => {
-    const cleanup = subscribeToChatMessages(chatId, { onRawInsert: jest.fn() });
+    const cleanup = subscribeToChatMessages(chatId, userId, false, {
+      onRawInsert: jest.fn(),
+    });
+    const ch = getChannelMock();
+    cleanup();
+    expect(ch.unsubscribe).toHaveBeenCalled();
+    expect(supabase.removeChannel).toHaveBeenCalledWith(ch);
+  });
+});
+
+describe('subscribeToChatMessages (anonymous, Broadcast)', () => {
+  const chatId = 'chat-xyz';
+  const userId = 'user-a';
+
+  it('creates a private channel named after the chat and the current user only', () => {
+    subscribeToChatMessages(chatId, userId, true, { onRawInsert: jest.fn() });
+    expect(supabase.channel).toHaveBeenCalledWith(
+      `anon-chat-message:${chatId}:${userId}`,
+      { config: { private: true } }
+    );
+  });
+
+  it('subscribes to the "new_message" broadcast event, not postgres_changes', () => {
+    subscribeToChatMessages(chatId, userId, true, { onRawInsert: jest.fn() });
+    const ch = getChannelMock();
+    expect(ch.on).toHaveBeenCalledWith(
+      'broadcast',
+      { event: 'new_message' },
+      expect.any(Function)
+    );
+  });
+
+  it('calls onRawInsert with the broadcast payload for this chat', () => {
+    const cb = jest.fn();
+    subscribeToChatMessages(chatId, userId, true, { onRawInsert: cb });
+    const ch = getChannelMock();
+    const onCb = ch.on.mock.calls[0][2] as (payload: any) => void;
+    const fakeMessage = { id: 'm1', chat_id: chatId, content: 'hello, no user_id here' };
+    onCb({ payload: fakeMessage });
+    expect(cb).toHaveBeenCalledWith(fakeMessage);
+  });
+
+  it('ignores a broadcast payload for a different chat_id', () => {
+    const cb = jest.fn();
+    subscribeToChatMessages(chatId, userId, true, { onRawInsert: cb });
+    const ch = getChannelMock();
+    const onCb = ch.on.mock.calls[0][2] as (payload: any) => void;
+    onCb({ payload: { id: 'm2', chat_id: 'some-other-chat', content: 'x' } });
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('returns a cleanup function that calls unsubscribe and removeChannel', () => {
+    const cleanup = subscribeToChatMessages(chatId, userId, true, {
+      onRawInsert: jest.fn(),
+    });
     const ch = getChannelMock();
     cleanup();
     expect(ch.unsubscribe).toHaveBeenCalled();

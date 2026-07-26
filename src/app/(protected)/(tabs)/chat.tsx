@@ -17,7 +17,10 @@ import {
 } from "../../../hooks/useBlocks";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import { saveChatToStorage } from "../../../utils/feedPersistence";
-import { getChatDisplayIdentity } from "../../../features/chat/utils/getChatIdentity";
+import {
+  getChatDisplayIdentity,
+  resolveOtherParticipant,
+} from "../../../features/chat/utils/getChatIdentity";
 import { getCurrentViewedChatId } from "../../../hooks/usePushNotifications";
 
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
@@ -118,6 +121,24 @@ export default function ChatScreen() {
       setIsManualRefreshing(false);
     }
   }, [refetchChats]);
+
+  // Anonymous chats: postgres_changes on `chats` no longer fires for them
+  // once the RLS-driven identity redaction is active (Realtime respects
+  // SELECT RLS, and anonymous rows are invisible via the base table by
+  // design). That leaves reopening the screen as the only remaining way
+  // to pick up a new/updated anonymous chat's preview or ordering, so
+  // refetch on focus rather than relying solely on refetchOnMount.
+  // Non-anonymous chats are unaffected either way — they still update live
+  // via the postgres_changes subscriptions below.
+  useFocusEffect(
+    useCallback(() => {
+      if (!currentUserId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["chat-summaries", currentUserId],
+        refetchType: "active",
+      });
+    }, [currentUserId, queryClient]),
+  );
 
   // Prevent stuck loading state: cancel refetch if it's been stuck for too long
   useEffect(() => {
@@ -421,6 +442,11 @@ export default function ChatScreen() {
     };
 
     // Channel A — chats where the current user is participant_1
+    // Note: these two subscriptions silently stop delivering events for
+    // anonymous chats (Realtime enforces the same restrictive RLS as
+    // direct reads) — that's expected, not an error; see the
+    // useFocusEffect above for how anonymous chats stay reasonably fresh
+    // instead. Non-anonymous chats are completely unaffected.
     const channelP1 = supabase
       .channel(`chats-p1-${currentUserId}`)
       .on(
@@ -515,12 +541,10 @@ export default function ChatScreen() {
 
   const getOtherUser = useCallback(
     (chat: ChatSummary): { user: User | null; isAnonymous: boolean } => {
-      const otherUserId =
-        chat.participant_1_id === currentUserId
-          ? chat.participant_2_id
-          : chat.participant_1_id;
-
-      const isAnonymous = otherUserId.startsWith("anonymous-");
+      const { otherUserId, isAnonymous } = resolveOtherParticipant(
+        chat,
+        currentUserId,
+      );
 
       if (isAnonymous) {
         return { user: null, isAnonymous: true };

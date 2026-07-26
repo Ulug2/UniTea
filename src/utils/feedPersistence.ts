@@ -7,8 +7,14 @@ type PostSummary = PostsSummaryViewRow;
 // Versioned keys so a schema change can bust old cached blobs by bumping the suffix.
 const FEED_KEY_PREFIX = "@unitee:feed_v1:";
 const LF_KEY = "@unitee:lostfound_v1";
-const CHAT_KEY_PREFIX = "@unitee:chat_v2:";
-const CHAT_MESSAGES_KEY_PREFIX = "@unitee:chat_messages_v1:";
+// Bumped v2 -> v3: pre-anonymity-fix caches could hold unredacted partner
+// ids/participant fields for anonymous chats (fetched before chats_view /
+// chat_messages_view existed). Bumping orphans that old data rather than
+// risking it being read back and displayed/used after the fix ships.
+const CHAT_KEY_PREFIX = "@unitee:chat_v3:";
+// Bumped v1 -> v2: same reason as CHAT_KEY_PREFIX above — pre-fix caches
+// could hold real sender ids for anonymous chat messages.
+const CHAT_MESSAGES_KEY_PREFIX = "@unitee:chat_messages_v2:";
 const USER_POSTS_KEY_PREFIX = "@unitee:user_posts_v1:";
 const USER_TOTAL_VOTES_KEY_PREFIX = "@unitee:total_votes_v1:";
 

@@ -15,6 +15,7 @@ import {
   markMessageFailed,
   removeOptimisticMessage,
 } from "../data/cache";
+import { generateUuidV4 } from "../utils/uuid";
 
 const RATE_LIMIT_MESSAGES = 10;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -125,6 +126,7 @@ function checkServerRateLimit(
 export function useChatSendMessage(
   chatId: string,
   currentUserId: string | undefined,
+  isAnonymous: boolean,
   options: Options
 ) {
   const queryClient = useQueryClient();
@@ -188,33 +190,75 @@ export function useChatSendMessage(
         }
       }
 
-      const { data: newMessage, error } = await supabase
-        .from("chat_messages")
-        .insert({
+      let newMessage: ChatMessageVM;
+
+      if (isAnonymous) {
+        // RETURNING is unavailable for anonymous chat_messages inserts —
+        // Postgres filters RETURNING through the SELECT policy, which is
+        // deliberately false for anonymous rows via the base table (Phase 1
+        // migration). Generate the id client-side so we know what to
+        // re-fetch, insert without requesting any columns back, then read
+        // the confirmed row through chat_messages_view (the only path that
+        // can see it), mirroring the existing reply-enrichment pattern.
+        const generatedId = generateUuidV4();
+        const { error: insertErr } = await supabase.from("chat_messages").insert({
+          id: generatedId,
           chat_id: chatId,
           user_id: currentUserId,
           content: messageText?.trim() ?? "",
           image_url: imageUrl ?? null,
           image_aspect_ratio: imageAspectRatio ?? null,
           reply_to_id: replyToId ?? null,
-        })
-        .select("*, reply_message:reply_to_id(id, content, image_url, user_id)")
-        .single();
+        });
 
-      if (error) throw error;
-      if (!newMessage) throw new Error("Failed to create message");
+        if (insertErr) throw insertErr;
 
-      await supabase
-        .from("chats")
-        .update({ last_message_at: newMessage.created_at })
-        .eq("id", chatId);
+        const { data: viewRow, error: viewErr } = await (supabase as any)
+          .from("chat_messages_view")
+          .select("*")
+          .eq("id", generatedId)
+          .single();
+
+        if (viewErr) throw viewErr;
+        if (!viewRow) throw new Error("Failed to create message");
+
+        newMessage = viewRow as ChatMessageVM;
+
+        // last_message_at is updated server-side by
+        // broadcast_anonymous_chat_message() (Phase 3) for anonymous
+        // chats — no client-side update needed or possible (the base
+        // table UPDATE would silently match zero rows, same root cause
+        // as RETURNING above).
+      } else {
+        const { data, error } = await supabase
+          .from("chat_messages")
+          .insert({
+            chat_id: chatId,
+            user_id: currentUserId,
+            content: messageText?.trim() ?? "",
+            image_url: imageUrl ?? null,
+            image_aspect_ratio: imageAspectRatio ?? null,
+            reply_to_id: replyToId ?? null,
+          })
+          .select("*, reply_message:reply_to_id(id, content, image_url, user_id)")
+          .single();
+
+        if (error) throw error;
+        if (!data) throw new Error("Failed to create message");
+        newMessage = data as ChatMessageVM;
+
+        await supabase
+          .from("chats")
+          .update({ last_message_at: newMessage.created_at })
+          .eq("id", chatId);
+      }
 
       queryClient.invalidateQueries({
         queryKey: ["chat-summaries", currentUserId],
         refetchType: "none",
       });
 
-      return { newMessage: newMessage as ChatMessageVM, now: newMessage.created_at ?? new Date().toISOString() };
+      return { newMessage, now: newMessage.created_at ?? new Date().toISOString() };
     },
     onMutate: async ({ messageText, imageUrl, localImageUri, imageAspectRatio, replyToId }) => {
       if (!chatId || !currentUserId) throw new Error("Missing chat ID or user ID");

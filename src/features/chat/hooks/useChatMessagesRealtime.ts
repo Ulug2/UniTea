@@ -30,6 +30,7 @@ const PENDING_CLEANUP_MS = 5000;
 export function useChatMessagesRealtime(
   chatId: string,
   currentUserId: string | undefined,
+  isAnonymous: boolean,
   options: Options
 ): void {
   const queryClient = useQueryClient();
@@ -42,57 +43,92 @@ export function useChatMessagesRealtime(
 
     let isMounted = true;
 
-    const unsubscribe = subscribeToChatMessages(chatId, {
-      onRawInsert: (newMessage) => {
-        if (!isMounted) return;
+    const unsubscribe = subscribeToChatMessages(
+      chatId,
+      currentUserId,
+      isAnonymous,
+      {
+        onRawInsert: (newMessage) => {
+          if (!isMounted) return;
 
-        if (newMessage.user_id === currentUserId) return;
-        if (newMessage.chat_id !== chatId) return;
-        if (pendingMessageIdsRef.current.has(newMessage.id)) return;
+          // For anonymous chats, receipt on this user's own private topic
+          // already guarantees "not mine" and "not from someone I've
+          // blocked" (both enforced server-side — see data/realtime.ts).
+          // For non-anonymous chats, keep the existing client-side checks
+          // exactly as before.
+          if (!isAnonymous) {
+            if (newMessage.user_id === currentUserId) return;
+            if (newMessage.chat_id !== chatId) return;
 
-        const cachedBlocks =
-          queryClient.getQueryData<BlockRecord[]>(["blocks", currentUserId]) ||
-          [];
-        if (isBlockedDirectMessage(cachedBlocks, newMessage.user_id)) return;
+            const cachedBlocks =
+              queryClient.getQueryData<BlockRecord[]>([
+                "blocks",
+                currentUserId,
+              ]) || [];
+            if (isBlockedDirectMessage(cachedBlocks, newMessage.user_id))
+              return;
+          }
+          if (pendingMessageIdsRef.current.has(newMessage.id)) return;
 
-        // Only dedupe/trigger UI updates for the initial raw INSERT.
-        pendingMessageIdsRef.current.add(newMessage.id);
-        setTimeout(() => {
-          pendingMessageIdsRef.current.delete(newMessage.id);
-        }, PENDING_CLEANUP_MS);
+          // Only dedupe/trigger UI updates for the initial raw INSERT.
+          pendingMessageIdsRef.current.add(newMessage.id);
+          setTimeout(() => {
+            pendingMessageIdsRef.current.delete(newMessage.id);
+          }, PENDING_CLEANUP_MS);
 
-        prependIncomingMessage(queryClient, chatId, newMessage);
-        onIncomingMessageRef.current?.();
+          prependIncomingMessage(queryClient, chatId, newMessage);
+          onIncomingMessageRef.current?.();
 
-        // User is actively viewing this chat — mark the message read immediately
-        // so the server-side unread count stays at zero without waiting for the
-        // chat detail screen's 800 ms markAsRead timer.
-        supabase
-          .from("chat_messages")
-          .update({ is_read: true })
-          .eq("id", newMessage.id)
-          .then(({ error }) => {
-            if (error) {
-              // Non-critical: the chat detail screen's markAsRead will reconcile
-              // on the next unread-count change.
-              queryClient.invalidateQueries({
-                queryKey: ["global-unread-count", currentUserId],
-                refetchType: "none",
+          // User is actively viewing this chat — mark the message read
+          // immediately so the server-side unread count stays at zero
+          // without waiting for the chat detail screen's markAsRead timer.
+          // Anonymous chats route through the RPC (Phase 4): a plain
+          // base-table UPDATE can't locate the row for them (Phase 1).
+          if (isAnonymous) {
+            (supabase as any)
+              .rpc("mark_anonymous_chat_read", { p_chat_id: chatId })
+              .then(({ error }: { error: unknown }) => {
+                if (error) {
+                  queryClient.invalidateQueries({
+                    queryKey: ["global-unread-count", currentUserId],
+                    refetchType: "none",
+                  });
+                }
               });
-            }
-          });
-      },
-      onEnrichedInsert: (enrichedMessage) => {
-        // Enrichment is a secondary update to an already-received message.
-        // It must not trigger scroll/pill UI or unread invalidations.
-        if (!isMounted) return;
-        const cachedBlocks =
-          queryClient.getQueryData<BlockRecord[]>(["blocks", currentUserId]) ||
-          [];
-        if (isBlockedDirectMessage(cachedBlocks, enrichedMessage.user_id)) return;
-        upsertIncomingMessage(queryClient, chatId, enrichedMessage);
-      },
-    });
+          } else {
+            supabase
+              .from("chat_messages")
+              .update({ is_read: true })
+              .eq("id", newMessage.id)
+              .then(({ error }) => {
+                if (error) {
+                  // Non-critical: the chat detail screen's markAsRead will reconcile
+                  // on the next unread-count change.
+                  queryClient.invalidateQueries({
+                    queryKey: ["global-unread-count", currentUserId],
+                    refetchType: "none",
+                  });
+                }
+              });
+          }
+        },
+        onEnrichedInsert: (enrichedMessage) => {
+          // Enrichment is a secondary update to an already-received message.
+          // It must not trigger scroll/pill UI or unread invalidations.
+          if (!isMounted) return;
+          if (!isAnonymous) {
+            const cachedBlocks =
+              queryClient.getQueryData<BlockRecord[]>([
+                "blocks",
+                currentUserId,
+              ]) || [];
+            if (isBlockedDirectMessage(cachedBlocks, enrichedMessage.user_id))
+              return;
+          }
+          upsertIncomingMessage(queryClient, chatId, enrichedMessage);
+        },
+      }
+    );
 
     const appStateSubscription = AppState.addEventListener(
       "change",
@@ -115,5 +151,5 @@ export function useChatMessagesRealtime(
       appStateSubscription.remove();
       unsubscribe();
     };
-  }, [chatId, currentUserId, queryClient, pendingMessageIdsRef]);
+  }, [chatId, currentUserId, isAnonymous, queryClient, pendingMessageIdsRef]);
 }

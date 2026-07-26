@@ -3,7 +3,7 @@
  */
 
 jest.mock('../../../../lib/supabase', () => ({
-  supabase: { from: jest.fn() },
+  supabase: { from: jest.fn(), rpc: jest.fn() },
 }));
 jest.mock('../../../../utils/logger', () => ({
   logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn() },
@@ -23,6 +23,7 @@ import { applyMessageDeletion } from '../../../../features/chat/data/cache';
 import type { ChatMessageVM } from '../../../../features/chat/types';
 
 const mockFrom = supabase.from as jest.Mock;
+const mockRpc = supabase.rpc as jest.Mock;
 const mockApply = applyMessageDeletion as jest.Mock;
 
 function buildUpdateChain(error: any = null) {
@@ -81,7 +82,7 @@ describe('useChatMessageActions', () => {
   describe('deleteForMe guard — no currentUserId', () => {
     it('returns early without calling supabase when currentUserId is undefined', () => {
       const { result } = renderHook(
-        () => useChatMessageActions('chat-1', undefined),
+        () => useChatMessageActions('chat-1', undefined, false),
         { wrapper: createWrapper() }
       );
 
@@ -96,7 +97,7 @@ describe('useChatMessageActions', () => {
   describe('happy path — deleteForMe', () => {
     it('calls supabase update and applyMessageDeletion', async () => {
       const { result } = renderHook(
-        () => useChatMessageActions('chat-1', 'u1'),
+        () => useChatMessageActions('chat-1', 'u1', false),
         { wrapper: createWrapper() }
       );
 
@@ -116,7 +117,7 @@ describe('useChatMessageActions', () => {
   describe('happy path — deleteForEveryone', () => {
     it('calls supabase update for delete_for_everyone', async () => {
       const { result } = renderHook(
-        () => useChatMessageActions('chat-1', 'u1'),
+        () => useChatMessageActions('chat-1', 'u1', false),
         { wrapper: createWrapper() }
       );
 
@@ -139,7 +140,7 @@ describe('useChatMessageActions', () => {
       mockFrom.mockReturnValue(chain);
 
       const { result } = renderHook(
-        () => useChatMessageActions('chat-1', 'u1'),
+        () => useChatMessageActions('chat-1', 'u1', false),
         { wrapper: createWrapper() }
       );
 
@@ -157,7 +158,7 @@ describe('useChatMessageActions', () => {
     it('calls ActionSheetIOS on iOS', () => {
       Object.defineProperty(Platform, 'OS', { get: () => 'ios', configurable: true });
       const { result } = renderHook(
-        () => useChatMessageActions('chat-1', 'u1'),
+        () => useChatMessageActions('chat-1', 'u1', false),
         { wrapper: createWrapper() }
       );
       const msg = makeMessage({ user_id: 'u1' }); // sender
@@ -170,7 +171,7 @@ describe('useChatMessageActions', () => {
     it('calls Alert.alert with buttons on non-iOS', () => {
       Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
       const { result } = renderHook(
-        () => useChatMessageActions('chat-1', 'u1'),
+        () => useChatMessageActions('chat-1', 'u1', false),
         { wrapper: createWrapper() }
       );
       const msg = makeMessage({ user_id: 'u1' }); // sender
@@ -178,6 +179,66 @@ describe('useChatMessageActions', () => {
         result.current.openMessageActionSheet(msg);
       });
       expect(Alert.alert).toHaveBeenCalled();
+    });
+  });
+
+  describe('anonymous chats — routes through set_anonymous_chat_message_deletion', () => {
+    it('deleteForMe calls the RPC, not a direct table update', async () => {
+      mockRpc.mockResolvedValue({ data: null, error: null });
+
+      const { result } = renderHook(
+        () => useChatMessageActions('chat-1', 'u1', true),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.deleteForMe('msg-1', true);
+      });
+
+      await waitFor(() => {
+        expect(mockRpc).toHaveBeenCalledWith(
+          'set_anonymous_chat_message_deletion',
+          { p_message_id: 'msg-1', p_action: 'delete_for_me' }
+        );
+        expect(mockFrom).not.toHaveBeenCalled();
+      });
+    });
+
+    it('deleteForEveryone calls the RPC with delete_for_everyone', async () => {
+      mockRpc.mockResolvedValue({ data: null, error: null });
+
+      const { result } = renderHook(
+        () => useChatMessageActions('chat-1', 'u1', true),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.deleteForEveryone('msg-1');
+      });
+
+      await waitFor(() => {
+        expect(mockRpc).toHaveBeenCalledWith(
+          'set_anonymous_chat_message_deletion',
+          { p_message_id: 'msg-1', p_action: 'delete_for_everyone' }
+        );
+      });
+    });
+
+    it('shows Alert when the RPC returns an error', async () => {
+      mockRpc.mockResolvedValue({ data: null, error: new Error('not a participant') });
+
+      const { result } = renderHook(
+        () => useChatMessageActions('chat-1', 'u1', true),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.deleteForMe('msg-1', true);
+      });
+
+      await waitFor(() => {
+        expect(Alert.alert).toHaveBeenCalledWith('Error', expect.any(String));
+      });
     });
   });
 });
