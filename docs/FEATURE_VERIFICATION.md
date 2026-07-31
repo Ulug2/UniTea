@@ -343,6 +343,9 @@ For each completed feature, record what was verified, any bugs found, root cause
 **Known limitations:** Still no automated coverage for the filter bar component or `useMyCommunities` themselves (presentation-only, low risk). The scoping predicate matches on `communityId` alone, not `universityId` — safe in practice since a single session never has more than one university's feeds cached simultaneously, but worth revisiting if that assumption ever changes.
 **Last verified:** 2026-07-04
 
+**Open bug (reported 2026-07-04, unresolved):** User reports that already-loaded images always flash a white container before reappearing when switching Campus↔community or community↔community. Hypothesis tried: the feed's `FlatList` had `removeClippedSubviews={true}`; since each pane stays mounted behind a `display:"none"` View when inactive, a zero-size container could cause `removeClippedSubviews` to detach every cell's native views, forcing a fresh decode + transition replay on return. Removed the prop as a plausible fix — **user confirmed this did not resolve the issue**. The prop removal was kept anyway (harmless: `windowSize`/`initialNumToRender`/`maxToRenderPerBatch` already bound rendered cells, so there's no cost to leaving it off) but the actual root cause of the flash is still unknown. Not investigated further at the user's request.
+**Tests added:** None — not root-caused, nothing concrete to test yet.
+
 ---
 
 ### Feature 13 — Feed: Block Filtering

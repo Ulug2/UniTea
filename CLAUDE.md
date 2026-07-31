@@ -71,3 +71,35 @@ Tests use `jest-expo` preset. The shared Supabase mock is at `src/__mocks__/supa
 - All RLS policies on write tables must use `auth.uid()` — never `USING(true)` on insert/update policies. Always pair `SECURITY DEFINER` functions with `REVOKE` + explicit `search_path`.
 - `__DEV__` is `false` in EAS production builds — use it to gate dev-only logging and mock data.
 - Push notifications flow: DB trigger → `notifications` table insert → `send-push-notification` Edge Function → Expo Push API.
+
+## Global engineering requirements
+- UniTee is a production mobile application for both iOS and Android. Any solution must work correctly on both platforms unless a platform-specific difference is explicitly required.
+- Favor solutions that are clean, efficient, scalable, secure, maintainable, and production-ready.
+- Avoid duplicate logic, unnecessary complexity, technical debt, or temporary workarounds.
+- Reuse existing architecture where appropriate and explain any new architectural decisions.
+- Verify behavior through testing whenever possible rather than reasoning alone. Report any additional bugs discovered during investigation before implementing fixes.
+
+## Required investigation and implementation process
+
+Before modifying code, investigate first. Trace the full lifecycle from user action through state, API/database, cache, realtime, and rendering; verify the bug still exists; identify its exact root cause; and review recent related changes for regressions. Do not mistake a symptom for the source-of-truth issue.
+
+Provide an investigation report before implementation that covers: current and expected behavior, reproducible steps, root cause and why existing code permits it, affected files and systems, impact/scope, related flows, recommended smallest correct fix, and regression risks. Trace all entry points and consumers, search for duplicate implementations, and decide whether the issue is isolated or architectural.
+
+Preserve unrelated behavior. Prefer a small correct source-of-truth fix over workarounds, broad refactors, duplicated state, caches, listeners, or sources of truth. Follow existing project patterns and do not blindly restore old code without understanding why it was introduced and whether it remains valid.
+
+Assess relevant variants: iOS and Android; simulator versus real device; rapid/repeated actions; multiple users/devices; sender/receiver and owner/non-owner roles; anonymous/non-anonymous; and blocked/unblocked states. For a feature area, audit the connected flows (for example feeds include campus/community feeds, search, caching, persistence, and mutations; chat includes anonymous/normal chat, realtime, unread counts, and notifications).
+
+Before a final implementation decision, surface any genuine product decision that needs confirmation rather than assuming it.
+
+After implementation, report every file changed and why; the root cause and why the change fixes it; tests/type checks/manual verification and results; and a regression checklist covering what could break, what was verified, and what intentionally remains unchanged. Testing must include normal and edge flows, rapid actions, relevant multi-device behavior, platform differences, and related-feature regressions.
+
+Engineering priorities: correctness over quick patches; clear query/cache/state ownership; targeted invalidations and renders; no unnecessary refetches or flicker; retain useful optimistic updates; and for realtime features, account for optimistic state, server confirmation, realtime events, cache synchronization, and multi-device behavior. The end goal is predictable, isolated, scalable, cross-device-consistent behavior that resists regressions.
+
+## After every coding session Claude:
+- removes dead code,
+- removes obsolete comments,
+- simplifies duplicated logic,
+- verifies there are no stale migrations or references,
+- looks for performance improvements,
+- checks for memory leaks and unnecessary re-renders,
+- ensures everything works cleanly on both iOS and Android.
