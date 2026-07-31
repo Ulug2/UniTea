@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Animated,
   View,
   Text,
   TextInput,
@@ -45,7 +46,8 @@ type ChatComposerProps = {
     imagePreview: StyleProp<import("react-native").ImageStyle>;
     removeImageButton: StyleProp<ViewStyle>;
   };
-  paddingBottom?: number;
+  /** Animated so it can be kept in sync with the keyboard's own show/hide animation. */
+  paddingBottom?: number | Animated.Value;
 };
 
 export function ChatComposer({
@@ -154,7 +156,7 @@ export function ChatComposer({
       )}
 
       {/* Input row */}
-      <View style={[styleSet.inputContainer, { paddingBottom }]}>
+      <Animated.View style={[styleSet.inputContainer, { paddingBottom }]}>
         <Pressable style={styleSet.imagePickerButton} onPress={onPickImage}>
           <Ionicons
             name="image-outline"
@@ -181,7 +183,7 @@ export function ChatComposer({
         >
           <Ionicons name="send" size={sendIconSize} color="#FFFFFF" />
         </Pressable>
-      </View>
+      </Animated.View>
     </>
   );
 }

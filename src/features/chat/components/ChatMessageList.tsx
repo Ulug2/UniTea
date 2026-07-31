@@ -89,6 +89,7 @@ export function ChatMessageList<T = ChatMessageVM>({
         maxToRenderPerBatch={20}
         initialNumToRender={20}
         removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
         onScroll={onScroll}
         onEndReached={onEndReached}
         onEndReachedThreshold={onEndReachedThreshold}

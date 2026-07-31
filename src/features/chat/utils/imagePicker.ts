@@ -4,13 +4,21 @@ import { logger } from "../../../utils/logger";
 
 /**
  * Pick an image from the library for chat without cropping or preprocessing.
- * Returns the local URI and the image's aspect ratio (width / height), read
- * synchronously from the picker result — no Image.getSize round trip needed.
- * aspectRatio is null if the picker didn't report dimensions (rare, but
- * happens on some Android providers); callers fall back to measuring later.
+ * Returns the local URI, the picker's own type metadata (mimeType/fileName —
+ * the most reliable signal for what type of file this actually is, since
+ * chat skips the image-manipulation pass every other upload path uses),
+ * and the image's aspect ratio (width / height), read synchronously from the
+ * picker result — no Image.getSize round trip needed. aspectRatio is null if
+ * the picker didn't report dimensions (rare, but happens on some Android
+ * providers); callers fall back to measuring later.
  */
 export async function pickChatImage(): Promise<
-  { localUri: string; aspectRatio: number | null } | null
+  {
+    localUri: string;
+    mimeType: string | null;
+    fileName: string | null;
+    aspectRatio: number | null;
+  } | null
 > {
   try {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -35,7 +43,12 @@ export async function pickChatImage(): Promise<
         ? asset.width / asset.height
         : null;
 
-    return { localUri: asset.uri, aspectRatio };
+    return {
+      localUri: asset.uri,
+      mimeType: asset.mimeType ?? null,
+      fileName: asset.fileName ?? null,
+      aspectRatio,
+    };
   } catch (error) {
     logger.error("Error picking chat image", error as Error);
     Alert.alert("Error", "Failed to pick image. Please try again.");

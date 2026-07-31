@@ -104,6 +104,10 @@ function ChatMessageRowInner({
   // container is never silently dropped.
   const hasReply = !!(item.reply_to_id && !showTombstone);
   const hasReplyData = hasReply && !!item.replyToMessage;
+  const replyDeleted =
+    hasReplyData &&
+    item.replyToMessage!.deleted_by_sender === true &&
+    item.replyToMessage!.deleted_by_receiver === true;
 
   const formattedTime = getMessageTime(item.created_at);
   // Timestamp colors: muted-white on own turquoise bg, secondaryText on partner bg.
@@ -172,14 +176,17 @@ function ChatMessageRowInner({
                 ? "rgba(255,255,255,0.75)"
                 : theme.secondaryText,
             },
+            replyDeleted && { fontStyle: "italic" },
           ]}
           numberOfLines={3}
           ellipsizeMode="tail"
         >
           {hasReplyData
-            ? item.replyToMessage!.image_url && !item.replyToMessage!.content
-              ? "📷 Image"
-              : item.replyToMessage!.content || "📷 Image"
+            ? replyDeleted
+              ? "This message was deleted"
+              : item.replyToMessage!.image_url && !item.replyToMessage!.content
+                ? "📷 Image"
+                : item.replyToMessage!.content || "📷 Image"
             : "(Original message)"}
         </Text>
       </View>

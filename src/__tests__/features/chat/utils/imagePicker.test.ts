@@ -27,7 +27,15 @@ beforeEach(() => {
   mockRequestPerms.mockResolvedValue({ status: 'granted' });
   mockLaunchLibrary.mockResolvedValue({
     canceled: false,
-    assets: [{ uri: 'file://picked.jpg', width: 1200, height: 800 }],
+    assets: [
+      {
+        uri: 'file://picked.jpg',
+        width: 1200,
+        height: 800,
+        mimeType: 'image/jpeg',
+        fileName: 'picked.jpg',
+      },
+    ],
   });
 });
 
@@ -36,18 +44,70 @@ afterEach(() => {
 });
 
 describe('pickChatImage', () => {
-  it('returns { localUri, aspectRatio } with the raw picker URI and computed ratio on happy path', async () => {
+  it('returns { localUri, mimeType, fileName, aspectRatio } with the raw picker URI, its type metadata, and computed ratio on happy path', async () => {
     const result = await pickChatImage();
-    expect(result).toEqual({ localUri: 'file://picked.jpg', aspectRatio: 1.5 });
+    expect(result).toEqual({
+      localUri: 'file://picked.jpg',
+      mimeType: 'image/jpeg',
+      fileName: 'picked.jpg',
+      aspectRatio: 1.5,
+    });
   });
 
   it('returns aspectRatio: null when the picker does not report dimensions', async () => {
     mockLaunchLibrary.mockResolvedValue({
       canceled: false,
-      assets: [{ uri: 'file://picked.jpg' }],
+      assets: [{ uri: 'file://picked.jpg', mimeType: 'image/jpeg', fileName: 'picked.jpg' }],
     });
     const result = await pickChatImage();
-    expect(result).toEqual({ localUri: 'file://picked.jpg', aspectRatio: null });
+    expect(result).toEqual({
+      localUri: 'file://picked.jpg',
+      mimeType: 'image/jpeg',
+      fileName: 'picked.jpg',
+      aspectRatio: null,
+    });
+  });
+
+  it('preserves a HEIC mimeType from the picker instead of discarding it', async () => {
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false,
+      assets: [
+        {
+          uri: 'file:///var/mobile/.../ImagePicker/ABCDEF.heic',
+          width: 3024,
+          height: 4032,
+          mimeType: 'image/heic',
+          fileName: 'IMG_0001.HEIC',
+        },
+      ],
+    });
+    const result = await pickChatImage();
+    expect(result).toEqual({
+      localUri: 'file:///var/mobile/.../ImagePicker/ABCDEF.heic',
+      mimeType: 'image/heic',
+      fileName: 'IMG_0001.HEIC',
+      aspectRatio: 3024 / 4032,
+    });
+  });
+
+  it('returns mimeType: null and fileName: null when the picker/provider does not report them (common on some Android content:// providers)', async () => {
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false,
+      assets: [
+        {
+          uri: 'content://media/external/images/media/48291',
+          width: 1200,
+          height: 800,
+        },
+      ],
+    });
+    const result = await pickChatImage();
+    expect(result).toEqual({
+      localUri: 'content://media/external/images/media/48291',
+      mimeType: null,
+      fileName: null,
+      aspectRatio: 1.5,
+    });
   });
 
   it('passes allowsEditing: false to the image picker', async () => {

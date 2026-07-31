@@ -59,12 +59,132 @@ describe('uploadImage — extension validation', () => {
     );
   });
 
-  it('accepts valid extensions (jpg, png, webp, gif, jpeg)', async () => {
-    for (const ext of ['jpg', 'png', 'webp', 'gif', 'jpeg']) {
+  it('accepts valid extensions (jpg, png, webp, gif, jpeg, heic, heif) via URI fallback', async () => {
+    for (const ext of ['jpg', 'png', 'webp', 'gif', 'jpeg', 'heic', 'heif']) {
       const supabase = makeMockSupabase() as any;
       // Should not throw
       await expect(uploadImage(`file://test.${ext}`, supabase)).resolves.toBeDefined();
     }
+  });
+});
+
+// ── type resolution: mimeType > fileName > URI extension ───────────────────────
+
+describe('uploadImage — type resolution (mimeType / fileName / URI)', () => {
+  it('resolves type from mimeType even when the URI has no extension at all (Android content:// URI)', async () => {
+    const supabase = makeMockSupabase() as any;
+    await expect(
+      uploadImage(
+        'content://media/external/images/media/48291',
+        supabase,
+        'chat-images',
+        undefined,
+        'image/jpeg',
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('resolves type from mimeType even when the URI has query parameters after a misleading extension-like segment', async () => {
+    const supabase = makeMockSupabase() as any;
+    await expect(
+      uploadImage(
+        'content://media/external/images/media/48291?ts=12345',
+        supabase,
+        'chat-images',
+        undefined,
+        'image/png',
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('accepts HEIC via mimeType (image/heic) and sends the correct Content-Type/extension', async () => {
+    const supabase = makeMockSupabase() as any;
+    await uploadImage(
+      'file:///var/mobile/.../ImagePicker/ABCDEF.heic',
+      supabase,
+      'chat-images',
+      undefined,
+      'image/heic',
+    );
+
+    const uploadCall = supabase._upload.mock.calls[0];
+    const [path, , uploadOptions] = uploadCall;
+    expect(uploadOptions.contentType).toBe('image/heic');
+    expect(path.endsWith('.heic')).toBe(true);
+  });
+
+  it('accepts HEIF via mimeType (image/heif) and sends the correct Content-Type/extension', async () => {
+    const supabase = makeMockSupabase() as any;
+    await uploadImage(
+      'file:///storage/emulated/0/DCIM/photo.heif',
+      supabase,
+      'chat-images',
+      undefined,
+      'image/heif',
+    );
+
+    const uploadCall = supabase._upload.mock.calls[0];
+    const [path, , uploadOptions] = uploadCall;
+    expect(uploadOptions.contentType).toBe('image/heif');
+    expect(path.endsWith('.heif')).toBe(true);
+  });
+
+  it('falls back to fileName extension when mimeType is unavailable', async () => {
+    const supabase = makeMockSupabase() as any;
+    await expect(
+      uploadImage(
+        'content://media/external/images/media/999',
+        supabase,
+        'chat-images',
+        undefined,
+        null,
+        'IMG_1234.webp',
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('falls back to URI extension when neither mimeType nor fileName is available', async () => {
+    const supabase = makeMockSupabase() as any;
+    await expect(
+      uploadImage('file:///cache/tmp123.png', supabase, 'chat-images', undefined, null, null),
+    ).resolves.toBeDefined();
+  });
+
+  it('prefers mimeType over a misleading fileName/URI extension', async () => {
+    const supabase = makeMockSupabase() as any;
+    await uploadImage(
+      'file:///cache/tmp.png',
+      supabase,
+      'chat-images',
+      undefined,
+      'image/webp',
+      'export.png',
+    );
+
+    const uploadCall = supabase._upload.mock.calls[0];
+    const [, , uploadOptions] = uploadCall;
+    expect(uploadOptions.contentType).toBe('image/webp');
+  });
+
+  it('rejects when mimeType, fileName, and URI all fail to resolve to an allowed type', async () => {
+    const supabase = makeMockSupabase() as any;
+    await expect(
+      uploadImage(
+        'content://media/external/documents/media/1',
+        supabase,
+        'chat-images',
+        undefined,
+        'application/pdf',
+        'document.pdf',
+      ),
+    ).rejects.toThrow(/Invalid file type/);
+  });
+
+  it('rejects an extension-less content:// URI with no mimeType or fileName metadata', async () => {
+    const supabase = makeMockSupabase() as any;
+    await expect(
+      uploadImage('content://media/external/images/media/1', supabase),
+    ).rejects.toThrow(/Invalid file type/);
   });
 });
 

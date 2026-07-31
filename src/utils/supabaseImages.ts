@@ -7,7 +7,87 @@ const MAX_FILE_SIZE_MB = 10; // 10MB limit
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const UPLOAD_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRIES = 3;
-const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif'];
+
+// Canonical Content-Type for each allowed extension — the single source of
+// truth for what gets sent to Supabase Storage, keyed off the same
+// resolution result used for validation and filename generation.
+const EXTENSION_TO_CONTENT_TYPE: Record<string, string> = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    heic: 'image/heic',
+    heif: 'image/heif',
+};
+
+// Maps a picker-reported MIME type to the extension we treat it as. Some
+// pickers/providers report `image/jpg` (non-standard) instead of the
+// correct `image/jpeg` — both are accepted here and normalized to `jpeg`.
+const MIME_TYPE_TO_EXTENSION: Record<string, string> = {
+    'image/jpeg': 'jpeg',
+    'image/jpg': 'jpeg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'image/heic': 'heic',
+    'image/heif': 'heif',
+};
+
+type ResolvedImageType = { extension: string; contentType: string };
+
+/**
+ * Extracts a lowercased extension from a URI or filename, ignoring any
+ * query string/fragment (`...jpg?token=...`) and returning "" when there's
+ * no `.` to split on at all (e.g. an extension-less `content://` URI).
+ */
+function extensionFromPath(path: string): string {
+    const withoutQueryOrFragment = path.split(/[?#]/)[0];
+    const segments = withoutQueryOrFragment.split('.');
+    if (segments.length < 2) return '';
+    return segments.pop()!.toLowerCase();
+}
+
+/**
+ * Single source of truth for "what image type is this?" — used for
+ * validation, the generated storage filename, and the Content-Type sent to
+ * Supabase Storage, so all three always agree.
+ *
+ * Resolution order (most to least reliable):
+ *  1. `mimeType` — OS-resolved actual content type from the picker; immune
+ *     to filename/URI quirks.
+ *  2. `fileName`'s extension — OS-reported preferred filename.
+ *  3. `localUri`'s extension — fallback only. Unreliable on its own: Android
+ *     commonly returns extension-less `content://` URIs, and this is kept
+ *     purely for callers that don't have picker metadata available (every
+ *     upload path already re-encodes through expo-image-manipulator before
+ *     reaching here, which always produces a real, predictable extension).
+ */
+function resolveImageType(
+    localUri: string,
+    mimeType?: string | null,
+    fileName?: string | null,
+): ResolvedImageType | null {
+    if (mimeType) {
+        const ext = MIME_TYPE_TO_EXTENSION[mimeType.toLowerCase()];
+        if (ext) return { extension: ext, contentType: EXTENSION_TO_CONTENT_TYPE[ext] };
+    }
+
+    if (fileName) {
+        const ext = extensionFromPath(fileName);
+        if (ALLOWED_EXTENSIONS.includes(ext)) {
+            return { extension: ext, contentType: EXTENSION_TO_CONTENT_TYPE[ext] };
+        }
+    }
+
+    const uriExt = extensionFromPath(localUri);
+    if (ALLOWED_EXTENSIONS.includes(uriExt)) {
+        return { extension: uriExt, contentType: EXTENSION_TO_CONTENT_TYPE[uriExt] };
+    }
+
+    return null;
+}
 
 /**
  * Retry helper for upload operations
@@ -41,12 +121,15 @@ const retryUpload = async <T>(
 };
 
 /**
- * Validate image file
+ * Validate image file. `resolved` is computed once by the caller (via
+ * resolveImageType) and reused here rather than re-parsed, so validation and
+ * the actual upload can never disagree on what type the file is.
  */
-const validateImage = async (localUri: string): Promise<void> => {
-    // Check file extension
-    const fileExt = localUri.split(".").pop()?.toLowerCase() ?? "";
-    if (!ALLOWED_EXTENSIONS.includes(fileExt)) {
+const validateImage = async (
+    localUri: string,
+    resolved: ResolvedImageType | null,
+): Promise<void> => {
+    if (!resolved) {
         throw new Error(`Invalid file type. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}`);
     }
 
@@ -84,21 +167,30 @@ const uploadWithTimeout = async <T>(
  * @param supabase - Supabase client instance
  * @param bucket - Storage bucket name (default: "post-images")
  * @param folder - Optional folder path within bucket
+ * @param mimeType - Picker-reported MIME type, if available (most reliable type signal)
+ * @param fileName - Picker-reported filename, if available (second most reliable)
  * @returns The uploaded file path
  */
 export const uploadImage = async (
     localUri: string,
     supabase: SupabaseClient<Database>,
     bucket: string = "post-images",
-    folder?: string
+    folder?: string,
+    mimeType?: string | null,
+    fileName?: string | null,
 ): Promise<string> => {
     try {
-        // Validate image before upload
-        await validateImage(localUri);
+        const resolved = resolveImageType(localUri, mimeType, fileName);
 
-        const fileExt = localUri.split(".").pop()?.toLowerCase() ?? "jpeg";
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const path = folder ? `${folder}/${fileName}` : fileName;
+        // Validate image before upload
+        await validateImage(localUri, resolved);
+
+        // resolveImageType is the sole source of truth for file type — reused
+        // here for both the generated filename and the Content-Type below so
+        // they can never disagree with what validation just accepted.
+        const { extension: fileExt, contentType } = resolved!;
+        const generatedFileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const path = folder ? `${folder}/${generatedFileName}` : generatedFileName;
 
         // Fetch file with retry and timeout
         const uploadOperation = async () => {
@@ -118,7 +210,7 @@ export const uploadImage = async (
             const { error, data } = await supabase.storage
                 .from(bucket)
                 .upload(path, arrayBuffer, {
-                    contentType: `image/${fileExt}`,
+                    contentType,
                     cacheControl: '3600',
                     upsert: false, // Prevent overwriting existing files
                 });

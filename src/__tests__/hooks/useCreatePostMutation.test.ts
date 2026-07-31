@@ -467,6 +467,89 @@ describe('useCreatePostMutation', () => {
       expect(finalPost.comment_count).toBe(0);
     });
 
+    it('uses the real username/avatarUrl passed via options for a non-anonymous optimistic post', async () => {
+      const capturedCalls: Array<{ key: unknown; value: unknown }> = [];
+      const originalSetQueryData = queryClient.setQueryData.bind(queryClient);
+      jest.spyOn(queryClient, 'setQueryData').mockImplementation(
+        (key: any, value: any) => {
+          capturedCalls.push({ key, value });
+          return originalSetQueryData(key, value);
+        }
+      );
+
+      mockFetchSuccess({ id: 'post-7' });
+
+      const { result } = renderHook(
+        () =>
+          useCreatePostMutation({
+            isLostFound: false,
+            currentUserId: USER_ID,
+            username: 'realuser',
+            avatarUrl: 'https://cdn.example.com/avatar.png',
+          }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.mutate({ ...defaultVars, postIsAnonymous: false });
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const optimisticCall = capturedCalls.find(
+        (c) => JSON.stringify(c.key) === JSON.stringify(DEFAULT_FEED_CACHE_KEY)
+      );
+      const computedValue: any =
+        typeof optimisticCall!.value === 'function'
+          ? (optimisticCall!.value as Function)(undefined)
+          : optimisticCall!.value;
+
+      const tempPost = computedValue?.pages?.[0]?.[0];
+      expect(tempPost?.username).toBe('realuser');
+      expect(tempPost?.avatar_url).toBe('https://cdn.example.com/avatar.png');
+    });
+
+    it('still shows "You" for an anonymous optimistic post regardless of the real username/avatarUrl passed', async () => {
+      const capturedCalls: Array<{ key: unknown; value: unknown }> = [];
+      const originalSetQueryData = queryClient.setQueryData.bind(queryClient);
+      jest.spyOn(queryClient, 'setQueryData').mockImplementation(
+        (key: any, value: any) => {
+          capturedCalls.push({ key, value });
+          return originalSetQueryData(key, value);
+        }
+      );
+
+      mockFetchSuccess({ id: 'post-8' });
+
+      const { result } = renderHook(
+        () =>
+          useCreatePostMutation({
+            isLostFound: false,
+            currentUserId: USER_ID,
+            username: 'realuser',
+            avatarUrl: 'https://cdn.example.com/avatar.png',
+          }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.mutate({ ...defaultVars, postIsAnonymous: true });
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const optimisticCall = capturedCalls.find(
+        (c) => JSON.stringify(c.key) === JSON.stringify(DEFAULT_FEED_CACHE_KEY)
+      );
+      const computedValue: any =
+        typeof optimisticCall!.value === 'function'
+          ? (optimisticCall!.value as Function)(undefined)
+          : optimisticCall!.value;
+
+      const tempPost = computedValue?.pages?.[0]?.[0];
+      expect(tempPost?.username).toBe('You');
+    });
+
     it('does NOT add optimistic post for lost&found (isLostFound=true)', async () => {
       (global.fetch as jest.Mock).mockImplementationOnce(
         () =>

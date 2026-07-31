@@ -37,6 +37,9 @@ type CreatePostOptions = {
   communityAvatarUrl?: string | null;
   /** Fallback when communityId is not passed in mutate() variables. */
   communityId?: string | null;
+  /** Current user's real profile, used for the optimistic post's author display. */
+  username?: string | null;
+  avatarUrl?: string | null;
 };
 
 export function useCreatePostMutation(options: CreatePostOptions): UseMutationResult<any, unknown, CreatePostVariables> {
@@ -49,6 +52,8 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
     communityName,
     communityAvatarUrl,
     communityId: defaultCommunityId,
+    username,
+    avatarUrl,
   } = options;
   const queryClient = useQueryClient();
 
@@ -182,8 +187,8 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
       const authorDisplay = resolvePostAuthorDisplay(
         buildPostAuthorContext({
           isAnonymous: variables.postIsAnonymous,
-          username: "You",
-          avatarUrl: null,
+          username,
+          avatarUrl,
           universityDomain,
           communityId: effectiveCommunityId,
           communityName,
@@ -222,7 +227,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         edited_at: null,
         view_count: 0,
         username: authorDisplay.displayName,
-        avatar_url: null,
+        avatar_url: avatarUrl ?? null,
         is_verified: false,
         is_banned: false,
         comment_count: 0,
