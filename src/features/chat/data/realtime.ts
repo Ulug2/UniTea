@@ -10,6 +10,16 @@ type SubscribeCallbacks = {
    * Used to fill `replyToMessage` without blocking the initial message render.
    */
   onEnrichedInsert?: (message: ChatMessageVM) => void;
+  /**
+   * Fired when an existing message changes — currently only used for
+   * deletion state (deleted_by_sender/deleted_by_receiver). Non-anonymous
+   * chats deliver the full updated row (postgres_changes always sends the
+   * complete NEW row); anonymous chats deliver a minimal payload
+   * containing only the changed fields plus id.
+   */
+  onMessageUpdate?: (
+    update: Partial<ChatMessageVM> & Pick<ChatMessageVM, "id">
+  ) => void;
 };
 
 /**
@@ -56,12 +66,27 @@ function subscribeToNonAnonymousChatMessages(
     .on(
       "postgres_changes",
       {
-        event: "INSERT",
+        // event: "*" (not just "INSERT") so deletion updates
+        // (deleted_by_sender/deleted_by_receiver) are delivered too — see
+        // 20260728000000_unify_chat_message_deletion_rpc.sql's header comment.
+        // This also delivers other row updates (e.g. is_read changes from
+        // the recipient marking read) to both participants; that's an
+        // accepted tradeoff (postgres_changes has no column-change-level
+        // filter), matches the existing precedent already used for the
+        // chats-table list subscription, and the resulting cache merge is
+        // a cheap local no-op for fields that didn't change.
+        event: "*",
         schema: "public",
         table: "chat_messages",
         filter: `chat_id=eq.${chatId}`,
       },
       (payload) => {
+        if (payload.eventType === "UPDATE") {
+          callbacks.onMessageUpdate?.(payload.new as any);
+          return;
+        }
+        if (payload.eventType !== "INSERT") return;
+
         const rawMsg = payload.new as any;
 
         // Always emit the raw insert immediately; this removes visible lag when
@@ -74,7 +99,7 @@ function subscribeToNonAnonymousChatMessages(
           supabase
             .from("chat_messages")
             .select(
-              "*, reply_message:reply_to_id(id, content, image_url, user_id)"
+              "*, reply_message:reply_to_id(id, content, image_url, user_id, deleted_by_sender, deleted_by_receiver)"
             )
             .eq("id", rawMsg.id)
             .single()
@@ -137,6 +162,16 @@ function subscribeToAnonymousChatMessages(
             }
           });
       }
+    })
+    // Deletion state changes ("delete for everyone" only — see
+    // 20260728000000_unify_chat_message_deletion_rpc.sql). Reuses this same
+    // topic/channel/subscription; no chat_id check needed on the payload
+    // (unlike new_message above) since the topic itself is already scoped
+    // to this exact chat.
+    .on("broadcast", { event: "message_deleted" }, (payload) => {
+      const update = payload.payload as any;
+      if (!update?.id) return;
+      callbacks.onMessageUpdate?.(update);
     })
     .subscribe();
 

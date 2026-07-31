@@ -8,7 +8,12 @@ jest.mock('../../context/AuthContext', () => ({ useAuth: jest.fn() }));
 import React from 'react';
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useBlocks, type BlockRecord } from '../../hooks/useBlocks';
+import {
+  useBlocks,
+  isBlockedChat,
+  isBlockedPost,
+  type BlockRecord,
+} from '../../hooks/useBlocks';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -73,7 +78,7 @@ describe('useBlocks', () => {
     expect(data.some((r) => r.userId === 'user-B' && r.scope === 'anonymous_only')).toBe(true);
   });
 
-  it('returns profile_only BlockRecord for users who blocked the current user', async () => {
+  it('returns profile_only BlockRecord for users who blocked the current user with profile_only', async () => {
     mockFrom
       .mockReturnValueOnce(buildSelectChain([]))
       .mockReturnValueOnce(buildSelectChain([{ blocker_id: 'user-C', block_scope: 'profile_only' }]));
@@ -81,6 +86,20 @@ describe('useBlocks', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     const data = result.current.data ?? [];
     expect(data.some((r) => r.userId === 'user-C' && r.scope === 'profile_only')).toBe(true);
+  });
+
+  it('preserves anonymous_only scope for users who blocked the current user anonymously (does not coerce to profile_only)', async () => {
+    // Regression test: coercing a reverse anonymous_only block to profile_only
+    // would make isBlockedPost/isBlockedChat incorrectly hide that person's
+    // unrelated public content, recreating the anonymous-chat deanonymization bug.
+    mockFrom
+      .mockReturnValueOnce(buildSelectChain([]))
+      .mockReturnValueOnce(buildSelectChain([{ blocker_id: 'user-D', block_scope: 'anonymous_only' }]));
+    const { result } = renderHook(() => useBlocks(), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const data = result.current.data ?? [];
+    expect(data.some((r) => r.userId === 'user-D' && r.scope === 'anonymous_only')).toBe(true);
+    expect(data.some((r) => r.userId === 'user-D' && r.scope === 'profile_only')).toBe(false);
   });
 
   it('merges both directions without duplicates', async () => {
@@ -125,5 +144,62 @@ describe('useBlocks', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     const data = result.current.data ?? [];
     expect(data.some((r) => r.userId === 'user-A')).toBe(true);
+  });
+});
+
+describe('isBlockedChat', () => {
+  it('hides an anonymous chat only for an anonymous_only block on that user', () => {
+    const blocks: BlockRecord[] = [{ userId: 'partner', scope: 'anonymous_only' }];
+    expect(isBlockedChat(blocks, 'partner', true)).toBe(true);
+    expect(isBlockedChat(blocks, 'partner', false)).toBe(false);
+  });
+
+  it('hides a non-anonymous chat only for a profile_only block on that user', () => {
+    const blocks: BlockRecord[] = [{ userId: 'partner', scope: 'profile_only' }];
+    expect(isBlockedChat(blocks, 'partner', false)).toBe(true);
+    expect(isBlockedChat(blocks, 'partner', true)).toBe(false);
+  });
+
+  it('returns false with no otherUserId', () => {
+    expect(isBlockedChat([], null, true)).toBe(false);
+    expect(isBlockedChat([], undefined, false)).toBe(false);
+  });
+});
+
+describe('P0 regression: blocking an anonymous chat partner must not deanonymize them via the feed', () => {
+  // Reproduces the exact scenario from the bug report: user A has an
+  // anonymous chat with user B, who also has an unrelated public
+  // (non-anonymous) post. Blocking B from within that anonymous chat must:
+  //   (1) hide the anonymous chat/conversation from A (blocking still works)
+  //   (2) NOT hide B's unrelated public post from A's feed (the leak)
+  //
+  // block_chat_partner (server-side RPC) now always stores block_scope =
+  // 'anonymous_only' for this action (see the migration and chat/[id].tsx's
+  // blockUserMutation). These two client-side helpers are what decide
+  // chat-visibility (isBlockedChat) and post-visibility (isBlockedPost) from
+  // that same blocks list, so asserting both against a single anonymous_only
+  // record is the client-side equivalent of the server-side proof already
+  // run against a real Postgres instance for this fix.
+  it('an anonymous_only block hides the chat but leaves the blocked user\'s public posts visible', () => {
+    const blocksAfterAnonymousChatBlock: BlockRecord[] = [
+      { userId: 'user-B', scope: 'anonymous_only' },
+    ];
+
+    expect(isBlockedChat(blocksAfterAnonymousChatBlock, 'user-B', true)).toBe(true);
+    expect(
+      isBlockedPost(blocksAfterAnonymousChatBlock, 'user-B', /* isAnonymous */ false),
+    ).toBe(false);
+  });
+
+  it('a profile_only block (normal, non-chat blocking) still hides public posts as before', () => {
+    const blocksFromNormalBlockUi: BlockRecord[] = [
+      { userId: 'user-B', scope: 'profile_only' },
+    ];
+
+    expect(
+      isBlockedPost(blocksFromNormalBlockUi, 'user-B', /* isAnonymous */ false),
+    ).toBe(true);
+    // And it does not affect an unrelated anonymous chat with the same user.
+    expect(isBlockedChat(blocksFromNormalBlockUi, 'user-B', true)).toBe(false);
   });
 });

@@ -55,13 +55,13 @@ describe('subscribeToChatMessages (non-anonymous, postgres_changes)', () => {
     expect(supabase.channel).toHaveBeenCalledWith(`chat-${chatId}`);
   });
 
-  it('subscribes to postgres_changes INSERT on chat_messages with correct filter', () => {
+  it('subscribes to postgres_changes with event "*" (not just INSERT) so UPDATE deliveries are not filtered out', () => {
     subscribeToChatMessages(chatId, userId, false, { onRawInsert: jest.fn() });
     const ch = getChannelMock();
     expect(ch.on).toHaveBeenCalledWith(
       'postgres_changes',
       expect.objectContaining({
-        event: 'INSERT',
+        event: '*',
         table: 'chat_messages',
         filter: `chat_id=eq.${chatId}`,
       }),
@@ -69,7 +69,7 @@ describe('subscribeToChatMessages (non-anonymous, postgres_changes)', () => {
     );
   });
 
-  it('calls the callback with the new message payload on INSERT', () => {
+  it('calls onRawInsert with the new message payload on an INSERT event', () => {
     const cb = jest.fn();
     subscribeToChatMessages(chatId, userId, false, { onRawInsert: cb });
     const ch = getChannelMock();
@@ -77,9 +77,40 @@ describe('subscribeToChatMessages (non-anonymous, postgres_changes)', () => {
     // Extract the callback passed to .on()
     const onCb = ch.on.mock.calls[0][2] as (payload: any) => void;
     const fakeMessage = { id: 'm1', chat_id: chatId, content: 'hello' };
-    onCb({ new: fakeMessage });
+    onCb({ eventType: 'INSERT', new: fakeMessage });
 
     expect(cb).toHaveBeenCalledWith(fakeMessage);
+  });
+
+  it('calls onMessageUpdate (not onRawInsert) with the new row on an UPDATE event — e.g. deletion', () => {
+    const onRawInsert = jest.fn();
+    const onMessageUpdate = jest.fn();
+    subscribeToChatMessages(chatId, userId, false, { onRawInsert, onMessageUpdate });
+    const ch = getChannelMock();
+    const onCb = ch.on.mock.calls[0][2] as (payload: any) => void;
+    const updatedRow = {
+      id: 'm1',
+      chat_id: chatId,
+      content: 'hello',
+      deleted_by_sender: true,
+      deleted_by_receiver: true,
+    };
+    onCb({ eventType: 'UPDATE', new: updatedRow });
+
+    expect(onMessageUpdate).toHaveBeenCalledWith(updatedRow);
+    expect(onRawInsert).not.toHaveBeenCalled();
+  });
+
+  it('ignores a DELETE event (whole-chat hard deletes are handled elsewhere)', () => {
+    const onRawInsert = jest.fn();
+    const onMessageUpdate = jest.fn();
+    subscribeToChatMessages(chatId, userId, false, { onRawInsert, onMessageUpdate });
+    const ch = getChannelMock();
+    const onCb = ch.on.mock.calls[0][2] as (payload: any) => void;
+    onCb({ eventType: 'DELETE', old: { id: 'm1' } });
+
+    expect(onRawInsert).not.toHaveBeenCalled();
+    expect(onMessageUpdate).not.toHaveBeenCalled();
   });
 
   it('returns a cleanup function that calls unsubscribe and removeChannel', () => {
@@ -132,6 +163,49 @@ describe('subscribeToChatMessages (anonymous, Broadcast)', () => {
     const onCb = ch.on.mock.calls[0][2] as (payload: any) => void;
     onCb({ payload: { id: 'm2', chat_id: 'some-other-chat', content: 'x' } });
     expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('also subscribes to the "message_deleted" broadcast event on the same channel', () => {
+    subscribeToChatMessages(chatId, userId, true, { onRawInsert: jest.fn() });
+    const ch = getChannelMock();
+    expect(ch.on).toHaveBeenCalledWith(
+      'broadcast',
+      { event: 'message_deleted' },
+      expect.any(Function)
+    );
+    // Same channel/topic as new_message — not a second subscribe() call.
+    expect(supabase.channel).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onMessageUpdate with the deletion payload', () => {
+    const onMessageUpdate = jest.fn();
+    subscribeToChatMessages(chatId, userId, true, {
+      onRawInsert: jest.fn(),
+      onMessageUpdate,
+    });
+    const ch = getChannelMock();
+    const deletedCall = ch.on.mock.calls.find(
+      (call) => call[0] === 'broadcast' && call[1]?.event === 'message_deleted'
+    );
+    const onCb = deletedCall?.[2] as (payload: any) => void;
+    const deletion = { id: 'm1', deleted_by_sender: true, deleted_by_receiver: true };
+    onCb({ payload: deletion });
+    expect(onMessageUpdate).toHaveBeenCalledWith(deletion);
+  });
+
+  it('ignores a message_deleted payload with no id', () => {
+    const onMessageUpdate = jest.fn();
+    subscribeToChatMessages(chatId, userId, true, {
+      onRawInsert: jest.fn(),
+      onMessageUpdate,
+    });
+    const ch = getChannelMock();
+    const deletedCall = ch.on.mock.calls.find(
+      (call) => call[0] === 'broadcast' && call[1]?.event === 'message_deleted'
+    );
+    const onCb = deletedCall?.[2] as (payload: any) => void;
+    onCb({ payload: { deleted_by_sender: true } });
+    expect(onMessageUpdate).not.toHaveBeenCalled();
   });
 
   it('returns a cleanup function that calls unsubscribe and removeChannel', () => {

@@ -80,23 +80,39 @@ describe('selectMessages', () => {
   };
 
   it('returns an empty array when there is no data', () => {
-    expect(selectMessages(undefined, [])).toEqual([]);
+    expect(selectMessages(undefined, [], false)).toEqual([]);
   });
 
   it('flattens all pages when there are no blocks', () => {
-    const result = selectMessages(messagesData, []);
+    const result = selectMessages(messagesData, [], false);
     expect(result.map((m) => m.id)).toEqual(['m1', 'm2', 'm3']);
   });
 
-  it('filters out messages from profile_only-blocked users', () => {
-    const blocks: BlockRecord[] = [{ userId: 'user-a', scope: 'profile_only' }];
-    const result = selectMessages(messagesData, blocks);
-    expect(result.map((m) => m.id)).toEqual(['m2']);
+  describe('non-anonymous chat', () => {
+    it('filters out messages from profile_only-blocked users', () => {
+      const blocks: BlockRecord[] = [{ userId: 'user-a', scope: 'profile_only' }];
+      const result = selectMessages(messagesData, blocks, false);
+      expect(result.map((m) => m.id)).toEqual(['m2']);
+    });
+
+    it('does not filter messages from anonymous_only-blocked users (wrong scope for this chat)', () => {
+      const blocks: BlockRecord[] = [{ userId: 'user-a', scope: 'anonymous_only' }];
+      const result = selectMessages(messagesData, blocks, false);
+      expect(result.map((m) => m.id)).toEqual(['m1', 'm2', 'm3']);
+    });
   });
 
-  it('does not filter messages from anonymous_only-blocked users (chat visibility is unaffected)', () => {
-    const blocks: BlockRecord[] = [{ userId: 'user-a', scope: 'anonymous_only' }];
-    const result = selectMessages(messagesData, blocks);
-    expect(result.map((m) => m.id)).toEqual(['m1', 'm2', 'm3']);
+  describe('anonymous chat', () => {
+    it('filters out messages from anonymous_only-blocked users', () => {
+      const blocks: BlockRecord[] = [{ userId: 'user-a', scope: 'anonymous_only' }];
+      const result = selectMessages(messagesData, blocks, true);
+      expect(result.map((m) => m.id)).toEqual(['m2']);
+    });
+
+    it('does not filter messages from profile_only-blocked users (wrong scope for this chat)', () => {
+      const blocks: BlockRecord[] = [{ userId: 'user-a', scope: 'profile_only' }];
+      const result = selectMessages(messagesData, blocks, true);
+      expect(result.map((m) => m.id)).toEqual(['m1', 'm2', 'm3']);
+    });
   });
 });

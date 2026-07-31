@@ -17,7 +17,6 @@ type ChatMessageActionsOptions = {
 export function useChatMessageActions(
   chatId: string,
   currentUserId: string | undefined,
-  isAnonymous: boolean,
   options?: ChatMessageActionsOptions
 ) {
   const queryClient = useQueryClient();
@@ -27,7 +26,6 @@ export function useChatMessageActions(
     mutationFn: async ({
       messageId,
       action,
-      isSender,
       imageUrl,
     }: {
       messageId: string;
@@ -37,40 +35,16 @@ export function useChatMessageActions(
     }) => {
       if (!currentUserId) throw new Error("User not authenticated");
 
-      if (action === "delete_for_everyone" && !isSender) {
-        throw new Error("Only the sender can delete a message for everyone");
-      }
-
-      if (isAnonymous) {
-        // A plain UPDATE can't locate the row for anonymous chats (Phase 1
-        // — the base table's SELECT policy, which UPDATE also relies on to
-        // find its target, is deliberately false for anonymous rows). The
-        // RPC re-derives sender/participancy server-side rather than
-        // trusting the client-supplied `isSender` — see its migration
-        // comment for why that's not a behavior change for any honest
-        // caller.
-        const { error } = await (supabase as any).rpc(
-          "set_anonymous_chat_message_deletion",
-          { p_message_id: messageId, p_action: action }
-        );
-        if (error) throw error;
-      } else {
-        const update: { deleted_by_sender?: boolean; deleted_by_receiver?: boolean } = {};
-        if (action === "delete_for_me") {
-          if (isSender) update.deleted_by_sender = true;
-          else update.deleted_by_receiver = true;
-        } else {
-          update.deleted_by_sender = true;
-          update.deleted_by_receiver = true;
-        }
-
-        const { error } = await supabase
-          .from("chat_messages")
-          .update(update)
-          .eq("id", messageId);
-
-        if (error) throw error;
-      }
+      // Single entry point for both chat types and both delete actions —
+      // the RPC re-derives sender/participancy/anonymity server-side and
+      // is the actual source of truth for "only the sender may delete for
+      // everyone" (direct-table UPDATE access to the deletion-flag columns
+      // is revoked from clients; see 20260728000000_unify_chat_message_deletion_rpc.sql).
+      const { error } = await (supabase as any).rpc(
+        "set_chat_message_deletion",
+        { p_message_id: messageId, p_action: action }
+      );
+      if (error) throw error;
 
       // When a message is deleted for everyone neither party can see it, so the
       // image file is no longer needed. Delete it from storage (non-fatal).
@@ -157,23 +131,21 @@ export function useChatMessageActions(
     (message: ChatMessageVM) => {
       if (!currentUserId) return;
 
-      const isCurrentUser = message.user_id === currentUserId;
-      const deletedForEveryone = isDeletedForEveryone(message);
+      // A tombstone has no available actions (can't reply to or delete an
+      // already-deleted message), so show no sheet/alert at all rather than
+      // a modal offering only "Cancel".
+      if (isDeletedForEveryone(message)) return;
 
-      const options: string[] = [];
-      const actions: Array<() => void> = [];
+      const isCurrentUser = message.user_id === currentUserId;
+
+      const options: string[] = ["Reply"];
+      const actions: Array<() => void> = [() => onReply?.(message)];
 
       const doDeleteForMe = () => {
         deleteForMe(message.id, isCurrentUser);
       };
 
-      // "Reply" is shown for all non-tombstone messages
-      if (!deletedForEveryone) {
-        options.push("Reply");
-        actions.push(() => onReply?.(message));
-      }
-
-      if (isCurrentUser && !deletedForEveryone) {
+      if (isCurrentUser) {
         // New rule: deleting your own message always deletes for everyone.
         options.push("Delete for everyone", "Cancel");
         actions.push(
@@ -186,14 +158,10 @@ export function useChatMessageActions(
             }),
           () => { }
         );
-      } else if (!deletedForEveryone) {
+      } else {
         // Partner message: allow delete-for-me only.
         options.push("Delete for me", "Cancel");
         actions.push(doDeleteForMe, () => { });
-      } else {
-        // Tombstone: only Cancel (and maybe Reply, already added above).
-        options.push("Cancel");
-        actions.push(() => { });
       }
 
       if (Platform.OS === "ios") {

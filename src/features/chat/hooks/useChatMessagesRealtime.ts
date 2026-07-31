@@ -1,9 +1,60 @@
 import { useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, QueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
-import { prependIncomingMessage, upsertIncomingMessage } from "../data/cache";
+import {
+  prependIncomingMessage,
+  upsertIncomingMessage,
+  applyIncomingMessageUpdate,
+} from "../data/cache";
 import { subscribeToChatMessages } from "../data/realtime";
+import type { ChatMessageVM, MessagesQueryData } from "../types";
+
+/**
+ * A raw realtime insert never carries the joined `replyToMessage` snapshot
+ * (postgres_changes has no JOIN capability, and the anonymous broadcast
+ * payload is deliberately flat too — see data/realtime.ts). Without this,
+ * the bubble briefly renders with reply_to_id set but no reply content,
+ * showing the "(Original message)" placeholder until the separate
+ * enrichment SELECT resolves a moment later.
+ *
+ * If the replied-to message is already sitting in this chat's own cache
+ * (true whenever the recipient is actively viewing the conversation, which
+ * is the common case), attach it immediately so the bubble never flashes
+ * the placeholder. This is a synchronous cache read, not a fetch — the
+ * enrichment SELECT in data/realtime.ts still runs afterward and its
+ * result still overwrites this snapshot via upsertIncomingMessage, so it
+ * remains the authoritative source; this only removes the visible gap
+ * before it resolves.
+ */
+function withCachedReplyPreview(
+  queryClient: QueryClient,
+  chatId: string,
+  message: ChatMessageVM
+): ChatMessageVM {
+  if (!message.reply_to_id || message.replyToMessage) return message;
+
+  const cached = queryClient.getQueryData<MessagesQueryData>([
+    "chat-messages",
+    chatId,
+  ]);
+  const original = cached?.pages
+    .flat()
+    .find((m) => m?.id === message.reply_to_id);
+  if (!original) return message;
+
+  return {
+    ...message,
+    replyToMessage: {
+      id: original.id,
+      content: original.content ?? null,
+      image_url: original.image_url ?? null,
+      user_id: original.user_id,
+      deleted_by_sender: original.deleted_by_sender,
+      deleted_by_receiver: original.deleted_by_receiver,
+    },
+  };
+}
 
 type BlockRecord = {
   userId: string;
@@ -76,7 +127,11 @@ export function useChatMessagesRealtime(
             pendingMessageIdsRef.current.delete(newMessage.id);
           }, PENDING_CLEANUP_MS);
 
-          prependIncomingMessage(queryClient, chatId, newMessage);
+          prependIncomingMessage(
+            queryClient,
+            chatId,
+            withCachedReplyPreview(queryClient, chatId, newMessage)
+          );
           onIncomingMessageRef.current?.();
 
           // User is actively viewing this chat — mark the message read
@@ -126,6 +181,17 @@ export function useChatMessagesRealtime(
               return;
           }
           upsertIncomingMessage(queryClient, chatId, enrichedMessage);
+        },
+        onMessageUpdate: (update) => {
+          // Deletion-state changes only, currently. No block check needed:
+          // for anonymous chats the server already gates this broadcast
+          // (see the migration); for non-anonymous chats the message is
+          // already in the cache or this is a no-op either way, and
+          // selectMessages' existing render-time block filter applies
+          // regardless of these flags. No scroll/pill/read-marking side
+          // effects — a deletion isn't new content.
+          if (!isMounted) return;
+          applyIncomingMessageUpdate(queryClient, chatId, update);
         },
       }
     );

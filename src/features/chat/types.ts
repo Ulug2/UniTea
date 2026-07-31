@@ -12,6 +12,8 @@ export type ReplyPreview = {
   content: string | null;
   image_url: string | null;
   user_id: string;
+  deleted_by_sender?: boolean | null;
+  deleted_by_receiver?: boolean | null;
 };
 
 /**
@@ -29,6 +31,9 @@ export type ChatMessageVM = ChatMessageRow & {
     messageText: string;
     imageUrl?: string | null;
     localImageUri?: string | null;
+    /** Picker-reported type metadata, preserved so a retried upload still resolves its type reliably instead of falling back to URI parsing. */
+    localImageMimeType?: string | null;
+    localImageFileName?: string | null;
     imageAspectRatio?: number | null;
     /** Preserved across retry so replies survive failed-send recovery. */
     replyToId?: string | null;
@@ -75,19 +80,23 @@ export function deletedLabel(_message: ChatMessageVM): string {
 }
 
 /**
- * Flatten infinite query pages and filter out messages from profile_only blocked users.
- * anonymous_only blocks do not affect chat visibility.
+ * Flatten infinite query pages and filter out messages from blocked users.
+ * Scope must match the chat's own anonymity: anonymous_only blocks filter
+ * anonymous chats, profile_only blocks filter non-anonymous chats — a
+ * block placed in one context must never affect the other.
  */
 export function selectMessages(
   messagesData: MessagesQueryData | undefined,
-  blocks: BlockRecord[]
+  blocks: BlockRecord[],
+  isAnonymous: boolean
 ): ChatMessageVM[] {
   if (!messagesData) return [];
   const all = messagesData.pages.flat();
   if (blocks.length === 0) return all;
-  const profileBlockedIds = new Set(
-    blocks.filter((b) => b.scope === "profile_only").map((b) => b.userId)
+  const requiredScope = isAnonymous ? "anonymous_only" : "profile_only";
+  const blockedIds = new Set(
+    blocks.filter((b) => b.scope === requiredScope).map((b) => b.userId)
   );
-  if (profileBlockedIds.size === 0) return all;
-  return all.filter((msg) => !profileBlockedIds.has(msg.user_id));
+  if (blockedIds.size === 0) return all;
+  return all.filter((msg) => !blockedIds.has(msg.user_id));
 }

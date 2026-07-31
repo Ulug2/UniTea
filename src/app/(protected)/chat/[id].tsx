@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocalSearchParams, router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import {
+  Animated,
+  Easing,
   View,
   Text,
   Pressable,
@@ -69,6 +71,11 @@ import { ChatMessageRow } from "../../../features/chat/components/ChatMessageRow
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
+// Standard keyboard-animation duration, used whenever the native show/hide
+// event doesn't report its own (Android routinely reports 0).
+const KEYBOARD_ANIM_FALLBACK_MS = 250;
+const KEYBOARD_ANIM_EASING = Easing.out(Easing.ease);
+
 export default function ChatDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { theme, isDark } = useTheme();
@@ -78,15 +85,21 @@ export default function ChatDetailScreen() {
     [theme, isDark, insets],
   );
   const [message, setMessage] = useState("");
+  // Only used to toggle `maintainVisibleContentPosition` on the message list
+  // (disabled while the keyboard is up to avoid list jump/lag mid-scroll) —
+  // the actual bottom-inset values below drive their own animated timing.
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  /**
-   * Extra bottom inset while IME is open (Android edge-to-edge + resize often
-   * under-lifts; iOS can use a small boost when stack header is hidden).
-   */
-  const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedImageAspectRatio, setSelectedImageAspectRatio] = useState<
     number | null
+  >(null);
+  // Picker-reported type metadata for selectedImage — the most reliable
+  // source for resolving the image's type on upload (see supabaseImages.ts).
+  const [selectedImageMimeType, setSelectedImageMimeType] = useState<
+    string | null
+  >(null);
+  const [selectedImageFileName, setSelectedImageFileName] = useState<
+    string | null
   >(null);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [fullScreenImagePath, setFullScreenImagePath] = useState<string | null>(
@@ -110,7 +123,12 @@ export default function ChatDetailScreen() {
   // isChatAnonymous, derived right below, is available to pass into those
   // hooks — hook call order can't be reshuffled based on data that
   // arrives later in the same component.
-  const { data: chat, isLoading: isLoadingChat } = useQuery<Chat | null>({
+  const {
+    data: chat,
+    isLoading: isLoadingChat,
+    isFetching: isFetchingChat,
+    isError: isChatQueryError,
+  } = useQuery<Chat | null>({
     queryKey: ["chat", id],
     queryFn: async () => {
       if (!id) return null;
@@ -129,6 +147,23 @@ export default function ChatDetailScreen() {
     gcTime: 1000 * 60 * 60, // Cache for 1 hour
     retry: 2,
   });
+
+  // chats_view now excludes a chat entirely once either side has blocked the
+  // other (mirrors user_chats_summary's list-level filtering, scope-matched
+  // to the chat's own anonymity) — see
+  // 20260726000001_fix_blocked_anonymous_chat_still_reachable.sql. A chat
+  // reached via a stale notification, cached navigation state, or deep link
+  // to a chat_id that's since been blocked resolves here with no row
+  // (`.single()` throws, `chat` stays undefined) rather than the old
+  // participant-only check that let it load fine. Treated as "this
+  // conversation is no longer available" below, with no composer rendered —
+  // otherwise the screen would still let messages be typed and inserted
+  // into a chat neither side can actually see anymore.
+  const isChatUnavailable =
+    Boolean(id) &&
+    !isLoadingChat &&
+    !isFetchingChat &&
+    (isChatQueryError || !chat);
 
   // Get other user ID
   const otherUserId =
@@ -200,43 +235,108 @@ export default function ChatDetailScreen() {
       pendingMessageIdsRef: pendingMessageIds,
       optimisticImageUrisRef: optimisticImageUris,
       flatListRef,
-      onRestoreInput: (messageText, localImageUri, imageAspectRatio) => {
+      onRestoreInput: (
+        messageText,
+        localImageUri,
+        imageAspectRatio,
+        localImageMimeType,
+        localImageFileName,
+      ) => {
         setMessage(messageText);
         setSelectedImage(localImageUri);
         setSelectedImageAspectRatio(imageAspectRatio ?? null);
+        setSelectedImageMimeType(localImageMimeType ?? null);
+        setSelectedImageFileName(localImageFileName ?? null);
       },
     },
   );
 
+  // Extra bottom padding for the message list while the IME is open (Android
+  // edge-to-edge + resize often under-lifts; iOS can use a small boost when
+  // the stack header is hidden), and the composer's own bottom padding —
+  // both animated in lockstep with the keyboard's real show/hide animation
+  // (see the listener effect below) instead of snapping instantly, which is
+  // what previously made the content jump the moment the keyboard closed.
+  const listExtraPaddingAnim = useRef(new Animated.Value(0)).current;
+  const composerPaddingAnim = useRef(new Animated.Value(insets.bottom)).current;
+
+  // Read inside the keyboard listener via a ref so the listener effect below
+  // doesn't need to re-subscribe (and risk a duplicate subscription) every
+  // time safe-area insets change, e.g. on rotation.
+  const insetsBottomRef = useRef(insets.bottom);
+  useEffect(() => {
+    insetsBottomRef.current = insets.bottom;
+  }, [insets.bottom]);
+
   // Track keyboard visibility - use "Will" events on iOS for instant effect.
-  // Apply measured IME height as extra padding; `behavior="padding"` on KAV
-  // handles most of the lift, but edge-to-edge Android often needs the remainder.
   useEffect(() => {
     const showEvent =
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent =
       Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
 
+    const animateTo = (
+      listTarget: number,
+      composerTarget: number,
+      nativeDuration: number | undefined,
+    ) => {
+      // Android's keyboard events frequently report duration: 0 (no reliable
+      // native animation-duration API surfaced there); fall back to a
+      // standard keyboard-animation duration so the transition still feels
+      // deliberate rather than instant. iOS reliably reports its own.
+      const duration =
+        typeof nativeDuration === "number" && nativeDuration > 0
+          ? nativeDuration
+          : KEYBOARD_ANIM_FALLBACK_MS;
+
+      Animated.parallel([
+        Animated.timing(listExtraPaddingAnim, {
+          toValue: listTarget,
+          duration,
+          easing: KEYBOARD_ANIM_EASING,
+          useNativeDriver: false,
+        }),
+        Animated.timing(composerPaddingAnim, {
+          toValue: composerTarget,
+          duration,
+          easing: KEYBOARD_ANIM_EASING,
+          useNativeDriver: false,
+        }),
+      ]).start();
+    };
+
     const showSubscription = Keyboard.addListener(
       showEvent,
-      (e: { endCoordinates?: { height?: number } }) => {
+      (e: {
+        endCoordinates?: { height?: number };
+        duration?: number;
+      }) => {
         setIsKeyboardVisible(true);
         const h = e.endCoordinates?.height;
         if (typeof h === "number" && h > 0) {
-          setKeyboardBottomInset(h);
+          const listTarget =
+            h +
+            insetsBottomRef.current -
+            (Platform.OS === "ios" ? moderateScale(10) : 0);
+          const composerTarget =
+            Platform.OS === "ios" ? 0 : moderateScale(10);
+          animateTo(listTarget, composerTarget, e.duration);
         }
       },
     );
-    const hideSubscription = Keyboard.addListener(hideEvent, () => {
-      setIsKeyboardVisible(false);
-      setKeyboardBottomInset(0);
-    });
+    const hideSubscription = Keyboard.addListener(
+      hideEvent,
+      (e: { duration?: number }) => {
+        setIsKeyboardVisible(false);
+        animateTo(0, insetsBottomRef.current, e?.duration);
+      },
+    );
 
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
     };
-  }, []);
+  }, [listExtraPaddingAnim, composerPaddingAnim]);
 
   // Tell the notification handler which chat is active so it can suppress banners
   // for this exact conversation.  We set BOTH chatId (primary — works for anonymous
@@ -302,8 +402,8 @@ export default function ChatDetailScreen() {
 
   // Flatten and filter out blocked users' messages
   const messages = useMemo(
-    () => selectMessages(messagesData, blocks),
-    [messagesData, blocks],
+    () => selectMessages(messagesData, blocks, isChatAnonymous),
+    [messagesData, blocks, isChatAnonymous],
   );
 
   // Clean up abandoned empty chats: a chat created by tapping "contact" but never
@@ -427,7 +527,6 @@ export default function ChatDetailScreen() {
   const { openMessageActionSheet } = useChatMessageActions(
     id ?? "",
     currentUserId ?? undefined,
-    isChatAnonymous,
     { onReply: handleReply },
   );
 
@@ -715,19 +814,33 @@ export default function ChatDetailScreen() {
     send({
       text: message,
       localImageUri: selectedImage,
+      localImageMimeType: selectedImageMimeType,
+      localImageFileName: selectedImageFileName,
       imageAspectRatio: selectedImageAspectRatio,
       replyToId: replyingTo?.message.id ?? null,
     });
     setMessage("");
     setSelectedImage(null);
     setSelectedImageAspectRatio(null);
+    setSelectedImageMimeType(null);
+    setSelectedImageFileName(null);
     setReplyingTo(null);
-  }, [message, selectedImage, selectedImageAspectRatio, replyingTo, send]);
+  }, [
+    message,
+    selectedImage,
+    selectedImageMimeType,
+    selectedImageFileName,
+    selectedImageAspectRatio,
+    replyingTo,
+    send,
+  ]);
 
   const handlePickImage = useCallback(async () => {
     const result = await pickChatImage();
     if (result) {
       setSelectedImage(result.localUri);
+      setSelectedImageMimeType(result.mimeType);
+      setSelectedImageFileName(result.fileName);
       setSelectedImageAspectRatio(result.aspectRatio);
     }
   }, []);
@@ -735,7 +848,9 @@ export default function ChatDetailScreen() {
   // Block user mutation.
   // Anonymous chats: the client no longer holds the partner's real id
   // (Phase 1), so blocking goes through block_chat_partner (Phase 2),
-  // which resolves the real target server-side from the chat_id alone.
+  // which resolves the real target server-side from the chat_id alone and
+  // always stores it as anonymous_only -- profile_only would hide the
+  // partner's unrelated public posts too, deanonymizing them via the feed.
   // Non-anonymous chats keep the direct insert unchanged — the client
   // already legitimately holds that id.
   const blockUserMutation = useMutation({
@@ -747,7 +862,6 @@ export default function ChatDetailScreen() {
       if (isChatAnonymous) {
         const { error } = await (supabase as any).rpc("block_chat_partner", {
           p_chat_id: id,
-          p_scope: "profile_only",
         });
         if (error) throw error;
         return;
@@ -803,13 +917,12 @@ export default function ChatDetailScreen() {
 
   // Delete chat mutation.
   // Anonymous chats: routed entirely through delete_anonymous_chat (Phase
-  // 4) — the base-table participant check, message DELETE, its
-  // soft-delete fallback, and the chats-row DELETE below all depend on
-  // SELECT-visibility that's deliberately false for anonymous rows
-  // (Phase 1), so none of that two-layer safety net has a working layer
-  // left for them; the RPC re-verifies participancy and deletes both
-  // server-side in one call. Non-anonymous chats keep the exact existing
-  // flow, unchanged.
+  // 4) — the base-table participant check and the message/chats-row
+  // DELETEs below all depend on SELECT-visibility that's deliberately
+  // false for anonymous rows (Phase 1), so none of that safety net has a
+  // working layer left for them; the RPC re-verifies participancy and
+  // deletes both server-side in one call. Non-anonymous chats keep the
+  // exact existing flow, unchanged.
   const deleteChatMutation = useMutation({
     mutationFn: async () => {
       if (!id || !currentUserId) {
@@ -857,28 +970,17 @@ export default function ChatDetailScreen() {
         .select();
 
       if (messagesError) {
-        console.error("Error deleting messages:", messagesError);
-        // If RLS prevents deletion, try a different approach
-        // Mark messages as deleted instead of actually deleting them
-        const { error: softDeleteError } = await supabase
-          .from("chat_messages")
-          .update({
-            deleted_by_sender: true,
-            deleted_by_receiver: true,
-          })
-          .eq("chat_id", id);
-
-        if (softDeleteError) {
-          throw new Error(
-            `Failed to delete messages: ${messagesError.message}`,
-          );
-        }
-        console.log("Soft-deleted messages due to RLS restrictions");
-      } else {
-        console.log(
-          `Deleted ${deletedMessages?.length || 0} messages for chat ${id}`,
-        );
+        // The delete-messages policy allows any participant to hard-delete
+        // their chat's messages, so this should not happen in practice.
+        // (There used to be a soft-delete fallback here that set the
+        // deletion flags directly; that column is now RPC-only — see
+        // set_chat_message_deletion — so surface the real error instead.)
+        throw new Error(`Failed to delete messages: ${messagesError.message}`);
       }
+      logger.info("Deleted messages for chat", {
+        chatId: id,
+        count: deletedMessages?.length || 0,
+      });
 
       // Then, delete the chat itself
       // Note: .or() doesn't work with .delete(), so we rely on RLS policies
@@ -1231,6 +1333,24 @@ export default function ChatDetailScreen() {
     return <ChatDetailSkeleton />;
   }
 
+  if (isChatUnavailable) {
+    return (
+      <View
+        style={[
+          dynamicStyles.container,
+          { alignItems: "center", justifyContent: "center", padding: moderateScale(24) },
+        ]}
+      >
+        <Text style={{ color: theme.text, fontSize: 16, textAlign: "center" }}>
+          This conversation is no longer available.
+        </Text>
+        <Pressable onPress={() => router.back()} style={{ marginTop: moderateScale(16) }}>
+          <Text style={{ color: theme.primary, fontSize: 15 }}>Go back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   const headerAvatar =
     !isChatAnonymous && otherUser?.avatar_url ? (
       <CachedAvatar
@@ -1263,16 +1383,13 @@ export default function ChatDetailScreen() {
       />
 
       {/* MESSAGES LIST */}
-      {/* Manual bottom padding from Keyboard events — KAV fights Android resize + leaves gaps */}
-      <View
+      {/* Manual bottom padding from Keyboard events — KAV fights Android resize + leaves
+          gaps. Animated (see listExtraPaddingAnim above) so it tracks the keyboard's own
+          show/hide animation instead of snapping instantly. */}
+      <Animated.View
         style={{
           flex: 1,
-          paddingBottom:
-            keyboardBottomInset > 0
-              ? Platform.OS === "ios"
-                ? keyboardBottomInset + insets.bottom - moderateScale(10)
-                : keyboardBottomInset + insets.bottom
-              : 0,
+          paddingBottom: listExtraPaddingAnim,
         }}
       >
         <ChatMessageList
@@ -1313,6 +1430,8 @@ export default function ChatDetailScreen() {
           onRemoveImage={() => {
             setSelectedImage(null);
             setSelectedImageAspectRatio(null);
+            setSelectedImageMimeType(null);
+            setSelectedImageFileName(null);
           }}
           isSending={isSending}
           disabled={!message.trim() && !selectedImage}
@@ -1324,15 +1443,9 @@ export default function ChatDetailScreen() {
           replyPreviewBg={theme.card}
           replyPreviewBorderColor={theme.border}
           styles={dynamicStyles}
-          paddingBottom={
-            isKeyboardVisible
-              ? Platform.OS === "ios"
-                ? moderateScale(0)
-                : moderateScale(10)
-              : insets.bottom
-          }
+          paddingBottom={composerPaddingAnim}
         />
-      </View>
+      </Animated.View>
 
       {/* User Profile Modal */}
       {!isChatAnonymous && otherUserId && otherUserId !== currentUserId && (

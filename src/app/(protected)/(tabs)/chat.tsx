@@ -174,7 +174,7 @@ export default function ChatScreen() {
           ? chat.participant_2_id
           : chat.participant_1_id;
 
-      if (isBlockedChat(blocks, otherUserId)) {
+      if (isBlockedChat(blocks, otherUserId, chat.is_anonymous === true)) {
         return false;
       }
 
@@ -189,14 +189,25 @@ export default function ChatScreen() {
 
   // Real-time subscription for chat updates.
   //
-  // Two filtered channels on the `chats` table replace the previous single
-  // unfiltered channel. Each channel receives only rows where the current user
-  // is one of the two participants, so Supabase Realtime never broadcasts
-  // irrelevant rows to this client.
+  // Three sources feed this screen:
+  //   • Two filtered `postgres_changes` channels on the `chats` table —
+  //     non-anonymous chats only. Realtime enforces the same restrictive
+  //     RLS as direct reads, so these never fire for anonymous rows.
+  //   • One private Broadcast channel (`chats:{currentUserId}`), a generic
+  //     per-user "this chat changed, refetch it" signal — not anonymous-
+  //     specific despite originating from that work. Two server-side
+  //     sources send `chat_updated` {chat_id} on it: every anonymous
+  //     message insert (broadcast_anonymous_chat_message(), the only
+  //     live-update path anonymous chats have at all, since
+  //     postgres_changes can't see them — see
+  //     20260727000000_chat_list_live_update_broadcast.sql), and every
+  //     delete-for-everyone for EITHER chat type (set_chat_message_deletion(),
+  //     since deletion never touches a `chats` row for postgres_changes to
+  //     fire on — see 20260728000000_unify_chat_message_deletion_rpc.sql).
   //
   // chat_messages listeners have been removed from this screen entirely:
-  //   • The `chats` UPDATE event (fired by the DB trigger that bumps
-  //     last_message_at) is sufficient to keep the chat list current.
+  //   • The `chats` UPDATE event / the broadcast signal above are
+  //     sufficient to know a message arrived or was deleted.
   //   • Per-message delivery is handled by the detail screen's own filtered
   //     channel (`chat-${chatId}` with `filter: "chat_id=eq.${chatId}"`).
   const channelErrorLoggedRef = useRef(false);
@@ -206,7 +217,181 @@ export default function ChatScreen() {
     channelErrorLoggedRef.current = false;
     let isMounted = true;
 
-    // Shared handler for all chats-table events on both channels.
+    // Shared by both the postgres_changes UPDATE handler (non-anonymous)
+    // and the chats:{userId} broadcast handler (anonymous): reorders the
+    // list instantly using a last_message_at already on hand (from the
+    // event payload), without waiting on a network round-trip. Preview
+    // text/unread count aren't available yet here — applyFreshChatSummary
+    // below fills those in right after.
+    const patchLastMessageAtAndSort = (
+      chatId: string,
+      lastMessageAt: string | null,
+    ) => {
+      queryClient.setQueryData<ChatSummary[]>(
+        ["chat-summaries", currentUserId],
+        (oldSummaries) => {
+          if (!oldSummaries) return oldSummaries;
+
+          const chatIndex = oldSummaries.findIndex(
+            (s) => s.chat_id === chatId,
+          );
+
+          if (chatIndex === -1) {
+            // Not in the cached list yet (e.g. this chat's first-ever
+            // message) — let the normal invalidate/refetch path pick it up.
+            queryClient.invalidateQueries({
+              queryKey: ["chat-summaries", currentUserId],
+              refetchType: "none",
+            });
+            return oldSummaries;
+          }
+
+          const updated = [...oldSummaries];
+          updated[chatIndex] = {
+            ...updated[chatIndex],
+            last_message_at:
+              lastMessageAt || updated[chatIndex].last_message_at,
+          };
+
+          updated.sort((a, b) => {
+            const aTime = a.last_message_at
+              ? new Date(a.last_message_at).getTime()
+              : 0;
+            const bTime = b.last_message_at
+              ? new Date(b.last_message_at).getTime()
+              : 0;
+            return bTime - aTime;
+          });
+
+          return updated;
+        },
+      );
+    };
+
+    // Recomputes the global badge from whatever is CURRENTLY in the
+    // chat-summaries cache. Must only ever run after that cache has been
+    // written with real data — never before an in-flight fetch it depends
+    // on has resolved (that was Bug C: the old code recomputed the badge
+    // synchronously, before the async unread-count fetch it needed had
+    // landed).
+    const recomputeGlobalBadge = () => {
+      const summaries = queryClient.getQueryData<ChatSummary[]>([
+        "chat-summaries",
+        currentUserId,
+      ]);
+      if (!summaries) return;
+
+      const cachedBlocksForBadge =
+        queryClient.getQueryData<BlockRecord[]>(["blocks", currentUserId]) ||
+        [];
+      const total = summaries.reduce((sum: number, chat: ChatSummary) => {
+        const otherId =
+          chat.participant_1_id === currentUserId
+            ? chat.participant_2_id
+            : chat.participant_1_id;
+        if (
+          isBlockedChat(cachedBlocksForBadge, otherId, chat.is_anonymous === true)
+        )
+          return sum;
+        const isP1 = chat.participant_1_id === currentUserId;
+        return (
+          sum + (isP1 ? chat.unread_count_p1 || 0 : chat.unread_count_p2 || 0)
+        );
+      }, 0);
+
+      queryClient.setQueriesData<number>(
+        { queryKey: ["global-unread-count", currentUserId], exact: false },
+        total,
+      );
+    };
+
+    // Fetches the fresh row for one chat from user_chats_summary — preview
+    // text/image flags + unread counts, none of which are on the `chats`
+    // table payload or the broadcast signal — and patches it into the
+    // cache, then recomputes the badge from the result. Shared by both
+    // event sources so the fix applies identically to anonymous and
+    // non-anonymous chats (Bug B: the old code only fetched unread counts,
+    // never the preview text, so the list reordered but still showed the
+    // previous message. Bug C: see recomputeGlobalBadge above).
+    const applyFreshChatSummary = async (chatId: string) => {
+      try {
+        const isViewingThisChat = getCurrentViewedChatId() === chatId;
+
+        const { data: freshRow } = await (supabase as any)
+          .from("user_chats_summary")
+          .select(
+            "chat_id, last_message_at, last_message_content_p1, last_message_has_image_p1, last_message_content_p2, last_message_has_image_p2, unread_count_p1, unread_count_p2, participant_1_id, participant_2_id",
+          )
+          .eq("chat_id", chatId)
+          .maybeSingle();
+
+        if (!isMounted) return;
+
+        queryClient.setQueryData<ChatSummary[]>(
+          ["chat-summaries", currentUserId],
+          (old) => {
+            if (!old) return old;
+
+            if (!freshRow) {
+              // No longer visible to us (e.g. blocked in the meantime).
+              return old.filter((s) => s.chat_id !== chatId);
+            }
+
+            const existingIndex = old.findIndex((s) => s.chat_id === chatId);
+            if (existingIndex === -1) return old;
+
+            const existing = old[existingIndex];
+
+            // Guard against a burst of rapid messages resolving out of
+            // order: never let an older read overwrite a newer one.
+            const existingTime = existing.last_message_at
+              ? new Date(existing.last_message_at).getTime()
+              : 0;
+            const freshTime = freshRow.last_message_at
+              ? new Date(freshRow.last_message_at).getTime()
+              : 0;
+            if (freshTime < existingTime) return old;
+
+            const isP1 = freshRow.participant_1_id === currentUserId;
+            const updated = [...old];
+            updated[existingIndex] = {
+              ...existing,
+              last_message_at: freshRow.last_message_at,
+              last_message_content_p1: freshRow.last_message_content_p1,
+              last_message_has_image_p1: freshRow.last_message_has_image_p1,
+              last_message_content_p2: freshRow.last_message_content_p2,
+              last_message_has_image_p2: freshRow.last_message_has_image_p2,
+              // User is in this chat right now — the realtime hook already
+              // marks incoming messages as read, so force the cached count
+              // to zero regardless of what the (possibly not-yet-caught-up)
+              // fetch reports.
+              unread_count_p1:
+                isViewingThisChat && isP1 ? 0 : freshRow.unread_count_p1,
+              unread_count_p2:
+                isViewingThisChat && !isP1 ? 0 : freshRow.unread_count_p2,
+            };
+
+            updated.sort((a, b) => {
+              const aTime = a.last_message_at
+                ? new Date(a.last_message_at).getTime()
+                : 0;
+              const bTime = b.last_message_at
+                ? new Date(b.last_message_at).getTime()
+                : 0;
+              return bTime - aTime;
+            });
+
+            return updated;
+          },
+        );
+
+        recomputeGlobalBadge();
+      } catch {
+        // Non-critical — will sync on next focus/manual refresh.
+      }
+    };
+
+    // Shared handler for all chats-table events on both postgres_changes channels.
     const handleChatEvent = (payload: any) => {
       if (!isMounted) return;
 
@@ -244,7 +429,7 @@ export default function ChatScreen() {
               "blocks",
               currentUserId,
             ]) || [];
-          if (isBlockedChat(cachedBlocks, otherUserId)) {
+          if (isBlockedChat(cachedBlocks, otherUserId, insertedChat?.is_anonymous === true)) {
             return;
           }
 
@@ -267,150 +452,47 @@ export default function ChatScreen() {
               "blocks",
               currentUserId,
             ]) || [];
-          if (isBlockedChat(cachedBlocks, otherUserId)) {
+          if (isBlockedChat(cachedBlocks, otherUserId, updatedChat?.is_anonymous === true)) {
             return;
           }
 
-          // Update last_message_at immediately (available from the chats row).
-          queryClient.setQueryData<ChatSummary[]>(
-            ["chat-summaries", currentUserId],
-            (oldSummaries) => {
-              if (!oldSummaries) return oldSummaries;
-
-              const chatIndex = oldSummaries.findIndex(
-                (s) => s.chat_id === updatedChat.id,
-              );
-
-              if (chatIndex === -1) {
-                queryClient.invalidateQueries({
-                  queryKey: ["chat-summaries", currentUserId],
-                  refetchType: "none",
-                });
-                return oldSummaries;
-              }
-
-              const updated = [...oldSummaries];
-              updated[chatIndex] = {
-                ...updated[chatIndex],
-                last_message_at:
-                  updatedChat.last_message_at ||
-                  updated[chatIndex].last_message_at,
-                // unread_count_p1/p2 are NOT columns on the chats table — they
-                // are computed by the user_chats_summary VIEW.  We fetch them
-                // asynchronously below rather than reading undefined from payload.
-              };
-
-              updated.sort((a, b) => {
-                const aTime = a.last_message_at
-                  ? new Date(a.last_message_at).getTime()
-                  : 0;
-                const bTime = b.last_message_at
-                  ? new Date(b.last_message_at).getTime()
-                  : 0;
-                return bTime - aTime;
-              });
-
-              return updated;
-            },
+          // Instant reorder from the payload; preview text/unread count
+          // are filled in right after by applyFreshChatSummary.
+          patchLastMessageAtAndSort(
+            updatedChat.id,
+            updatedChat.last_message_at ?? null,
           );
-
-          // Fetch fresh unread counts from the view and patch the cache.
-          // The chats-table UPDATE payload does not carry unread_count_p1/p2 (those
-          // are computed by the view), so we do a targeted query here.
-          const updatedChatId = updatedChat.id as string;
-          const isViewingThisChat = getCurrentViewedChatId() === updatedChatId;
-
-          if (isViewingThisChat) {
-            // User is in this chat right now — the realtime hook already marks
-            // incoming messages as read, so force the cached count to zero.
-            queryClient.setQueryData<ChatSummary[]>(
-              ["chat-summaries", currentUserId],
-              (old) => {
-                if (!old) return old;
-                return old.map((s) => {
-                  if (s.chat_id !== updatedChatId) return s;
-                  const isP1 = s.participant_1_id === currentUserId;
-                  return {
-                    ...s,
-                    unread_count_p1: isP1 ? 0 : s.unread_count_p1,
-                    unread_count_p2: !isP1 ? 0 : s.unread_count_p2,
-                  };
-                });
-              },
-            );
-          } else {
-            // Async fetch to get accurate unread counts from the view.
-            (async () => {
-              try {
-                const { data: freshRow } = await (supabase as any)
-                  .from("user_chats_summary")
-                  .select("chat_id, unread_count_p1, unread_count_p2")
-                  .eq("chat_id", updatedChatId)
-                  .maybeSingle();
-
-                if (!freshRow || !isMounted) return;
-
-                queryClient.setQueryData<ChatSummary[]>(
-                  ["chat-summaries", currentUserId],
-                  (old) => {
-                    if (!old) return old;
-                    return old.map((s) =>
-                      s.chat_id === updatedChatId
-                        ? {
-                            ...s,
-                            unread_count_p1: freshRow.unread_count_p1 ?? s.unread_count_p1,
-                            unread_count_p2: freshRow.unread_count_p2 ?? s.unread_count_p2,
-                          }
-                        : s,
-                    );
-                  },
-                );
-              } catch {
-                // Non-critical — will sync on next manual refresh
-              }
-            })();
-          }
-
-          // Keep the global badge in sync by re-deriving from the updated cache.
-          const updatedSummaries = queryClient.getQueryData<ChatSummary[]>([
-            "chat-summaries",
-            currentUserId,
-          ]);
-          if (updatedSummaries) {
-            const cachedBlocksForBadge =
-              queryClient.getQueryData<BlockRecord[]>([
-                "blocks",
-                currentUserId,
-              ]) || [];
-            const total = updatedSummaries.reduce(
-              (sum: number, chat: ChatSummary) => {
-                const otherId =
-                  chat.participant_1_id === currentUserId
-                    ? chat.participant_2_id
-                    : chat.participant_1_id;
-                if (isBlockedChat(cachedBlocksForBadge, otherId)) return sum;
-                const isP1 = chat.participant_1_id === currentUserId;
-                return (
-                  sum +
-                  (isP1 ? chat.unread_count_p1 || 0 : chat.unread_count_p2 || 0)
-                );
-              },
-              0,
-            );
-            queryClient.setQueriesData<number>(
-              {
-                queryKey: ["global-unread-count", currentUserId],
-                exact: false,
-              },
-              total,
-            );
-          }
+          applyFreshChatSummary(updatedChat.id as string);
         }
       } catch (error) {
         logger.error("Error handling chat realtime event", error, {
           userId: currentUserId,
           component: "ChatScreen",
           eventType,
+        });
+      }
+    };
+
+    // Handler for the chats:{userId} broadcast — the only live-update path
+    // anonymous chats have (Bug A fix).
+    const handleListRefreshBroadcast = (payload: any) => {
+      if (!isMounted) return;
+
+      try {
+        const signal = payload?.payload as
+          | { chat_id?: string; last_message_at?: string }
+          | undefined;
+        if (!signal?.chat_id) return;
+
+        patchLastMessageAtAndSort(
+          signal.chat_id,
+          signal.last_message_at ?? null,
+        );
+        applyFreshChatSummary(signal.chat_id);
+      } catch (error) {
+        logger.error("Error handling chat list refresh broadcast", error, {
+          userId: currentUserId,
+          component: "ChatScreen",
         });
       }
     };
@@ -444,9 +526,8 @@ export default function ChatScreen() {
     // Channel A — chats where the current user is participant_1
     // Note: these two subscriptions silently stop delivering events for
     // anonymous chats (Realtime enforces the same restrictive RLS as
-    // direct reads) — that's expected, not an error; see the
-    // useFocusEffect above for how anonymous chats stay reasonably fresh
-    // instead. Non-anonymous chats are completely unaffected.
+    // direct reads) — that's expected, not an error; the chats:{userId}
+    // broadcast channel below is what keeps anonymous chats live instead.
     const channelP1 = supabase
       .channel(`chats-p1-${currentUserId}`)
       .on(
@@ -476,6 +557,15 @@ export default function ChatScreen() {
       )
       .subscribe(onStatus(`chats-p2-${currentUserId}`));
 
+    // Channel C — private broadcast signal for anonymous chats (Bug A fix).
+    // Sent by broadcast_anonymous_chat_message() to chats:{recipientId} and
+    // chats:{senderId} on every anonymous message insert; see
+    // 20260727000000_chat_list_live_update_broadcast.sql.
+    const channelBroadcast = supabase
+      .channel(`chats:${currentUserId}`, { config: { private: true } })
+      .on("broadcast", { event: "chat_updated" }, handleListRefreshBroadcast)
+      .subscribe(onStatus(`chats-broadcast-${currentUserId}`));
+
     return () => {
       isMounted = false;
 
@@ -495,6 +585,10 @@ export default function ChatScreen() {
       channelP2.unsubscribe();
       if (typeof (supabase as any).removeChannel === "function") {
         (supabase as any).removeChannel(channelP2);
+      }
+      channelBroadcast.unsubscribe();
+      if (typeof (supabase as any).removeChannel === "function") {
+        (supabase as any).removeChannel(channelBroadcast);
       }
       channelErrorLoggedRef.current = false;
     };

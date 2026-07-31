@@ -152,7 +152,6 @@ export default function TabLayout() {
           name="lostfound"
           options={{
             title: "Lost & Found",
-            tabBarHideOnKeyboard: true,
             headerTitleAlign: "center",
             headerTitleStyle: {
               fontSize: moderateScale(24),

@@ -134,9 +134,34 @@ export function prependIncomingMessage(
 /**
  * Upsert an incoming message into the paginated cache.
  *
- * Used for enrichment updates (e.g. fill `replyToMessage`) after an initial
- * raw INSERT was already prepended.
+ * Used for enrichment updates (e.g. `replyToMessage`) after an initial raw
+ * INSERT was already prepended. The raw insert may already carry a
+ * best-effort `replyToMessage` snapshot sourced from the local cache (see
+ * useChatMessagesRealtime.ts's withCachedReplyPreview) — this merge still
+ * overwrites it with the authoritative joined data from the server either
+ * way, since a plain object spread always takes the newer value.
  */
+/**
+ * Shared by upsertIncomingMessage and applyIncomingMessageUpdate: merges a
+ * (possibly partial) update into whichever page currently holds this
+ * message id. Returns the updated pages and whether it was found anywhere.
+ */
+function mergeMessageIntoPages(
+  pages: MessagesQueryData["pages"],
+  update: Partial<ChatMessageVM> & Pick<ChatMessageVM, "id">
+): { pages: MessagesQueryData["pages"]; found: boolean } {
+  let found = false;
+  const nextPages = pages.map((page) => {
+    if (!Array.isArray(page)) return page;
+    return page.map((m) => {
+      if (m?.id !== update.id) return m;
+      found = true;
+      return { ...m, ...update };
+    });
+  });
+  return { pages: nextPages, found };
+}
+
 export function upsertIncomingMessage(
   queryClient: QueryClient,
   chatId: string,
@@ -163,21 +188,69 @@ export function upsertIncomingMessage(
       }
 
       // Fallback: scan all loaded pages (defensive for edge cases).
-      let found = false;
-      const nextPages = safePages.map((page) => {
-        if (!Array.isArray(page)) return page;
-        return page.map((m) => {
-          if (m?.id !== newMessage.id) return m;
-          found = true;
-          return { ...m, ...newMessage };
-        });
-      });
-
-      if (found) {
-        return { ...old, pages: nextPages };
-      }
+      const { pages, found } = mergeMessageIntoPages(safePages, newMessage);
+      if (found) return { ...old, pages };
 
       return prependMessage(old, newMessage);
+    }
+  );
+}
+
+/**
+ * Reflects a delete-for-everyone into any other cached message's reply
+ * quote that references it, so a reply's embedded snapshot shows the
+ * tombstone state without waiting for a refetch.
+ */
+function markReplyPreviewsDeleted(
+  pages: MessagesQueryData["pages"],
+  deletedMessageId: string
+): MessagesQueryData["pages"] {
+  return pages.map((page) =>
+    page.map((msg) =>
+      msg?.replyToMessage?.id === deletedMessageId
+        ? {
+          ...msg,
+          replyToMessage: {
+            ...msg.replyToMessage!,
+            deleted_by_sender: true,
+            deleted_by_receiver: true,
+          },
+        }
+        : msg
+    )
+  );
+}
+
+/**
+ * Patches an existing, already-cached message (e.g. deletion flags
+ * changing). Unlike upsertIncomingMessage, this never falls back to
+ * prepending a new row: an update payload can be partial (only the
+ * changed fields) and the target message may be an OLD one the user
+ * hasn't scrolled back to yet — either way, fabricating a message entry
+ * from a partial payload would render a broken bubble. If the message
+ * isn't currently loaded, this is a no-op; scrolling to it later fetches
+ * the correct state directly.
+ */
+export function applyIncomingMessageUpdate(
+  queryClient: QueryClient,
+  chatId: string,
+  update: Partial<ChatMessageVM> & Pick<ChatMessageVM, "id">
+): void {
+  queryClient.setQueryData<MessagesQueryData>(
+    [MESSAGES_QUERY_KEY, chatId],
+    (old) => {
+      if (!old) return old;
+
+      const safePages = Array.isArray(old.pages) ? old.pages : [[]];
+      const { pages, found } = mergeMessageIntoPages(safePages, update);
+      if (!found) return old;
+
+      const finalPages =
+        update.deleted_by_sender === true && update.deleted_by_receiver === true
+          ? markReplyPreviewsDeleted(pages, update.id)
+          : pages;
+
+      return { ...old, pages: finalPages };
     }
   );
 }
@@ -352,20 +425,21 @@ export function applyMessageDeletion({
         };
       }
       // delete_for_everyone: show tombstone
+      const tombstonePages = old.pages.map((page) =>
+        page.map((msg) =>
+          msg.id === messageId
+            ? {
+              ...msg,
+              content: "This message was deleted",
+              deleted_by_sender: true,
+              deleted_by_receiver: true,
+            }
+            : msg
+        )
+      );
       return {
         ...old,
-        pages: old.pages.map((page) =>
-          page.map((msg) =>
-            msg.id === messageId
-              ? {
-                ...msg,
-                content: "This message was deleted",
-                deleted_by_sender: true,
-                deleted_by_receiver: true,
-              }
-              : msg
-          )
-        ),
+        pages: markReplyPreviewsDeleted(tombstonePages, messageId),
       };
     }
   );

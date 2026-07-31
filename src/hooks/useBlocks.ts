@@ -43,12 +43,17 @@ export function useBlocks() {
         }
       });
 
-      // For users who blocked me, add as profile_only if not already present
+      // For users who blocked me, preserve their real scope so
+      // isBlockedPost/isBlockedChat can scope-match correctly in both
+      // directions (an anonymous_only block placed on me must not be
+      // treated as if it were profile_only, or it would incorrectly
+      // affect my non-anonymous content's visibility to them).
       blockedMe.data?.forEach((b) => {
-        const key = `${b.blocker_id}:profile_only`;
+        const scope = (b.block_scope as BlockScope) ?? "profile_only";
+        const key = `${b.blocker_id}:${scope}`;
         if (!seen.has(key)) {
           seen.add(key);
-          records.push({ userId: b.blocker_id, scope: "profile_only" });
+          records.push({ userId: b.blocker_id, scope });
         }
       });
 
@@ -91,15 +96,22 @@ export function hasBlockForScope(
 }
 
 /**
- * Returns true if a chat with `otherUserId` should be hidden
- * (only profile_only blocks hide chats).
+ * Returns true if a chat with `otherUserId` should be hidden. Scope must
+ * match the chat's own anonymity: anonymous_only hides anonymous chats,
+ * profile_only hides non-anonymous chats — mirrors posts_summary_view's
+ * content-type matching so a block placed in one context never spills
+ * into hiding unrelated content in the other.
  */
 export function isBlockedChat(
   blocks: BlockRecord[],
-  otherUserId: string | null | undefined
+  otherUserId: string | null | undefined,
+  isAnonymous: boolean
 ): boolean {
   if (!otherUserId) return false;
+  const requiredScope: BlockScope = isAnonymous
+    ? "anonymous_only"
+    : "profile_only";
   return blocks.some(
-    (b) => b.userId === otherUserId && b.scope === "profile_only"
+    (b) => b.userId === otherUserId && b.scope === requiredScope
   );
 }

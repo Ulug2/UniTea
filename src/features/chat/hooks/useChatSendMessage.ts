@@ -24,6 +24,9 @@ const PENDING_CLEANUP_MS = 5000;
 type SendParams = {
   text: string;
   localImageUri?: string | null;
+  /** Picker-reported type metadata — most reliable source for resolving the image's type on upload. */
+  localImageMimeType?: string | null;
+  localImageFileName?: string | null;
   imageAspectRatio?: number | null;
   replyToId?: string | null;
 };
@@ -36,6 +39,8 @@ type Options = {
     messageText: string,
     localImageUri: string | null,
     imageAspectRatio: number | null,
+    localImageMimeType: string | null,
+    localImageFileName: string | null,
   ) => void;
 };
 
@@ -143,6 +148,8 @@ export function useChatSendMessage(
       messageText: string;
       imageUrl?: string | null;
       localImageUri?: string | null;
+      localImageMimeType?: string | null;
+      localImageFileName?: string | null;
       imageAspectRatio?: number | null;
       replyToId?: string | null;
     },
@@ -240,7 +247,7 @@ export function useChatSendMessage(
             image_aspect_ratio: imageAspectRatio ?? null,
             reply_to_id: replyToId ?? null,
           })
-          .select("*, reply_message:reply_to_id(id, content, image_url, user_id)")
+          .select("*, reply_message:reply_to_id(id, content, image_url, user_id, deleted_by_sender, deleted_by_receiver)")
           .single();
 
         if (error) throw error;
@@ -260,7 +267,15 @@ export function useChatSendMessage(
 
       return { newMessage, now: newMessage.created_at ?? new Date().toISOString() };
     },
-    onMutate: async ({ messageText, imageUrl, localImageUri, imageAspectRatio, replyToId }) => {
+    onMutate: async ({
+      messageText,
+      imageUrl,
+      localImageUri,
+      localImageMimeType,
+      localImageFileName,
+      imageAspectRatio,
+      replyToId,
+    }) => {
       if (!chatId || !currentUserId) throw new Error("Missing chat ID or user ID");
 
       const cachedBlocks =
@@ -301,6 +316,8 @@ export function useChatSendMessage(
               content: found.content ?? null,
               image_url: found.image_url ?? null,
               user_id: found.user_id,
+              deleted_by_sender: found.deleted_by_sender,
+              deleted_by_receiver: found.deleted_by_receiver,
             };
           }
         }
@@ -324,6 +341,8 @@ export function useChatSendMessage(
           messageText,
           imageUrl: imageUrl ?? null,
           localImageUri: localImageUri ?? null,
+          localImageMimeType: localImageMimeType ?? null,
+          localImageFileName: localImageFileName ?? null,
           imageAspectRatio: imageAspectRatio ?? null,
           replyToId: replyToId ?? null,
         },
@@ -499,6 +518,8 @@ export function useChatSendMessage(
           variables.messageText ?? "",
           variables.localImageUri ?? null,
           variables.imageAspectRatio ?? null,
+          variables.localImageMimeType ?? null,
+          variables.localImageFileName ?? null,
         );
       }
       Alert.alert(
@@ -533,7 +554,14 @@ export function useChatSendMessage(
         }
       }
 
-      const { text: messageText, localImageUri, imageAspectRatio, replyToId } = params;
+      const {
+        text: messageText,
+        localImageUri,
+        localImageMimeType,
+        localImageFileName,
+        imageAspectRatio,
+        replyToId,
+      } = params;
       if (!messageText?.trim() && !localImageUri) return;
 
       isSendingRef.current = true;
@@ -561,7 +589,14 @@ export function useChatSendMessage(
       let imageUrl: string | null = null;
       if (localImageUri) {
         try {
-          imageUrl = await uploadImage(localImageUri, supabase, "chat-images");
+          imageUrl = await uploadImage(
+            localImageUri,
+            supabase,
+            "chat-images",
+            undefined,
+            localImageMimeType,
+            localImageFileName,
+          );
         } catch (err) {
           logger.error("Error uploading chat image", err as Error);
           Alert.alert("Error", "Failed to upload image. Please try again.");
@@ -576,6 +611,8 @@ export function useChatSendMessage(
           messageText: messageText?.trim() ?? "",
           imageUrl,
           localImageUri,
+          localImageMimeType: localImageMimeType ?? null,
+          localImageFileName: localImageFileName ?? null,
           imageAspectRatio: imageAspectRatio ?? null,
           replyToId: replyToId ?? null,
         },
@@ -604,6 +641,8 @@ export function useChatSendMessage(
       send({
         text: payload?.messageText ?? msg.content ?? "",
         localImageUri: localUri ?? null,
+        localImageMimeType: payload?.localImageMimeType ?? null,
+        localImageFileName: payload?.localImageFileName ?? null,
         imageAspectRatio: payload?.imageAspectRatio ?? msg.image_aspect_ratio ?? null,
         replyToId: payload?.replyToId ?? null,
       });

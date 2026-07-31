@@ -211,8 +211,42 @@ describe('useChatSendMessage', () => {
       });
 
       await waitFor(() => {
-        expect(mockUploadImage).toHaveBeenCalledWith('file://photo.jpg', supabase, 'chat-images');
+        expect(mockUploadImage).toHaveBeenCalledWith(
+          'file://photo.jpg',
+          supabase,
+          'chat-images',
+          undefined,
+          undefined,
+          undefined,
+        );
         expect(mockFrom).toHaveBeenCalledWith('chat_messages');
+      });
+    });
+
+    it('passes the picker-reported mimeType and fileName through to uploadImage instead of discarding them', async () => {
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({
+          text: '',
+          localImageUri: 'file:///var/mobile/.../ABCDEF.heic',
+          localImageMimeType: 'image/heic',
+          localImageFileName: 'IMG_0001.HEIC',
+        });
+      });
+
+      await waitFor(() => {
+        expect(mockUploadImage).toHaveBeenCalledWith(
+          'file:///var/mobile/.../ABCDEF.heic',
+          supabase,
+          'chat-images',
+          undefined,
+          'image/heic',
+          'IMG_0001.HEIC',
+        );
       });
     });
 
@@ -285,6 +319,8 @@ describe('useChatSendMessage', () => {
         content: 'the original message',
         image_url: null,
         user_id: 'other-user',
+        deleted_by_sender: null,
+        deleted_by_receiver: null,
       });
     });
 
