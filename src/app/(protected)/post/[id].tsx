@@ -392,9 +392,11 @@ export default function PostDetailed() {
   const createCommentMutation = useCreateComment({
     postId,
     viewerId: currentUserId,
+    communityId: detailedPost?.community_id ?? null,
   });
 
   const deletePostMutation = useDeletePost(postId, {
+    scope: { type: "feed", communityId: detailedPost?.community_id ?? null },
     onNavigateBack: closeScreen,
   });
 

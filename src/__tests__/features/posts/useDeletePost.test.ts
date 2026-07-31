@@ -21,6 +21,8 @@ const mockRouterBack = (router as unknown as { back: jest.Mock }).back;
 
 // ----- helpers ------------------------------------------------------------
 
+const feedScope = { type: 'feed' as const, communityId: null };
+
 function wrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return React.createElement(QueryClientProvider, { client: queryClient }, children);
@@ -70,7 +72,9 @@ describe('useDeletePost', () => {
   describe('when no postId and no overridePostId', () => {
     it('throws "Post ID is required"', async () => {
       global.fetch = makeOkFetch();
-      const { result } = renderHook(() => useDeletePost(null), { wrapper: wrapper(queryClient) });
+      const { result } = renderHook(() => useDeletePost(null, { scope: feedScope }), {
+        wrapper: wrapper(queryClient),
+      });
 
       await act(async () => {
         await expect(result.current.mutateAsync(undefined)).rejects.toThrow('Post ID is required');
@@ -84,7 +88,9 @@ describe('useDeletePost', () => {
       global.fetch = makeOkFetch();
       mockGetSession.mockResolvedValue({ data: { session: null } });
 
-      const { result } = renderHook(() => useDeletePost('post-1'), { wrapper: wrapper(queryClient) });
+      const { result } = renderHook(() => useDeletePost('post-1', { scope: feedScope }), {
+        wrapper: wrapper(queryClient),
+      });
 
       await act(async () => {
         await expect(result.current.mutateAsync(undefined)).rejects.toThrow(
@@ -99,7 +105,7 @@ describe('useDeletePost', () => {
     it('calls fetch with the closure post ID', async () => {
       global.fetch = makeOkFetch();
 
-      const { result } = renderHook(() => useDeletePost('post-close'), {
+      const { result } = renderHook(() => useDeletePost('post-close', { scope: feedScope }), {
         wrapper: wrapper(queryClient),
       });
 
@@ -117,7 +123,7 @@ describe('useDeletePost', () => {
     it('calls router.back() when postId is set and no overridePostId', async () => {
       global.fetch = makeOkFetch();
 
-      const { result } = renderHook(() => useDeletePost('post-close'), {
+      const { result } = renderHook(() => useDeletePost('post-close', { scope: feedScope }), {
         wrapper: wrapper(queryClient),
       });
 
@@ -130,9 +136,10 @@ describe('useDeletePost', () => {
       global.fetch = makeOkFetch();
       const onSuccess = jest.fn();
 
-      const { result } = renderHook(() => useDeletePost('post-cb', { onSuccess }), {
-        wrapper: wrapper(queryClient),
-      });
+      const { result } = renderHook(
+        () => useDeletePost('post-cb', { scope: feedScope, onSuccess }),
+        { wrapper: wrapper(queryClient) },
+      );
 
       await act(async () => { await result.current.mutateAsync(undefined); });
 
@@ -145,7 +152,7 @@ describe('useDeletePost', () => {
     it('uses the overridePostId in the request body', async () => {
       global.fetch = makeOkFetch();
 
-      const { result } = renderHook(() => useDeletePost('post-close'), {
+      const { result } = renderHook(() => useDeletePost('post-close', { scope: feedScope }), {
         wrapper: wrapper(queryClient),
       });
 
@@ -162,7 +169,7 @@ describe('useDeletePost', () => {
     it('does NOT call router.back() when overridePostId is provided', async () => {
       global.fetch = makeOkFetch();
 
-      const { result } = renderHook(() => useDeletePost('post-close'), {
+      const { result } = renderHook(() => useDeletePost('post-close', { scope: feedScope }), {
         wrapper: wrapper(queryClient),
       });
 
@@ -176,7 +183,7 @@ describe('useDeletePost', () => {
   it('sends Authorization and apikey headers', async () => {
     global.fetch = makeOkFetch();
 
-    const { result } = renderHook(() => useDeletePost('post-auth'), {
+    const { result } = renderHook(() => useDeletePost('post-auth', { scope: feedScope }), {
       wrapper: wrapper(queryClient),
     });
 
@@ -195,23 +202,89 @@ describe('useDeletePost', () => {
 
   // ── onSuccess invalidations ───────────────────────────────────────────
   describe('cache invalidations on success', () => {
-    it('invalidates all 6 expected query keys', async () => {
+    it('scopes the feed invalidation to the given community via feedKeys.belongsToCommunity, and invalidates post/user-posts/bookmarked-posts', async () => {
       global.fetch = makeOkFetch();
       const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
 
-      const { result } = renderHook(() => useDeletePost('post-inv'), {
-        wrapper: wrapper(queryClient),
-      });
+      const { result } = renderHook(
+        () =>
+          useDeletePost('post-inv', {
+            scope: { type: 'feed', communityId: 'community-A' },
+          }),
+        { wrapper: wrapper(queryClient) },
+      );
 
       await act(async () => { await result.current.mutateAsync(undefined); });
 
-      const keys = invalidateSpy.mock.calls.map(
-        (c) => (c[0] as { queryKey: unknown[] }).queryKey[0],
+      const predicateCall = invalidateSpy.mock.calls.find(
+        (c) => typeof (c[0] as any)?.predicate === 'function',
       );
-      expect(keys).toContain('posts');
+      expect(predicateCall).toBeDefined();
+      const predicate = (predicateCall![0] as any).predicate;
+
+      // Matches community-A's own cache entries, regardless of filter/search...
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', 'community-A'] })).toBe(true);
+      // ...but never Campus Feed or a different community — the whole point
+      // of this fix.
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', null] })).toBe(false);
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', 'community-B'] })).toBe(false);
+      // ...and never Lost & Found's differently-shaped key.
+      expect(predicate({ queryKey: ['posts', 'lost_found', 'uni-1'] })).toBe(false);
+
+      const keys = invalidateSpy.mock.calls
+        .map((c) => (c[0] as { queryKey?: unknown[] })?.queryKey?.[0])
+        .filter(Boolean);
       expect(keys).toContain('post');
       expect(keys).toContain('user-posts');
       expect(keys).toContain('bookmarked-posts');
+    });
+
+    it('scopes a Campus Feed deletion (communityId: null) to Campus only', async () => {
+      global.fetch = makeOkFetch();
+      const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+      const { result } = renderHook(
+        () => useDeletePost('post-campus', { scope: { type: 'feed', communityId: null } }),
+        { wrapper: wrapper(queryClient) },
+      );
+
+      await act(async () => { await result.current.mutateAsync(undefined); });
+
+      const predicateCall = invalidateSpy.mock.calls.find(
+        (c) => typeof (c[0] as any)?.predicate === 'function',
+      );
+      const predicate = (predicateCall![0] as any).predicate;
+
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', null] })).toBe(true);
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', 'community-A'] })).toBe(false);
+    });
+
+    it('invalidates only the university-scoped Lost & Found key for a lost_found scope, leaving Campus/community feed keys untouched', async () => {
+      global.fetch = makeOkFetch();
+      const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+      const { result } = renderHook(
+        () =>
+          useDeletePost('lf-post', {
+            scope: { type: 'lost_found', universityId: 'uni-1' },
+          }),
+        { wrapper: wrapper(queryClient) },
+      );
+
+      await act(async () => { await result.current.mutateAsync(undefined); });
+
+      const queryKeyCalls = invalidateSpy.mock.calls
+        .map((c) => (c[0] as { queryKey?: unknown[] })?.queryKey)
+        .filter(Boolean);
+      expect(queryKeyCalls).toContainEqual(['posts', 'lost_found', 'uni-1']);
+
+      // No predicate-based (feed-scoped) invalidation should happen for an
+      // L&F deletion — belongsToCommunity structurally can't reach the L&F
+      // key shape, so it must not be used here at all.
+      const predicateCall = invalidateSpy.mock.calls.find(
+        (c) => typeof (c[0] as any)?.predicate === 'function',
+      );
+      expect(predicateCall).toBeUndefined();
     });
   });
 
@@ -220,7 +293,7 @@ describe('useDeletePost', () => {
     it('shows an error alert with the server error message', async () => {
       global.fetch = makeErrorFetch({ error: 'Not allowed' });
 
-      const { result } = renderHook(() => useDeletePost('post-fail'), {
+      const { result } = renderHook(() => useDeletePost('post-fail', { scope: feedScope }), {
         wrapper: wrapper(queryClient),
       });
 
@@ -234,7 +307,7 @@ describe('useDeletePost', () => {
     it('falls back to generic message when no error field in body', async () => {
       global.fetch = makeErrorFetch({});
 
-      const { result } = renderHook(() => useDeletePost('post-fail2'), {
+      const { result } = renderHook(() => useDeletePost('post-fail2', { scope: feedScope }), {
         wrapper: wrapper(queryClient),
       });
 

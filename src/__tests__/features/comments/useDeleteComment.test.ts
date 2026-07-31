@@ -116,7 +116,7 @@ describe('useDeleteComment', () => {
       expect(opts.headers['Authorization']).toBe(`Bearer ${ACCESS_TOKEN}`);
     });
 
-    it('invalidates all expected query keys on success', async () => {
+    it('scopes the comment-thread invalidation to this post (not every thread), invalidates post/user-posts/bookmarked-posts, and falls back to a broad-but-lazy posts invalidation when communityId is not provided', async () => {
       const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
 
       const { result } = renderHook(
@@ -128,12 +128,53 @@ describe('useDeleteComment', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      const queryKeys = invalidateSpy.mock.calls.map((c) => (c[0] as any)?.queryKey);
-      expect(queryKeys).toContainEqual(['comments']);
+      const calls = invalidateSpy.mock.calls.map((c) => c[0] as any);
+      const queryKeys = calls.map((c) => c?.queryKey);
+      expect(queryKeys).toContainEqual(['comments', postId]);
+      expect(queryKeys).not.toContainEqual(['comments']);
       expect(queryKeys).toContainEqual(['post', postId]);
-      expect(queryKeys).toContainEqual(['posts']);
       expect(queryKeys).toContainEqual(['user-posts']);
       expect(queryKeys).toContainEqual(['bookmarked-posts']);
+
+      const postsCall = calls.find(
+        (c) => Array.isArray(c?.queryKey) && c.queryKey[0] === 'posts',
+      );
+      expect(postsCall).toBeDefined();
+      expect(postsCall.refetchType).toBe('none');
+    });
+
+    it('scopes the feed invalidation to the given community via feedKeys.belongsToCommunity when communityId is provided', async () => {
+      const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+      const { result } = renderHook(
+        () =>
+          useDeleteComment(commentId, {
+            postId,
+            currentUserId,
+            communityId: 'community-A',
+          }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => { result.current.mutate(); });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const predicateCall = invalidateSpy.mock.calls.find(
+        (c) => typeof (c[0] as any)?.predicate === 'function',
+      );
+      expect(predicateCall).toBeDefined();
+      expect((predicateCall![0] as any).refetchType).toBe('none');
+      const predicate = (predicateCall![0] as any).predicate;
+
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', 'community-A'] })).toBe(true);
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', null] })).toBe(false);
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', 'community-B'] })).toBe(false);
+
+      // No broad, un-scoped ['posts'] invalidation should happen when a
+      // community is known.
+      const queryKeys = invalidateSpy.mock.calls.map((c) => (c[0] as any)?.queryKey);
+      expect(queryKeys).not.toContainEqual(['posts']);
     });
 
     it('calls the onSuccess callback option', async () => {

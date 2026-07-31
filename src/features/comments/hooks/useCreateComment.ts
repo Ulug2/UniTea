@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { logger } from "../../../utils/logger";
 import { logActivity } from "../../../utils/activityLogger";
+import { feedKeys } from "../../communities/data/queryKeys";
 import type { CommentNode } from "../utils/tree";
 
 type CreateCommentInput = {
@@ -14,9 +15,20 @@ type CreateCommentInput = {
 type UseCreateCommentOptions = {
   postId: string | null | undefined;
   viewerId: string | null;
+  /**
+   * The post's community (null for Campus Feed). When provided, scopes the
+   * feed-row refresh (comment_count) to just that community instead of
+   * every mounted Campus/community feed. Falls back to the previous
+   * broad-but-lazy invalidation when omitted.
+   */
+  communityId?: string | null;
 };
 
-export function useCreateComment({ postId, viewerId }: UseCreateCommentOptions) {
+export function useCreateComment({
+  postId,
+  viewerId,
+  communityId,
+}: UseCreateCommentOptions) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -133,10 +145,17 @@ export function useCreateComment({ postId, viewerId }: UseCreateCommentOptions) 
       );
 
       queryClient.invalidateQueries({ queryKey: ["post", postId] });
-      queryClient.invalidateQueries({
-        queryKey: ["posts", "feed"],
-        refetchType: "none",
-      });
+      if (communityId !== undefined) {
+        queryClient.invalidateQueries({
+          predicate: feedKeys.belongsToCommunity(communityId),
+          refetchType: "none",
+        });
+      } else {
+        queryClient.invalidateQueries({
+          queryKey: ["posts", "feed"],
+          refetchType: "none",
+        });
+      }
       queryClient.invalidateQueries({
         queryKey: ["user-posts", viewerId],
         refetchType: "none",

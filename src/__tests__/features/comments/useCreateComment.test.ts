@@ -274,6 +274,61 @@ describe('useCreateComment', () => {
       );
       expect(setCall).toBeDefined();
     });
+
+    it('scopes the feed invalidation to the given community via feedKeys.belongsToCommunity when communityId is provided', async () => {
+      mockFetchSuccess({ id: 'c3', content: 'Hello' });
+      const profileChain = buildChain({ data: { id: viewerId }, error: null });
+      mockFrom.mockReturnValueOnce(profileChain);
+
+      const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+      const { result } = renderHook(
+        () => useCreateComment({ postId, viewerId, communityId: 'community-A' }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => { result.current.mutate(defaultInput); });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const predicateCall = invalidateSpy.mock.calls.find(
+        (c) => typeof (c[0] as any)?.predicate === 'function',
+      );
+      expect(predicateCall).toBeDefined();
+      expect((predicateCall![0] as any).refetchType).toBe('none');
+      const predicate = (predicateCall![0] as any).predicate;
+
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', 'community-A'] })).toBe(true);
+      expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', null] })).toBe(false);
+
+      const queryKeys = invalidateSpy.mock.calls.map((c) => (c[0] as any)?.queryKey);
+      expect(queryKeys).not.toContainEqual(['posts', 'feed']);
+    });
+
+    it('falls back to the broad-but-lazy ["posts","feed"] invalidation when communityId is not provided', async () => {
+      mockFetchSuccess({ id: 'c4', content: 'Hello' });
+      const profileChain = buildChain({ data: { id: viewerId }, error: null });
+      mockFrom.mockReturnValueOnce(profileChain);
+
+      const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+      const { result } = renderHook(
+        () => useCreateComment({ postId, viewerId }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => { result.current.mutate(defaultInput); });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const call = invalidateSpy.mock.calls.find(
+        (c) =>
+          Array.isArray((c[0] as any)?.queryKey) &&
+          JSON.stringify((c[0] as any).queryKey) === JSON.stringify(['posts', 'feed']),
+      );
+      expect(call).toBeDefined();
+      expect((call![0] as any).refetchType).toBe('none');
+    });
   });
 
   // ── error handling ────────────────────────────────────────────────────────────

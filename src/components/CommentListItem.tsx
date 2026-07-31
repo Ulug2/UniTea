@@ -144,6 +144,10 @@ const CommentListItem = ({
   const deleteCommentMutation = useDeleteComment(comment.id, {
     postId: comment.post_id,
     currentUserId,
+    // postAuthorContext already carries the parent post's communityId (see
+    // post/[id].tsx's buildPostAuthorContext call) — reused here rather than
+    // threading a second, duplicate prop through CommentsTreeList.
+    communityId: postAuthorContext.communityId ?? null,
     onSuccess: () => onDeleteEnd?.(),
     onError: () => onDeleteEnd?.(),
   });

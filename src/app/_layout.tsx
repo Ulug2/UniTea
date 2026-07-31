@@ -80,12 +80,17 @@ async function prefetchInitialData(userId: string, queryClient: any) {
 
     const universityId = profileData?.university_id;
 
-    // Prefetch feed posts (default "new" filter), scoped to university
+    // Prefetch feed posts (default "new" filter), scoped to university.
+    // This seeds the Campus Feed cache key below (communityId === null), so
+    // it must apply the same community_id IS NULL constraint useFeedPosts
+    // does for Campus — otherwise a recent community post can be seeded
+    // into Campus Feed's cache until the next manual refresh replaces it.
     let feedQuery = (supabase as any)
       .from("posts_summary_view")
       .select("*")
       .eq("post_type", "feed")
-      .or("is_banned.is.null,is_banned.eq.false");
+      .or("is_banned.is.null,is_banned.eq.false")
+      .is("community_id", null);
 
     if (universityId) {
       feedQuery = feedQuery.eq("university_id", universityId);

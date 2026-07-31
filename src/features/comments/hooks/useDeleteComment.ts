@@ -1,17 +1,26 @@
 import { Alert } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
+import { feedKeys } from "../../communities/data/queryKeys";
 
 type Options = {
   postId?: string | null;
   currentUserId?: string | null;
+  /**
+   * The parent post's community (null for Campus Feed). When provided,
+   * scopes the feed-row refresh (comment_count) to just that community
+   * instead of every mounted Campus/community feed. Falls back to the
+   * previous broad-but-lazy invalidation when omitted (e.g. a caller that
+   * hasn't threaded it through yet).
+   */
+  communityId?: string | null;
   onSuccess?: () => void;
   onError?: () => void;
 };
 
 export function useDeleteComment(commentId: string, options?: Options) {
   const queryClient = useQueryClient();
-  const { postId, currentUserId, onSuccess, onError } = options ?? {};
+  const { postId, currentUserId, communityId, onSuccess, onError } = options ?? {};
 
   return useMutation({
     mutationFn: async () => {
@@ -43,10 +52,24 @@ export function useDeleteComment(commentId: string, options?: Options) {
           queryKey: ["comments", postId, currentUserId],
         });
       }
-      queryClient.invalidateQueries({ queryKey: ["comments"] });
+      // Scoped to this post's own thread (any viewer) when postId is known;
+      // falls back to every thread only if a caller genuinely can't supply it.
+      queryClient.invalidateQueries({
+        queryKey: postId ? ["comments", postId] : ["comments"],
+      });
       queryClient.invalidateQueries({ queryKey: ["post", postId] });
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      queryClient.invalidateQueries({ queryKey: ["user-posts"] });
+      // Lazy (refetchType: "none") to match useCreateComment's established
+      // pattern for the symmetric operation — don't force every mounted
+      // feed to refetch immediately just because a comment count changed.
+      if (communityId !== undefined) {
+        queryClient.invalidateQueries({
+          predicate: feedKeys.belongsToCommunity(communityId),
+          refetchType: "none",
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["posts"], refetchType: "none" });
+      }
+      queryClient.invalidateQueries({ queryKey: ["user-posts"], refetchType: "none" });
       queryClient.invalidateQueries({ queryKey: ["bookmarked-posts"] });
       onSuccess?.();
     },

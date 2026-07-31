@@ -102,6 +102,21 @@ describe('useUnblockAll', () => {
       expect(keys).toContain('global-unread-count');
     });
 
+    it('invalidates ["posts"] lazily (refetchType: "none") to match useBlockUser, since unblocking can affect every feed type', async () => {
+      buildDeleteChain({ data: null, error: null });
+      const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+      const { result } = renderHook(() => useUnblockAll(), { wrapper: wrapper(queryClient) });
+
+      await act(async () => { await result.current.mutateAsync(); });
+
+      const postsCall = invalidateSpy.mock.calls.find(
+        (c) => JSON.stringify((c[0] as any)?.queryKey) === JSON.stringify(['posts']),
+      );
+      expect(postsCall).toBeDefined();
+      expect((postsCall![0] as any).refetchType).toBe('none');
+    });
+
     it('does not show an error alert on success', async () => {
       buildDeleteChain({ data: null, error: null });
 

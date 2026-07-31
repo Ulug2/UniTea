@@ -166,6 +166,7 @@ export default function LostFoundScreen() {
   }, [postsData]);
 
   const deletePostMutation = useDeletePost(undefined, {
+    scope: { type: "lost_found", universityId },
     onSuccess: () => {
       setShowMenu(false);
       setSelectedPost(null);

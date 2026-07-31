@@ -5,7 +5,7 @@ import { logger } from "../../../utils/logger";
 import { logActivity } from "../../../utils/activityLogger";
 import { supabase } from "../../../lib/supabase";
 import { communitiesTable } from "../data/client";
-import { communityKeys } from "../data/queryKeys";
+import { communityKeys, feedKeys } from "../data/queryKeys";
 import { isRateLimitError } from "../../../utils/clientRateLimit";
 import type { Community, CommunityInsert } from "../types";
 import {
@@ -147,9 +147,13 @@ export function useDeleteCommunity() {
       if (error) throw error;
       return communityId;
     },
-    onSuccess: () => {
+    onSuccess: (deletedCommunityId) => {
       queryClient.invalidateQueries({ queryKey: communityKeys.all });
-      queryClient.invalidateQueries({ queryKey: ["posts", "feed"] });
+      // Scoped to exactly the deleted community — Campus Feed and every
+      // other community's cache is untouched by this deletion.
+      queryClient.invalidateQueries({
+        predicate: feedKeys.belongsToCommunity(deletedCommunityId),
+      });
     },
     onError: (error) => {
       logger.error("Failed to delete community", error as Error);

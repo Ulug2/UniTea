@@ -372,6 +372,8 @@ export default function CreatePostScreen() {
     communityId: resolvedCommunityId,
     communityName: effectiveCommunity?.name ?? null,
     communityAvatarUrl: effectiveCommunity?.avatar_url ?? null,
+    username: currentUser?.username,
+    avatarUrl: currentUser?.avatar_url,
   });
 
   const handlePost = async () => {

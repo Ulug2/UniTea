@@ -332,7 +332,16 @@ function FeedPageContent({
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           nestedScrollEnabled
-          removeClippedSubviews={true}
+          // Each community's (and Campus's) feed pane stays mounted behind a
+          // display:"none" View when inactive, so switching back doesn't
+          // remount cells or replay image-load transitions. removeClippedSubviews
+          // fights that: it detaches offscreen cell views at the native layer,
+          // and when the whole list collapses to zero size (display:"none"),
+          // every cell can get detached — so returning to an already-loaded
+          // feed recreated each image's native view from scratch, forcing a
+          // fresh decode + fade-in transition (the visible white flash) even
+          // though nothing was actually unloaded. windowSize/initialNumToRender/
+          // maxToRenderPerBatch below already bound how many cells render.
           maxToRenderPerBatch={4}
           updateCellsBatchingPeriod={100}
           initialNumToRender={5}
@@ -403,25 +412,21 @@ type CommunityFeedPagerProps = {
   communityId: string | null;
   selectedFilter: FeedFilterType;
   setSelectedFilter: (filter: FeedFilterType) => void;
-  searchQueryByFilter: Record<FeedFilterType, string>;
-  setSearchQueryByFilter: React.Dispatch<
-    React.SetStateAction<Record<FeedFilterType, string>>
-  >;
-  activeSearchByFilter: Record<FeedFilterType, string>;
-  setActiveSearchByFilter: React.Dispatch<
-    React.SetStateAction<Record<FeedFilterType, string>>
-  >;
   onScrollOffset?: (y: number) => void;
 };
 
+// One CommunityFeedPager instance is mounted per feedKey (Campus or one
+// specific community — see the `key={feedKey}` map in FeedScreen below) and
+// stays mounted (behind display:"none") for as long as that pane has been
+// visited this session. Search state is declared here, not in FeedScreen,
+// so each pane owns its own draft/submitted search text per filter — typing
+// in one community's search bar can never leak into another's, and a pane's
+// search state survives switching away and back for the same reason
+// activePageIndex already does (the component instance itself persists).
 function CommunityFeedPager({
   communityId,
   selectedFilter,
   setSelectedFilter,
-  searchQueryByFilter,
-  setSearchQueryByFilter,
-  activeSearchByFilter,
-  setActiveSearchByFilter,
   onScrollOffset,
 }: CommunityFeedPagerProps) {
   const { theme } = useTheme();
@@ -433,6 +438,20 @@ function CommunityFeedPager({
   const [activePageIndex, setActivePageIndex] = useState(
     resolvedInitialPageIndex,
   );
+  const [searchQueryByFilter, setSearchQueryByFilter] = useState<
+    Record<FeedFilterType, string>
+  >({
+    hot: "",
+    new: "",
+    top: "",
+  });
+  const [activeSearchByFilter, setActiveSearchByFilter] = useState<
+    Record<FeedFilterType, string>
+  >({
+    hot: "",
+    new: "",
+    top: "",
+  });
 
   useEffect(() => {
     const pageIndex = FEED_FILTER_ORDER.indexOf(selectedFilter);
@@ -589,21 +608,6 @@ export default function FeedScreen() {
     }
   }, [activeCommunityId, joinedIds, myCommunitiesPending]);
 
-  const [searchQueryByFilter, setSearchQueryByFilter] = useState<
-    Record<FeedFilterType, string>
-  >({
-    hot: "",
-    new: "",
-    top: "",
-  });
-  const [activeSearchByFilter, setActiveSearchByFilter] = useState<
-    Record<FeedFilterType, string>
-  >({
-    hot: "",
-    new: "",
-    top: "",
-  });
-
   const isCreatingPost = useIsMutating({ mutationKey: ["create-post"] }) > 0;
 
   useEffect(() => {
@@ -676,10 +680,6 @@ export default function FeedScreen() {
                   communityId={feedKeyToCommunityId(feedKey)}
                   selectedFilter={selectedFilter}
                   setSelectedFilter={setSelectedFilter}
-                  searchQueryByFilter={searchQueryByFilter}
-                  setSearchQueryByFilter={setSearchQueryByFilter}
-                  activeSearchByFilter={activeSearchByFilter}
-                  setActiveSearchByFilter={setActiveSearchByFilter}
                   onScrollOffset={isActive ? handleBannerScroll : undefined}
                 />
               </View>

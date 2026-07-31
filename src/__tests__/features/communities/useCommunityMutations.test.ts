@@ -188,4 +188,28 @@ describe('useDeleteCommunity', () => {
       'Could not delete the community. Please try again.',
     );
   });
+
+  it('scopes the feed invalidation to exactly the deleted community via feedKeys.belongsToCommunity', async () => {
+    const chain = buildChain({ data: null, error: null });
+    mockFrom.mockReturnValue(chain);
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useDeleteCommunity(), { wrapper: createWrapper() });
+    act(() => result.current.mutate('c1'));
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const predicateCall = invalidateSpy.mock.calls.find(
+      (c) => typeof (c[0] as any)?.predicate === 'function',
+    );
+    expect(predicateCall).toBeDefined();
+    const predicate = (predicateCall![0] as any).predicate;
+
+    expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', 'c1'] })).toBe(true);
+    expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', null] })).toBe(false);
+    expect(predicate({ queryKey: ['posts', 'feed', 'new', '', 'uni-1', 'c2'] })).toBe(false);
+
+    const queryKeys = invalidateSpy.mock.calls.map((c) => (c[0] as any)?.queryKey);
+    expect(queryKeys).not.toContainEqual(['posts', 'feed']);
+  });
 });

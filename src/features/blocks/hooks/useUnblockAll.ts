@@ -24,7 +24,11 @@ export function useUnblockAll() {
       if (!currentUserId) return;
 
       queryClient.invalidateQueries({ queryKey: ["blocks"] });
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      // Broad by necessity (unblocking can affect content across Campus,
+      // every community, and Lost & Found — there's no single community to
+      // scope to), but lazy: don't force every mounted feed to refetch
+      // immediately. Matches useBlockUser's established pattern.
+      queryClient.invalidateQueries({ queryKey: ["posts"], refetchType: "none" });
       queryClient.invalidateQueries({ queryKey: ["comments"] });
       queryClient.invalidateQueries({ queryKey: ["chat-messages"] });
       queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
