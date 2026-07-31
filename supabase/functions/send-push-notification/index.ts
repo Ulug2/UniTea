@@ -70,153 +70,15 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ── Direct invoke path ────────────────────────────────────────────────────
-    // Called by create-comment with {notificationId, userId, title, body}.
-    // Handles a single comment_reply push without going through the batch queue.
-    let parsedBody: Record<string, unknown> | null = null;
-    if (req.method === "POST") {
-      try {
-        const text = await req.text();
-        if (text.trim()) parsedBody = JSON.parse(text) as Record<string, unknown>;
-      } catch {
-        parsedBody = null;
-      }
-    }
-
-    const dataField = parsedBody?.data;
-    const dataRecord =
-      typeof dataField === "object" && dataField !== null && !Array.isArray(dataField)
-        ? (dataField as Record<string, unknown>)
-        : null;
-    const notificationIdRaw = parsedBody?.notificationId ?? dataRecord?.notificationId;
-    const notificationId = typeof notificationIdRaw === "string" ? notificationIdRaw : null;
-    const userIdDirect = typeof parsedBody?.userId === "string" ? parsedBody.userId : null;
-    const titleDirect = typeof parsedBody?.title === "string" ? parsedBody.title : null;
-    const bodyDirect = typeof parsedBody?.body === "string" ? parsedBody.body : null;
-
-    if (notificationId && userIdDirect && titleDirect && bodyDirect) {
-      const { data: directRow, error: directFetchError } = await supabase
-        .from("notifications")
-        .select("id, user_id, type, related_post_id, related_user_id")
-        .eq("id", notificationId)
-        .maybeSingle();
-
-      if (directFetchError) {
-        console.error("direct push: fetch notification", directFetchError);
-        return new Response(JSON.stringify({ error: "Failed to load notification" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        });
-      }
-
-      const row = directRow as {
-        id: string;
-        user_id: string;
-        type: string;
-        related_post_id: string | null;
-        related_user_id: string | null;
-      } | null;
-
-      if (!row || row.user_id !== userIdDirect || row.type !== "comment_reply") {
-        return new Response(JSON.stringify({ error: "Notification not found" }), {
-          status: 404,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        });
-      }
-
-      const { data: settingsRow } = await supabase
-        .from("notification_settings")
-        .select("push_token")
-        .eq("user_id", userIdDirect)
-        .maybeSingle();
-
-      const pushToken = settingsRow?.push_token as string | undefined;
-      if (!pushToken) {
-        return new Response(
-          JSON.stringify({ success: true, direct: true, status: "skipped", reason: "no_push_token" }),
-          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } },
-        );
-      }
-
-      const notificationIds = [notificationId];
-      const { error: directMarkError } = await supabase
-        .from("notifications")
-        .update({ push_sent: true })
-        .in("id", notificationIds)
-        .or("push_sent.is.null,push_sent.eq.false");
-
-      if (directMarkError) {
-        console.error("direct push: mark sent", directMarkError);
-        return new Response(JSON.stringify({ error: "Failed to update notification" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        });
-      }
-
-      const { data: verifyDirect } = await supabase
-        .from("notifications")
-        .select("id")
-        .in("id", notificationIds)
-        .eq("push_sent", true);
-
-      if (!verifyDirect || verifyDirect.length === 0) {
-        return new Response(
-          JSON.stringify({ success: true, direct: true, status: "skipped", reason: "already_sent" }),
-          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } },
-        );
-      }
-
-      const pushData: Record<string, unknown> = {
-        notificationId: row.id,
-        type: "comment_reply",
-        relatedPostId: row.related_post_id,
-        relatedUserId: row.related_user_id,
-      };
-      if (dataRecord) {
-        for (const [k, v] of Object.entries(dataRecord)) {
-          if (!(k in pushData)) pushData[k] = v;
-        }
-      }
-
-      const directPushResponse = await fetch(EXPO_PUSH_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json", "Accept-Encoding": "gzip, deflate" },
-        body: JSON.stringify({
-          to: pushToken,
-          title: titleDirect,
-          body: bodyDirect,
-          sound: "default",
-          badge: 0,
-          data: pushData,
-        }),
-      });
-
-      if (!directPushResponse.ok) {
-        const errorText = await directPushResponse.text();
-        await supabase.from("notifications").update({ push_sent: false }).in("id", notificationIds);
-        return new Response(
-          JSON.stringify({ error: `Expo Push API error: ${directPushResponse.status}`, details: errorText }),
-          { status: 502, headers: { "Content-Type": "application/json", ...corsHeaders } },
-        );
-      }
-
-      const directPushResult = await directPushResponse.json();
-      if (directPushResult.data?.status !== "ok") {
-        await supabase.from("notifications").update({ push_sent: false }).in("id", notificationIds);
-        return new Response(
-          JSON.stringify({ success: false, direct: true, error: String(directPushResult.data?.message ?? "Unknown error") }),
-          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } },
-        );
-      }
-
-      return new Response(
-        JSON.stringify({ success: true, direct: true, sent: 1, userId: userIdDirect }),
-        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } },
-      );
-    }
-
     // ── Batch path ────────────────────────────────────────────────────────────
-    // Triggered by the DB trigger on every notifications INSERT.
+    // Triggered by the DB trigger on every notifications INSERT. This is the
+    // only path in this function — a previously-present "direct invoke"
+    // branch (expecting a POST body of {notificationId, userId, title, body})
+    // was removed: nothing in the codebase (no edge function, trigger, or
+    // client) ever called it that way, confirmed by searching for
+    // `notificationId` and this function's URL across supabase/ and src/.
+    // comment_reply notifications (create-comment's plain `notifications`
+    // insert) have only ever reached devices through this batch path below.
 
     const { data: notifications, error: fetchError } = await supabase
       .from("notifications")
@@ -390,31 +252,43 @@ serve(async (req) => {
 
         const notificationIds = chatNotifications.map((n) => n.id);
 
-        const { error: updateError } = await supabase
+        // Atomically claim only the notifications this invocation actually
+        // wins the race for. `.select("id")` chained onto `.update()` returns
+        // exactly the rows THIS call's UPDATE affected (filtered by the
+        // push_sent-is-null-or-false guard below) — so a concurrent
+        // invocation that loses the race for a given id simply won't see it
+        // come back here, instead of independently re-discovering
+        // "push_sent = true" via a separate SELECT (which can't tell "I just
+        // set this" apart from "another invocation already did") and sending
+        // a duplicate push for it.
+        const { data: claimedRows, error: updateError } = await supabase
           .from("notifications")
           .update({ push_sent: true })
           .in("id", notificationIds)
-          .or("push_sent.is.null,push_sent.eq.false");
+          .or("push_sent.is.null,push_sent.eq.false")
+          .select("id");
 
         if (updateError) {
           console.error(`chat: mark sent failed for ${userId}:`, updateError);
           continue;
         }
 
-        const { data: verifyNotifications } = await supabase
-          .from("notifications")
-          .select("id")
-          .in("id", notificationIds)
-          .eq("push_sent", true);
+        const claimedIds = new Set((claimedRows ?? []).map((row) => row.id as string));
+        const claimedChatNotifications = chatNotifications.filter((n) =>
+          claimedIds.has(n.id),
+        );
+        if (claimedChatNotifications.length === 0) continue;
 
-        if (!verifyNotifications || verifyNotifications.length === 0) continue;
+        const notificationToSend = claimedChatNotifications[0];
+        const sendSenderId = notificationToSend.related_user_id as string | null;
+        const sendRelatedChatId: string | null = notificationToSend.related_chat_id ?? null;
 
         // Determine if chat is anonymous.
-        // senderId is null ↔ trigger already marked the chat as anonymous.
-        const isAnonymousChat = !senderId;
+        // sendSenderId is null ↔ trigger already marked the chat as anonymous.
+        const isAnonymousChat = !sendSenderId;
 
-        const senderUsername = senderId
-          ? (senderUsernameById.get(senderId) ?? "Someone")
+        const senderUsername = sendSenderId
+          ? (senderUsernameById.get(sendSenderId) ?? "Someone")
           : "Anonymous user";
         const unreadChatCount = unreadChatCountByUserId.get(userId) ?? 0;
 
@@ -422,18 +296,18 @@ serve(async (req) => {
           payload: {
             to: settings.push_token,
             title: isAnonymousChat ? "From: Anonymous user" : senderUsername,
-            body: truncateMessage(latestChat.message || "Sent a message"),
+            body: truncateMessage(notificationToSend.message || "Sent a message"),
             sound: "default",
             badge: unreadChatCount,
             data: {
-              notificationId: latestChat.id,
+              notificationId: notificationToSend.id,
               type: "chat_message",
-              relatedUserId: isAnonymousChat ? null : senderId,
-              relatedChatId,
+              relatedUserId: isAnonymousChat ? null : sendSenderId,
+              relatedChatId: sendRelatedChatId,
               isAnonymousChat,
             },
           },
-          notificationIds,
+          notificationIds: claimedChatNotifications.map((n) => n.id),
           userId,
         });
       } catch (error: any) {
@@ -449,39 +323,42 @@ serve(async (req) => {
 
         const notificationIds = voteNotifications.map((n) => n.id);
 
-        const { error: updateError } = await supabase
+        // Atomically claim only the notifications this invocation actually
+        // wins the race for (see the chat loop above for the full rationale).
+        const { data: claimedRows, error: updateError } = await supabase
           .from("notifications")
           .update({ push_sent: true })
           .in("id", notificationIds)
-          .or("push_sent.is.null,push_sent.eq.false");
+          .or("push_sent.is.null,push_sent.eq.false")
+          .select("id");
 
         if (updateError) {
           console.error(`vote: mark sent failed for ${userId}:`, updateError);
           continue;
         }
 
-        const { data: verifyNotifications } = await supabase
-          .from("notifications")
-          .select("id")
-          .in("id", notificationIds)
-          .eq("push_sent", true);
+        const claimedIds = new Set((claimedRows ?? []).map((row) => row.id as string));
+        const claimedVoteNotifications = voteNotifications.filter((n) =>
+          claimedIds.has(n.id),
+        );
+        if (claimedVoteNotifications.length === 0) continue;
 
-        if (!verifyNotifications || verifyNotifications.length === 0) continue;
+        const notificationToSend = claimedVoteNotifications[0];
 
         batchQueue.push({
           payload: {
             to: settings.push_token,
             title: "Your post got voted!",
-            body: voteNotifications[0].message,
+            body: notificationToSend.message,
             sound: "default",
             badge: 0,
             data: {
-              notificationId: voteNotifications[0].id,
+              notificationId: notificationToSend.id,
               type: "upvote",
-              relatedPostId: voteNotifications[0].related_post_id,
+              relatedPostId: notificationToSend.related_post_id,
             },
           },
-          notificationIds,
+          notificationIds: claimedVoteNotifications.map((n) => n.id),
           userId,
         });
       } catch (error: any) {
@@ -497,39 +374,42 @@ serve(async (req) => {
 
         const notificationIds = commentNotifications.map((n) => n.id);
 
-        const { error: updateError } = await supabase
+        // Atomically claim only the notifications this invocation actually
+        // wins the race for (see the chat loop above for the full rationale).
+        const { data: claimedRows, error: updateError } = await supabase
           .from("notifications")
           .update({ push_sent: true })
           .in("id", notificationIds)
-          .or("push_sent.is.null,push_sent.eq.false");
+          .or("push_sent.is.null,push_sent.eq.false")
+          .select("id");
 
         if (updateError) {
           console.error(`comment: mark sent failed for ${userId}:`, updateError);
           continue;
         }
 
-        const { data: verifyNotifications } = await supabase
-          .from("notifications")
-          .select("id")
-          .in("id", notificationIds)
-          .eq("push_sent", true);
+        const claimedIds = new Set((claimedRows ?? []).map((row) => row.id as string));
+        const claimedCommentNotifications = commentNotifications.filter((n) =>
+          claimedIds.has(n.id),
+        );
+        if (claimedCommentNotifications.length === 0) continue;
 
-        if (!verifyNotifications || verifyNotifications.length === 0) continue;
+        const notificationToSend = claimedCommentNotifications[0];
 
         batchQueue.push({
           payload: {
             to: settings.push_token,
             title: "New comment",
-            body: commentNotifications[0].message,
+            body: notificationToSend.message,
             sound: "default",
             badge: 0,
             data: {
-              notificationId: commentNotifications[0].id,
+              notificationId: notificationToSend.id,
               type: "comment_reply",
-              relatedPostId: commentNotifications[0].related_post_id,
+              relatedPostId: notificationToSend.related_post_id,
             },
           },
-          notificationIds,
+          notificationIds: claimedCommentNotifications.map((n) => n.id),
           userId,
         });
       } catch (error: any) {
