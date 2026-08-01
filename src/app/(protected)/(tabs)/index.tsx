@@ -321,16 +321,20 @@ function FeedPageContent({
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           nestedScrollEnabled
-          // Each community's (and Campus's) feed pane stays mounted behind a
-          // display:"none" View when inactive, so switching back doesn't
-          // remount cells or replay image-load transitions. removeClippedSubviews
-          // fights that: it detaches offscreen cell views at the native layer,
-          // and when the whole list collapses to zero size (display:"none"),
-          // every cell can get detached — so returning to an already-loaded
-          // feed recreated each image's native view from scratch, forcing a
-          // fresh decode + fade-in transition (the visible white flash) even
-          // though nothing was actually unloaded. windowSize/initialNumToRender/
-          // maxToRenderPerBatch below already bound how many cells render.
+          // Each community's (and Campus's) feed pane stays mounted and
+          // *laid out* behind an opacity:0 View when inactive (see
+          // feedLayerHidden in FeedScreen below) — never display:"none",
+          // which collapses a node out of layout entirely and was found to
+          // make the native image views beneath it lose their decoded
+          // bitmaps, forcing a fresh disk-read + decode + fade-in transition
+          // (the visible white flash) on every revisit even though nothing
+          // was actually unloaded at the React level. Staying laid out
+          // avoids that. removeClippedSubviews is left off for the same
+          // reason: it detaches offscreen cell views at the native layer,
+          // which would reintroduce the same problem independently of
+          // feedLayerHidden.
+          // windowSize/initialNumToRender/maxToRenderPerBatch below already
+          // bound how many cells render.
           maxToRenderPerBatch={4}
           updateCellsBatchingPeriod={100}
           initialNumToRender={5}
@@ -406,8 +410,9 @@ type CommunityFeedPagerProps = {
 
 // One CommunityFeedPager instance is mounted per feedKey (Campus or one
 // specific community — see the `key={feedKey}` map in FeedScreen below) and
-// stays mounted (behind display:"none") for as long as that pane has been
-// visited this session. Search state is declared here, not in FeedScreen,
+// stays mounted (hidden via opacity:0, not display:"none" — see feedLayerHidden)
+// for as long as that pane has been visited this session. Search state is
+// declared here, not in FeedScreen,
 // so each pane owns its own draft/submitted search text per filter — typing
 // in one community's search bar can never leak into another's, and a pane's
 // search state survives switching away and back for the same reason
@@ -664,6 +669,8 @@ export default function FeedScreen() {
                   !isActive && styles.feedLayerHidden,
                 ]}
                 pointerEvents={isActive ? "auto" : "none"}
+                importantForAccessibility={isActive ? "auto" : "no-hide-descendants"}
+                accessibilityElementsHidden={!isActive}
               >
                 <CommunityFeedPager
                   communityId={feedKeyToCommunityId(feedKey)}
@@ -745,8 +752,17 @@ const styles = StyleSheet.create({
   feedLayer: {
     ...StyleSheet.absoluteFillObject,
   },
+  // opacity:0, not display:"none": the latter collapses the node out of
+  // Yoga layout, which was found to make the native image views beneath it
+  // lose their decoded bitmaps — forcing a redecode + fade-in "white flash"
+  // on every revisit (see the FlatList comment in FeedPageContent above).
+  // opacity keeps the pane laid out and mounted at the native level, exactly
+  // like the Hot/New/Top pager already does for its own inactive panes
+  // (laid out off-screen inside a ScrollView, never display:"none"'d).
+  // Touch-blocking is unaffected — pointerEvents="none" (set alongside this
+  // style, not by it) already fully blocks interaction with inactive panes.
   feedLayerHidden: {
-    display: "none",
+    opacity: 0,
   },
   pager: {
     flex: 1,
