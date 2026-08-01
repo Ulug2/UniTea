@@ -38,6 +38,7 @@ import { useBlocks } from "../../../hooks/useBlocks";
 import {
   setCurrentViewedChatPartnerId,
   setCurrentViewedChatId,
+  useNotificationChatNavGuard,
 } from "../../../hooks/usePushNotifications";
 import * as Notifications from "expo-notifications";
 import { hashStringToNumber } from "../../../features/chat/utils/anon";
@@ -106,6 +107,12 @@ export default function ChatDetailScreen() {
     null,
   );
   const [replyingTo, setReplyingTo] = useState<ReplyingToState | null>(null);
+  // True while a notification tap is still resolving its target chat (see
+  // usePushNotifications.ts). Covers this screen's real content below
+  // instead of exposing it — this screen may be a DIFFERENT, already-open
+  // chat than the one the notification is routing to. Unrelated to, and
+  // must not be conflated with, this screen's own loading state below.
+  const isNotificationChatNavPending = useNotificationChatNavGuard();
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const { data: currentUser } = useMyProfile(currentUserId);
@@ -1325,9 +1332,21 @@ export default function ChatDetailScreen() {
     ],
   );
 
-  // Show skeleton loading screen while chat or user data is loading
-  // This prevents "Unknown User" flicker and ensures complete data before render
-  const isInitialLoading = isLoadingChat || (isLoadingUser && !isChatAnonymous);
+  // Privacy guard: while a notification tap is still resolving which chat
+  // it targets, never let this screen's own (possibly different, already
+  // loaded) content be visible — checked before every other loading/error
+  // state below so it always wins regardless of this screen's own status.
+  if (isNotificationChatNavPending) {
+    return <ChatDetailSkeleton />;
+  }
+
+  // Show skeleton loading screen while chat, user, or message data is
+  // loading. Including isLoadingMessages (not just isLoadingChat/isLoadingUser)
+  // prevents a separate, non-privacy flicker: without it, the skeleton could
+  // dismiss as soon as the fast chat/user queries resolved, briefly showing
+  // a real header over an empty message list before messages had loaded.
+  const isInitialLoading =
+    isLoadingChat || (isLoadingUser && !isChatAnonymous) || isLoadingMessages;
 
   if (isInitialLoading) {
     return <ChatDetailSkeleton />;

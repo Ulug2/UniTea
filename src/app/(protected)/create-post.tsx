@@ -447,7 +447,16 @@ export default function CreatePostScreen() {
           ? (imageAspectRatiosRef.current[images[0]] ?? null)
           : null;
 
-      createPostMutation.mutate({
+      // Awaited (not fire-and-forget) so navigation/reset below only ever
+      // run once the server has actually confirmed the post was created —
+      // previously `.mutate()` returned immediately and the code proceeded
+      // to reset the form and leave the screen regardless of whether the
+      // request went on to succeed or fail, destroying the user's draft on
+      // any network/server/moderation/rate-limit failure. `mutateAsync`
+      // rejects instead of resolving on failure, which the existing
+      // try/catch below already handles by falling through to `catch`
+      // without touching the draft.
+      await createPostMutation.mutateAsync({
         imagePath,
         imagePaths,
         imageAspectRatio: primaryAspectRatio,
@@ -460,6 +469,7 @@ export default function CreatePostScreen() {
         communityId: resolvedCommunityId ?? null,
       });
 
+      // Only reached once the server has confirmed the post was created.
       // Reset form and return to the feed that was already mounted behind this modal.
       // Using back() preserves the active community filter and scroll position.
       reset();
@@ -471,7 +481,11 @@ export default function CreatePostScreen() {
         router.back();
       }
     } catch (error) {
-      // Errors are already surfaced via mutation onError; nothing extra here
+      // Errors are already surfaced via mutation onError; nothing extra here.
+      // The draft is intentionally left exactly as the user typed it — every
+      // form field above this point in the function was never touched by a
+      // reset, so title/content/images/community/anonymity/poll state/etc.
+      // all survive, and the user remains on this screen to retry.
     } finally {
       setIsSubmitting(false);
     }
@@ -519,6 +533,7 @@ export default function CreatePostScreen() {
               : "Create Post"}
         </Text>
         <Pressable
+          testID="create-post-submit-button"
           disabled={isPostButtonDisabled || isLoading}
           onPress={handlePost}
           style={[

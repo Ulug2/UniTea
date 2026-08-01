@@ -23,16 +23,27 @@ jest.mock('../../utils/logger', () => ({
   logger: { warn: jest.fn(), error: jest.fn() },
 }));
 
-import { getNotificationData, routeFromNotification } from '../../hooks/usePushNotifications';
+import { renderHook, act } from '@testing-library/react-native';
+import {
+  getNotificationData,
+  routeFromNotification,
+  handleNotificationResponse,
+  useNotificationChatNavGuard,
+} from '../../hooks/usePushNotifications';
 import { supabase } from '../../lib/supabase';
 import { logger } from '../../utils/logger';
 
 const mockFrom = supabase.from as jest.Mock;
 
-function buildNotification(data: Record<string, unknown>) {
+function buildNotification(data: Record<string, unknown>, identifier?: string) {
   return {
-    request: { content: { data }, trigger: null },
+    request: { identifier, content: { data }, trigger: null },
   } as any;
+}
+
+/** Wraps a Notification in the NotificationResponse shape handleNotificationResponse expects. */
+function buildResponse(notification: any) {
+  return { notification, actionIdentifier: 'default' } as any;
 }
 
 function buildRemoteNotification(remoteData: Record<string, string>) {
@@ -184,5 +195,203 @@ describe('routeFromNotification', () => {
       expect(mockRouterPush).not.toHaveBeenCalled();
       expect(logger.warn).toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * useNotificationChatNavGuard / handleNotificationResponse — the P0
+ * warm-resume privacy guard. True from the instant a notification tap
+ * begins routing until it finishes (success, failure, or an invalid/
+ * malformed payload), so chat/[id].tsx can cover an already-open chat's
+ * content instead of exposing it while a DIFFERENT chat's notification is
+ * still resolving. See usePushNotifications.ts for the full design note.
+ */
+describe('notification chat-nav guard', () => {
+  /** A maybeSingle() chain whose resolution the test controls explicitly. */
+  function buildDeferredLookupChain() {
+    let resolve!: (result: { data: unknown }) => void;
+    const promise = new Promise<{ data: unknown }>((r) => {
+      resolve = r;
+    });
+    const chain: Record<string, any> = {};
+    chain.select = jest.fn().mockReturnValue(chain);
+    chain.eq = jest.fn().mockReturnValue(chain);
+    chain.maybeSingle = jest.fn().mockReturnValue(promise);
+    return { chain, resolve };
+  }
+
+  it('is false before any notification has been handled', () => {
+    const { result } = renderHook(() => useNotificationChatNavGuard());
+    expect(result.current).toBe(false);
+  });
+
+  it('is true synchronously once handling begins and false once a direct relatedChatId route settles', async () => {
+    const { result } = renderHook(() => useNotificationChatNavGuard());
+    const response = buildResponse(
+      buildNotification({ type: 'chat_message', relatedChatId: 'chat-1' }),
+    );
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = handleNotificationResponse(response, 'me');
+    });
+    expect(result.current).toBe(true);
+
+    await act(async () => {
+      await pending;
+    });
+    expect(result.current).toBe(false);
+    expect(mockRouterPush).toHaveBeenCalledWith('/chat/chat-1');
+  });
+
+  it('is true then false when the payload is invalid/malformed (no relatedChatId or relatedUserId)', async () => {
+    const { result } = renderHook(() => useNotificationChatNavGuard());
+    const response = buildResponse(buildNotification({ type: 'chat_message' }));
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = handleNotificationResponse(response, 'me');
+    });
+    expect(result.current).toBe(true);
+
+    await act(async () => {
+      await pending;
+    });
+    expect(result.current).toBe(false);
+    expect(mockRouterPush).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it('stays true across the relatedUserId -> chat id database lookup and clears once it resolves', async () => {
+    const { chain, resolve } = buildDeferredLookupChain();
+    mockFrom.mockReturnValueOnce(chain);
+
+    const { result } = renderHook(() => useNotificationChatNavGuard());
+    const response = buildResponse(
+      buildNotification({ type: 'chat_message', relatedUserId: 'them' }),
+    );
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = handleNotificationResponse(response, 'me');
+    });
+    expect(result.current).toBe(true);
+
+    await act(async () => {
+      resolve({ data: { chat_id: 'resolved-chat' } });
+      await pending;
+    });
+    expect(result.current).toBe(false);
+    expect(mockRouterPush).toHaveBeenCalledWith('/chat/resolved-chat');
+  });
+
+  it('clears even when the lookup fails to resolve a chat id', async () => {
+    const notFound1 = { select: jest.fn(), eq: jest.fn(), maybeSingle: jest.fn() };
+    notFound1.select.mockReturnValue(notFound1);
+    notFound1.eq.mockReturnValue(notFound1);
+    notFound1.maybeSingle.mockResolvedValue({ data: null });
+    const notFound2 = { select: jest.fn(), eq: jest.fn(), maybeSingle: jest.fn() };
+    notFound2.select.mockReturnValue(notFound2);
+    notFound2.eq.mockReturnValue(notFound2);
+    notFound2.maybeSingle.mockResolvedValue({ data: null });
+    mockFrom.mockReturnValueOnce(notFound1).mockReturnValueOnce(notFound2);
+
+    const { result } = renderHook(() => useNotificationChatNavGuard());
+    const response = buildResponse(
+      buildNotification({ type: 'chat_message', relatedUserId: 'them' }),
+    );
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = handleNotificationResponse(response, 'me');
+    });
+    expect(result.current).toBe(true);
+
+    await act(async () => {
+      await pending;
+    });
+    expect(result.current).toBe(false);
+    expect(mockRouterPush).not.toHaveBeenCalled();
+  });
+
+  it('clears even when routing throws', async () => {
+    mockFrom.mockImplementationOnce(() => {
+      throw new Error('unexpected db error');
+    });
+
+    const { result } = renderHook(() => useNotificationChatNavGuard());
+    const response = buildResponse(
+      buildNotification({ type: 'chat_message', relatedUserId: 'them' }),
+    );
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = handleNotificationResponse(response, 'me');
+    });
+    expect(result.current).toBe(true);
+
+    await act(async () => {
+      await expect(pending).rejects.toThrow('unexpected db error');
+    });
+    expect(result.current).toBe(false);
+  });
+
+  it('stays true while a second notification is still resolving even after the first (rapid, faster) one finishes, and only clears once both are done', async () => {
+    const { chain: slowChain, resolve: resolveSlow } = buildDeferredLookupChain();
+    mockFrom.mockReturnValueOnce(slowChain);
+
+    const { result } = renderHook(() => useNotificationChatNavGuard());
+
+    const slowResponse = buildResponse(
+      buildNotification({ type: 'chat_message', relatedUserId: 'slow-user' }, 'id-slow'),
+    );
+    const fastResponse = buildResponse(
+      buildNotification({ type: 'chat_message', relatedChatId: 'fast-chat' }, 'id-fast'),
+    );
+
+    let pendingSlow!: Promise<void>;
+    act(() => {
+      pendingSlow = handleNotificationResponse(slowResponse, 'me');
+    });
+    expect(result.current).toBe(true);
+
+    let pendingFast!: Promise<void>;
+    await act(async () => {
+      pendingFast = handleNotificationResponse(fastResponse, 'me');
+      await pendingFast;
+    });
+    // The fast (direct relatedChatId) response finished, but the slow one's
+    // database lookup is still pending — the guard must not have cleared.
+    expect(result.current).toBe(true);
+    expect(mockRouterPush).toHaveBeenCalledWith('/chat/fast-chat');
+
+    await act(async () => {
+      resolveSlow({ data: { chat_id: 'slow-chat' } });
+      await pendingSlow;
+    });
+    expect(result.current).toBe(false);
+    expect(mockRouterPush).toHaveBeenCalledWith('/chat/slow-chat');
+  });
+
+  it('does not process the same notification response twice (existing dedup), and does not leave the guard stuck from the skipped duplicate', async () => {
+    const response = buildResponse(
+      buildNotification({ type: 'chat_message', relatedChatId: 'chat-1' }, 'dup-id'),
+    );
+
+    const { result } = renderHook(() => useNotificationChatNavGuard());
+
+    await act(async () => {
+      await handleNotificationResponse(response, 'me');
+    });
+    expect(result.current).toBe(false);
+    expect(mockRouterPush).toHaveBeenCalledTimes(1);
+
+    // Second call with the same identifier is deduped and returns
+    // immediately without ever touching the guard.
+    await act(async () => {
+      await handleNotificationResponse(response, 'me');
+    });
+    expect(result.current).toBe(false);
+    expect(mockRouterPush).toHaveBeenCalledTimes(1);
   });
 });

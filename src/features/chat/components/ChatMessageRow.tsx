@@ -283,7 +283,20 @@ function ChatMessageRowInner({
               )}
             </Pressable>
           )}
-          {item.content && (
+          {/*
+            Gated on showTombstone in addition to item.content: an
+            image-only message (no caption) has empty content both before
+            and after deletion — deletion is a pure flag flip
+            (deleted_by_sender/deleted_by_receiver), server-side content is
+            never rewritten (see chat_messages_view). Without the
+            showTombstone branch here, an image-only message's tombstone
+            (rendered inside this block, just below) would never mount:
+            the image itself is already correctly hidden by the sibling
+            `!showTombstone` check above, leaving nothing rendered at all
+            — the message would appear to simply vanish instead of
+            showing the same tombstone text messages already get.
+          */}
+          {(item.content || showTombstone) && (
             <View
               style={[
                 chatDetailStyles.messageTextWrap,

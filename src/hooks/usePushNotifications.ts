@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { AppState, AppStateStatus, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
@@ -34,6 +34,62 @@ export function getCurrentViewedChatId(): string | null {
 
 export function setCurrentViewedChatPartnerId(partnerId: string | null) {
   currentViewedChatPartnerId = partnerId;
+}
+
+// ── Notification-driven chat navigation guard ───────────────────────────────
+//
+// True while a notification tap is being routed to a chat (from the instant
+// handling begins until the target chat has been navigated to, or routing
+// has bailed out/failed). chat/[id].tsx subscribes to this so it can cover
+// its own content with a neutral loading state instead of exposing an
+// already-open chat while a DIFFERENT chat's notification is still resolving
+// its target — e.g. warm-resuming into Chat A while a tapped notification
+// for Chat B is still awaiting resolveChatIdForParticipants().
+//
+// This is deliberately NOT a plain module-level boolean like
+// currentViewedChatId above: chat/[id].tsx needs to *re-render* the instant
+// this flips (to swap in the cover), which a value only read on-demand from
+// an event handler can't drive. A pending-count (not a bare boolean) is used
+// so overlapping/rapid-consecutive notification taps compose correctly —
+// the guard only clears once every in-flight routing call has finished,
+// never early because a second call's `finally` fired first.
+let notificationChatNavPendingCount = 0;
+const notificationChatNavListeners = new Set<() => void>();
+
+function notifyNotificationChatNavListeners(): void {
+  for (const listener of notificationChatNavListeners) listener();
+}
+
+function beginNotificationChatNav(): void {
+  notificationChatNavPendingCount += 1;
+  notifyNotificationChatNavListeners();
+}
+
+function endNotificationChatNav(): void {
+  // Clamp at 0 so a hypothetical unmatched extra `end` call (there isn't one
+  // today — every `begin` is paired with a `finally`-based `end` below) can
+  // never drive the counter negative and leave the guard stuck reporting
+  // "pending" forever, which would permanently cover the chat screen.
+  notificationChatNavPendingCount = Math.max(0, notificationChatNavPendingCount - 1);
+  notifyNotificationChatNavListeners();
+}
+
+function isNotificationChatNavPending(): boolean {
+  return notificationChatNavPendingCount > 0;
+}
+
+function subscribeNotificationChatNav(listener: () => void): () => void {
+  notificationChatNavListeners.add(listener);
+  return () => notificationChatNavListeners.delete(listener);
+}
+
+/** True while a notification tap is still being routed to its target chat. */
+export function useNotificationChatNavGuard(): boolean {
+  return useSyncExternalStore(
+    subscribeNotificationChatNav,
+    isNotificationChatNavPending,
+    isNotificationChatNavPending,
+  );
 }
 
 // Track foreground/background state so the notification handler can suppress
@@ -106,39 +162,45 @@ export async function routeFromNotification(
 
   // Chat notifications: ensure Chats tab is active so pressing back from
   // the detail screen returns to the chat list — not the Feed tab.
+  //
+  // Target chat id is resolved BEFORE any visible navigation fires (see
+  // handleNotificationResponse's guard for why: while the caller has this
+  // covered with the privacy guard, resolving first — rather than
+  // navigating to the list, then awaiting the DB lookup, then pushing —
+  // keeps the async gap entirely inside the covered window instead of
+  // letting the (already-navigated-to) list sit uncovered for the
+  // duration of the lookup).
   if (type === "chat_message") {
+    let targetChatId = relatedChatId ?? null;
+
+    if (!targetChatId) {
+      if (!relatedUserId) {
+        logger.warn("Missing relatedUserId in chat notification payload", {
+          userId,
+          notificationType: type,
+          component: "usePushNotifications",
+        });
+        router.navigate("/chat");
+        return;
+      }
+
+      setCurrentViewedChatPartnerId(relatedUserId);
+      targetChatId = await resolveChatIdForParticipants(userId, relatedUserId);
+
+      if (!targetChatId) {
+        logger.warn("Could not resolve chatId from notification payload", {
+          userId,
+          relatedUserId,
+          notificationType: type,
+          component: "usePushNotifications",
+        });
+        router.navigate("/chat");
+        return;
+      }
+    }
+
     router.navigate("/chat"); // switch to Chats tab (no-op if already there)
-
-    if (relatedChatId) {
-      router.push(`/chat/${relatedChatId}`);
-      return;
-    }
-
-    if (!relatedUserId) {
-      logger.warn("Missing relatedUserId in chat notification payload", {
-        userId,
-        notificationType: type,
-        component: "usePushNotifications",
-      });
-      // Already navigated to /chat above — stay there
-      return;
-    }
-
-    setCurrentViewedChatPartnerId(relatedUserId);
-    const chatId = await resolveChatIdForParticipants(userId, relatedUserId);
-
-    if (chatId) {
-      router.push(`/chat/${chatId}`);
-      return;
-    }
-
-    logger.warn("Could not resolve chatId from notification payload", {
-      userId,
-      relatedUserId,
-      notificationType: type,
-      component: "usePushNotifications",
-    });
-    // Already on /chat — stay there
+    router.push(`/chat/${targetChatId}`);
     return;
   }
 
@@ -179,7 +241,22 @@ export async function handleNotificationResponse(
     handledNotificationResponseIds.add(responseId);
   }
 
-  await routeFromNotification(response.notification, userId);
+  // Guard set immediately, before any async work (including the type check
+  // inside routeFromNotification) — covers every notification type for
+  // simplicity and to guarantee no gap exists between "handling began" and
+  // "guard active". Non-chat routing (upvote/comment_reply/unknown) resolves
+  // near-instantly with no DB round trip, so this briefly covers the chat
+  // screen for those too; harmless, and far simpler than duplicating the
+  // type check here just to narrow it. Always cleared via `finally`, so a
+  // thrown error, an invalid/malformed payload, or any early-return branch
+  // inside routeFromNotification all still release it — the guard can never
+  // be left stuck active.
+  beginNotificationChatNav();
+  try {
+    await routeFromNotification(response.notification, userId);
+  } finally {
+    endNotificationChatNav();
+  }
 }
 
 // Set notification handler: show chat message banners in foreground except when viewing that chat.
