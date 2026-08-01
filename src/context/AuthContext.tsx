@@ -20,6 +20,13 @@ export type CachedProfile = {
   username: string | null;
   university_domain: string | null;
   university_name: string | null;
+  /**
+   * Needed synchronously at cold start (before the network profile fetch
+   * resolves) so Lost & Found's AsyncStorage persistence can seed its
+   * university-scoped query key correctly — see
+   * feedPersistence.ts's seedLostFoundCacheFromStorage.
+   */
+  university_id: string | null;
 };
 
 type AuthContextValue = {

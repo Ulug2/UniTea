@@ -37,7 +37,7 @@ import { initSentry } from "../utils/sentry";
 import { logger } from "../utils/logger";
 import ErrorBoundary from "../components/ErrorBoundary";
 import {
-  seedQueryCacheFromStorage,
+  seedLostFoundCacheFromStorage,
   seedChatCacheFromStorage,
   seedChatMessagesCacheFromStorage,
   seedUserPostsCacheFromStorage,
@@ -146,7 +146,7 @@ function RootLayoutContent() {
     Poppins_600SemiBold,
     Poppins_700Bold,
   });
-  const { loading: authLoading, session, persistProfile } = useAuth();
+  const { loading: authLoading, session, persistProfile, cachedProfile } = useAuth();
   const queryClient = useQueryClient();
   const { theme, isDark } = useTheme();
 
@@ -168,7 +168,7 @@ function RootLayoutContent() {
   // Gates <Slot /> from rendering until the AsyncStorage seed has been written
   // into the RQ cache. Without this, useEffect fires AFTER the first render,
   // meaning tab hooks call useInfiniteQuery with an empty cache (isPending=true →
-  // skeleton) before seedQueryCacheFromStorage has a chance to run.
+  // skeleton) before seedLostFoundCacheFromStorage has a chance to run.
   const [cacheReady, setCacheReady] = useState(false);
 
   // Android replica starts fully visible, then fades out once native splash is hidden.
@@ -223,8 +223,14 @@ function RootLayoutContent() {
         // 1. Seed the RQ cache from AsyncStorage first (fast, ~5-50ms).
         //    This must complete BEFORE setCacheReady(true) so that when <Slot />
         //    renders, useInfiniteQuery/useQuery already finds data in cache (isPending=false).
+        //    cachedProfile?.university_id is the previous session's AsyncStorage-
+        //    persisted profile (see AuthContext), already hydrated by this point —
+        //    it's what lets the Lost & Found seed below use a correctly-scoped key
+        //    without waiting on the network profile fetch below. On a brand-new
+        //    login with no prior cached profile it's undefined and the seed is a
+        //    no-op, same as any first visit.
         await Promise.all([
-          seedQueryCacheFromStorage(queryClient),
+          seedLostFoundCacheFromStorage(queryClient, cachedProfile?.university_id),
           seedChatCacheFromStorage(queryClient, session.user.id),
           seedChatMessagesCacheFromStorage(queryClient, session.user.id),
           seedUserPostsCacheFromStorage(queryClient, session.user.id),
@@ -256,6 +262,7 @@ function RootLayoutContent() {
                 username: profileData.username ?? null,
                 university_domain: profileData.university?.domain ?? null,
                 university_name: profileData.university?.name ?? null,
+                university_id: profileData.university_id ?? null,
               });
 
               if (profileData.avatar_url) {

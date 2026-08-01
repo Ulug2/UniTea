@@ -84,7 +84,7 @@ export default function LostFoundScreen() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    isLoading,
+    isPending,
     refetch,
     isRefetching,
   } = useInfiniteQuery({
@@ -121,6 +121,13 @@ export default function LostFoundScreen() {
     staleTime: 1000 * 60 * 2, // Data stays fresh for 2 minutes
     gcTime: 1000 * 60 * 30, // Cache for 30 minutes
     retry: 2,
+    // Every account belongs to a university, so an undefined universityId here
+    // just means the profile hasn't loaded yet — not that the user has none.
+    // Without this gate, the query fires immediately with no university
+    // filter, briefly rendering posts from every university before the
+    // properly-scoped (possibly empty) result replaces it. Mirrors the same
+    // gate on Campus Feed's useFeedPosts (src/hooks/useFeedPosts.ts).
+    enabled: !!universityId,
   });
 
   // Flatten pages into single array, remove duplicates, and filter blocked users
@@ -159,11 +166,12 @@ export default function LostFoundScreen() {
 
   // Persist the first page to AsyncStorage after every successful fetch so the
   // next cold start can seed the RQ cache before the splash screen hides.
+  // Scoped by universityId — saveLostFoundToStorage no-ops until it's known.
   useEffect(() => {
     if (postsData?.pages?.length) {
-      saveLostFoundToStorage(postsData.pages as PostSummary[][]);
+      saveLostFoundToStorage(universityId, postsData.pages as PostSummary[][]);
     }
-  }, [postsData]);
+  }, [postsData, universityId]);
 
   const deletePostMutation = useDeletePost(undefined, {
     scope: { type: "lost_found", universityId },
@@ -303,8 +311,11 @@ export default function LostFoundScreen() {
     [handleItemLongPress, onItemReady],
   );
 
-  // Show skeleton while loading initial data
-  if (isLoading) {
+  // Show skeleton while loading initial data. isPending (not isLoading) so the
+  // skeleton also covers the disabled-query window before universityId
+  // resolves — isLoading is false while enabled:false, since isFetching is
+  // false then too, which would otherwise flash the empty state instead.
+  if (isPending) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <LostFoundListSkeleton />
@@ -363,7 +374,7 @@ export default function LostFoundScreen() {
             ) : null
           }
           ListEmptyComponent={
-            !isLoading ? (
+            !isPending ? (
               <View style={styles.emptyContainer}>
                 <Text
                   style={[styles.emptyText, { color: theme.secondaryText }]}

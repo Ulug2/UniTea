@@ -30,7 +30,6 @@ import { useFilterContext } from "../../../context/FilterContext";
 import { useAuth } from "../../../context/AuthContext";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
-import { saveFeedToStorage } from "../../../utils/feedPersistence";
 import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { useFeedPosts } from "../../../hooks/useFeedPosts";
@@ -157,16 +156,6 @@ function FeedPageContent({
       fetchNextPage();
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-
-  // Persist the first page to AsyncStorage after every successful fetch so the
-  // next cold start can seed the RQ cache before the splash screen hides.
-  useEffect(() => {
-    // Only persist the Campus Feed for cold-start seeding; community feeds
-    // must not overwrite the cached campus posts.
-    if (communityId === null && postsData?.pages?.length) {
-      saveFeedToStorage(filter, postsData.pages as PostSummary[][]);
-    }
-  }, [postsData, filter, communityId]);
 
   const keyExtractor = useCallback((item: PostSummary) => item.post_id, []);
 

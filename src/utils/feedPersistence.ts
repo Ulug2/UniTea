@@ -5,8 +5,11 @@ import type { PostsSummaryViewRow } from "../types/posts";
 type PostSummary = PostsSummaryViewRow;
 
 // Versioned keys so a schema change can bust old cached blobs by bumping the suffix.
-const FEED_KEY_PREFIX = "@unitee:feed_v1:";
-const LF_KEY = "@unitee:lostfound_v1";
+// Scoped per university — the live query key (["posts","lost_found",universityId])
+// is university-scoped, so the storage key must be too, or a university switch
+// (or a shared/reused device) could seed one university's posts under a key a
+// different university's session would read.
+const LF_KEY_PREFIX = "@unitee:lostfound_v1:";
 // Bumped v2 -> v3: pre-anonymity-fix caches could hold unredacted partner
 // ids/participant fields for anonymous chats (fetched before chats_view /
 // chat_messages_view existed). Bumping orphans that old data rather than
@@ -28,19 +31,6 @@ const MAX_CHATS_TO_CACHE_MESSAGES = 5;
 // ---------------------------------------------------------------------------
 // Write helpers — called from tab components after a successful network fetch.
 // ---------------------------------------------------------------------------
-
-export async function saveFeedToStorage(
-  filter: string,
-  pages: PostSummary[][],
-): Promise<void> {
-  try {
-    const slice = (pages[0] ?? []).slice(0, MAX_CACHED);
-    if (slice.length === 0) return;
-    await AsyncStorage.setItem(FEED_KEY_PREFIX + filter, JSON.stringify(slice));
-  } catch {
-    // Non-fatal — a failed write just means no cache on next cold start.
-  }
-}
 
 export async function saveUserPostsToStorage(
   userId: string,
@@ -96,12 +86,14 @@ export async function seedUserTotalVotesCacheFromStorage(
 }
 
 export async function saveLostFoundToStorage(
+  universityId: string | null | undefined,
   pages: PostSummary[][],
 ): Promise<void> {
+  if (!universityId) return;
   try {
     const slice = (pages[0] ?? []).slice(0, MAX_CACHED);
     if (slice.length === 0) return;
-    await AsyncStorage.setItem(LF_KEY, JSON.stringify(slice));
+    await AsyncStorage.setItem(LF_KEY_PREFIX + universityId, JSON.stringify(slice));
   } catch {}
 }
 
@@ -231,54 +223,46 @@ export async function seedChatMessagesCacheFromStorage(
 }
 
 // ---------------------------------------------------------------------------
-// Feed + Lost&Found seed helper — called from _layout.tsx before <Slot /> renders.
+// Lost & Found seed helper — called from _layout.tsx before <Slot /> renders.
 //
-// Reads every feed key from AsyncStorage in parallel and seeds the React Query
-// cache with the results. Each entry is stamped with updatedAt = 0 so it is
-// immediately considered stale: components mount with data (no skeleton) and
-// automatically trigger a background refetch in the same tick.
+// Seeds ["posts","lost_found",universityId] — must match lostfound.tsx's live
+// query key exactly, and universityId must be known before this runs (it's
+// read from AuthContext's cachedProfile, itself persisted across cold starts —
+// see university_id on CachedProfile). If universityId isn't known yet (a
+// brand-new login with no prior cached profile), this is a no-op: there is
+// nothing meaningful to seed under a university-scoped key without one, and
+// the screen will simply load normally from the network, same as any first
+// visit.
+//
+// Campus/community feed persistence was removed here (see git history):
+// _layout.tsx's prefetchInitialData already seeds the Campus Feed's live
+// query key directly from a fresh, correctly-scoped network fetch, so a
+// separate AsyncStorage round trip for it was redundant. Community feeds were
+// never persisted to AsyncStorage at all — only the currently-mounted
+// (in-memory) React Query cache carries them between visits within a session.
+//
+// The seeded entry is stamped with updatedAt = 0 so it is immediately
+// considered stale: the screen mounts with data (no skeleton) and
+// automatically triggers a background refetch in the same tick.
 // ---------------------------------------------------------------------------
 
-export async function seedQueryCacheFromStorage(
+export async function seedLostFoundCacheFromStorage(
   queryClient: QueryClient,
+  universityId: string | null | undefined,
 ): Promise<void> {
-  const filters = ["hot", "new", "top"] as const;
-
-  await Promise.all([
-    ...filters.map(async (filter) => {
-      try {
-        const raw = await AsyncStorage.getItem(FEED_KEY_PREFIX + filter);
-        if (!raw) return;
-        const posts: PostSummary[] = JSON.parse(raw);
-        if (!posts.length) return;
-        // Don't overwrite data that is already in the cache (e.g. "new" just
-        // seeded by prefetchInitialData with fresh network data).
-        if (queryClient.getQueryData(["posts", "feed", filter])) return;
-        const data: InfiniteData<PostSummary[]> = {
-          pages: [posts],
-          pageParams: [0],
-        };
-        queryClient.setQueryData(["posts", "feed", filter], data, {
-          // Epoch 0 → always stale → background refetch fires when the tab mounts.
-          updatedAt: 0,
-        });
-      } catch {}
-    }),
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(LF_KEY);
-        if (!raw) return;
-        const posts: PostSummary[] = JSON.parse(raw);
-        if (!posts.length) return;
-        if (queryClient.getQueryData(["posts", "lost_found"])) return;
-        const data: InfiniteData<PostSummary[]> = {
-          pages: [posts],
-          pageParams: [0],
-        };
-        queryClient.setQueryData(["posts", "lost_found"], data, {
-          updatedAt: 0,
-        });
-      } catch {}
-    })(),
-  ]);
+  if (!universityId) return;
+  try {
+    const raw = await AsyncStorage.getItem(LF_KEY_PREFIX + universityId);
+    if (!raw) return;
+    const posts: PostSummary[] = JSON.parse(raw);
+    if (!posts.length) return;
+    if (queryClient.getQueryData(["posts", "lost_found", universityId])) return;
+    const data: InfiniteData<PostSummary[]> = {
+      pages: [posts],
+      pageParams: [0],
+    };
+    queryClient.setQueryData(["posts", "lost_found", universityId], data, {
+      updatedAt: 0,
+    });
+  } catch {}
 }
