@@ -30,6 +30,8 @@ type ResponsiveImageProps = {
   mode?: "single" | "galleryPreview" | "chatBubble";
   /** Pre-computed aspect ratio from the DB — bypasses the network Image.getSize call. */
   knownAspectRatio?: number | null;
+  /** Cache-busting token for a deterministic path that was overwritten in place — see SupabaseImage. */
+  version?: string | number | null;
   borderRadius?: number;
   backgroundColor?: string;
   onPress?: () => void;
@@ -59,6 +61,7 @@ export default function ResponsiveImage({
   sourceKind = "auto",
   mode = "single",
   knownAspectRatio,
+  version,
   borderRadius = moderateScale(10),
   backgroundColor = DEFAULT_BACKGROUND,
   onPress,
@@ -100,6 +103,21 @@ export default function ResponsiveImage({
 
   const contentFit = "cover";
   const contentPosition = mode === "single" ? "top center" : "center";
+
+  // Chat bubbles specifically need the decoded bitmap to survive a component
+  // unmount: leaving a chat and returning immediately (stack pop + push —
+  // Expo Router destroys the popped screen, there's no sibling pane to hide
+  // via opacity the way the feed's Campus/Community panes do) remounts
+  // every message row from scratch, as does FlatList's own virtualization
+  // (removeClippedSubviews + windowSize) recycling cells that scroll far
+  // enough away. A disk-only cache still requires a fresh async read+decode
+  // on every one of those remounts — cheap, but not free, and the resulting
+  // gap is exactly the visible "reload flash" this fixes. memory-disk lets
+  // expo-image's own bounded, LRU in-memory cache (not something this app
+  // manages directly) serve an already-decoded bitmap instantly instead.
+  // Every other mode (feed posts, gallery previews) is unaffected — same
+  // "disk" policy as before.
+  const cachePolicy = mode === "chatBubble" ? "memory-disk" : "disk";
 
   // Chat bubbles get fixed pixel dimensions computed from the (ideally
   // known-at-send-time) aspect ratio, fit into a WhatsApp-style min/max
@@ -168,7 +186,7 @@ export default function ResponsiveImage({
           style={imageStyle}
           contentFit={contentFit}
           contentPosition={contentPosition}
-          cachePolicy="disk"
+          cachePolicy={cachePolicy}
           transition={IMAGE_TRANSITION_MS}
           onLoad={handleImageLoad}
           onError={handleImageError}
@@ -177,11 +195,13 @@ export default function ResponsiveImage({
         <SupabaseImage
           path={source}
           bucket={bucket}
+          version={version}
           style={imageStyle}
           contentFit={contentFit}
           contentPosition={contentPosition}
           loadingBackgroundColor={backgroundColor}
           transition={IMAGE_TRANSITION_MS}
+          cachePolicy={cachePolicy}
           onLoad={handleImageLoad}
           onError={handleImageError}
         />

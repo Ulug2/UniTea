@@ -29,6 +29,7 @@ const ACCESS_TOKEN = 'mock-access-token';
 const USER_ID = 'user-abc';
 
 const defaultVars = {
+  id: 'client-generated-id-1',
   imagePath: undefined,
   imagePaths: [],
   postContent: 'Hello world',
@@ -227,6 +228,24 @@ describe('useCreatePostMutation', () => {
       const fetchBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
       expect(fetchBody.image_urls).toEqual(['posts/a.webp', 'posts/b.webp']);
       expect(fetchBody.image_url).toBe('posts/a.webp');
+    });
+
+    it('sends the caller-provided idempotency id in the request body', async () => {
+      mockFetchSuccess({ id: 'post-9' });
+
+      const { result } = renderHook(
+        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.mutate({ ...defaultVars, id: 'stable-retry-id-99' });
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const fetchBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(fetchBody.id).toBe('stable-retry-id-99');
     });
 
     it('includes title for feed posts when provided', async () => {

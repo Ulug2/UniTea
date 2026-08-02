@@ -15,7 +15,7 @@ import {
   markMessageFailed,
   removeOptimisticMessage,
 } from "../data/cache";
-import { generateUuidV4 } from "../utils/uuid";
+import { generateUuidV4 } from "../../../utils/uuid";
 
 const RATE_LIMIT_MESSAGES = 10;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -29,6 +29,13 @@ type SendParams = {
   localImageFileName?: string | null;
   imageAspectRatio?: number | null;
   replyToId?: string | null;
+  /**
+   * Idempotency key for this logical send attempt (Phase 3). Omit for a
+   * fresh, user-initiated send — send() generates one. retry() passes the
+   * original attempt's id back in so the server recognizes a retry instead
+   * of creating a second message.
+   */
+  clientMessageId?: string;
 };
 
 type Options = {
@@ -152,10 +159,11 @@ export function useChatSendMessage(
       localImageFileName?: string | null;
       imageAspectRatio?: number | null;
       replyToId?: string | null;
+      clientMessageId: string;
     },
     MutationContext | undefined
   >({
-    mutationFn: async ({ messageText, imageUrl, imageAspectRatio, replyToId }) => {
+    mutationFn: async ({ messageText, imageUrl, imageAspectRatio, replyToId, clientMessageId }) => {
       if (!chatId || !currentUserId) {
         throw new Error("Missing chat ID or user ID");
       }
@@ -203,13 +211,13 @@ export function useChatSendMessage(
         // RETURNING is unavailable for anonymous chat_messages inserts —
         // Postgres filters RETURNING through the SELECT policy, which is
         // deliberately false for anonymous rows via the base table (Phase 1
-        // migration). Generate the id client-side so we know what to
-        // re-fetch, insert without requesting any columns back, then read
-        // the confirmed row through chat_messages_view (the only path that
-        // can see it), mirroring the existing reply-enrichment pattern.
-        const generatedId = generateUuidV4();
+        // migration). The client-generated id (clientMessageId, stable
+        // across retries — see send()/retry()) is what we know to re-fetch,
+        // insert without requesting any columns back, then read the
+        // confirmed row through chat_messages_view (the only path that can
+        // see it), mirroring the existing reply-enrichment pattern.
         const { error: insertErr } = await supabase.from("chat_messages").insert({
-          id: generatedId,
+          id: clientMessageId,
           chat_id: chatId,
           user_id: currentUserId,
           content: messageText?.trim() ?? "",
@@ -218,12 +226,17 @@ export function useChatSendMessage(
           reply_to_id: replyToId ?? null,
         });
 
-        if (insertErr) throw insertErr;
+        // A unique-violation on `id` means this exact logical send already
+        // committed on a prior attempt whose response never reached the
+        // client (Phase 3 idempotency) — not a new message. Fall through to
+        // the same read-back-by-id step used for a fresh insert; it returns
+        // the row that already exists either way.
+        if (insertErr && insertErr.code !== "23505") throw insertErr;
 
         const { data: viewRow, error: viewErr } = await (supabase as any)
           .from("chat_messages_view")
           .select("*")
-          .eq("id", generatedId)
+          .eq("id", clientMessageId)
           .single();
 
         if (viewErr) throw viewErr;
@@ -237,9 +250,13 @@ export function useChatSendMessage(
         // table UPDATE would silently match zero rows, same root cause
         // as RETURNING above).
       } else {
-        const { data, error } = await supabase
+        const REPLY_SELECT =
+          "*, reply_message:reply_to_id(id, content, image_url, user_id, deleted_by_sender, deleted_by_receiver)";
+
+        let { data, error } = await supabase
           .from("chat_messages")
           .insert({
+            id: clientMessageId,
             chat_id: chatId,
             user_id: currentUserId,
             content: messageText?.trim() ?? "",
@@ -247,10 +264,25 @@ export function useChatSendMessage(
             image_aspect_ratio: imageAspectRatio ?? null,
             reply_to_id: replyToId ?? null,
           })
-          .select("*, reply_message:reply_to_id(id, content, image_url, user_id, deleted_by_sender, deleted_by_receiver)")
+          .select(REPLY_SELECT)
           .single();
 
-        if (error) throw error;
+        if (error) {
+          // Same reasoning as the anonymous branch above: a unique-violation
+          // on `id` means this exact logical send already succeeded on a
+          // prior attempt — fetch and return that row instead of failing
+          // what the user experiences as a retry.
+          if (error.code === "23505") {
+            const existing = await supabase
+              .from("chat_messages")
+              .select(REPLY_SELECT)
+              .eq("id", clientMessageId)
+              .single();
+            data = existing.data;
+            error = existing.error;
+          }
+          if (error) throw error;
+        }
         if (!data) throw new Error("Failed to create message");
         newMessage = data as ChatMessageVM;
 
@@ -275,6 +307,7 @@ export function useChatSendMessage(
       localImageFileName,
       imageAspectRatio,
       replyToId,
+      clientMessageId,
     }) => {
       if (!chatId || !currentUserId) throw new Error("Missing chat ID or user ID");
 
@@ -345,6 +378,7 @@ export function useChatSendMessage(
           localImageFileName: localImageFileName ?? null,
           imageAspectRatio: imageAspectRatio ?? null,
           replyToId: replyToId ?? null,
+          clientMessageId,
         },
       };
 
@@ -561,8 +595,15 @@ export function useChatSendMessage(
         localImageFileName,
         imageAspectRatio,
         replyToId,
+        clientMessageId: providedClientMessageId,
       } = params;
       if (!messageText?.trim() && !localImageUri) return;
+
+      // Idempotency key for this logical send attempt (Phase 3). A fresh,
+      // user-initiated send (no id passed in) generates a new one; retry()
+      // passes the original attempt's id back in so the server recognizes
+      // it as the same message instead of creating a second row.
+      const clientMessageId = providedClientMessageId ?? generateUuidV4();
 
       isSendingRef.current = true;
       setIsSending(true);
@@ -589,6 +630,11 @@ export function useChatSendMessage(
       let imageUrl: string | null = null;
       if (localImageUri) {
         try {
+          // Deterministic path (chatId/clientMessageId) reuses the same
+          // idempotency id this send/retry already resolved above (Phase
+          // 3) — a retry of a failed send overwrites the same storage
+          // object in place instead of creating a new orphaned one on
+          // every attempt.
           imageUrl = await uploadImage(
             localImageUri,
             supabase,
@@ -596,6 +642,7 @@ export function useChatSendMessage(
             undefined,
             localImageMimeType,
             localImageFileName,
+            { path: `${chatId}/${clientMessageId}`, upsert: true },
           );
         } catch (err) {
           logger.error("Error uploading chat image", err as Error);
@@ -615,6 +662,7 @@ export function useChatSendMessage(
           localImageFileName: localImageFileName ?? null,
           imageAspectRatio: imageAspectRatio ?? null,
           replyToId: replyToId ?? null,
+          clientMessageId,
         },
         {
           onSettled: () => {
@@ -645,6 +693,11 @@ export function useChatSendMessage(
         localImageFileName: payload?.localImageFileName ?? null,
         imageAspectRatio: payload?.imageAspectRatio ?? msg.image_aspect_ratio ?? null,
         replyToId: payload?.replyToId ?? null,
+        // Reuse the same id this attempt already sent to the server (Phase
+        // 3) so a retry can never create a second row. Falls back to a
+        // fresh id if this failed message predates the update (no stored
+        // clientMessageId in a stale cached/persisted entry).
+        clientMessageId: payload?.clientMessageId,
       });
     },
     [chatId, currentUserId, queryClient, send, optimisticImageUrisRef]

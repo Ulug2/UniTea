@@ -37,6 +37,12 @@ export type ChatMessageVM = ChatMessageRow & {
     imageAspectRatio?: number | null;
     /** Preserved across retry so replies survive failed-send recovery. */
     replyToId?: string | null;
+    /**
+     * Idempotency key for this logical send attempt (Phase 3). Reused
+     * verbatim by retry() so a retried send can never create a second
+     * server-side row — see clientMessageId in useChatSendMessage.ts.
+     */
+    clientMessageId?: string;
   } | null;
   /** FK to the original message being replied to (mirrors DB column). */
   reply_to_id?: string | null;

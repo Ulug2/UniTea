@@ -102,7 +102,10 @@ export function useUpdateCommunity() {
       const name = normalizeCommunityName(input.name);
       const description = normalizeCommunityDescription(input.description);
 
-      const { data, error } = await communitiesTable()
+      // `updated_at` isn't reflected in the generated Database types yet
+      // (see types.ts) — cast per project convention rather than
+      // regenerating types from the live schema.
+      const { data, error } = await (communitiesTable() as any)
         .update({
           name,
           description,
@@ -110,7 +113,7 @@ export function useUpdateCommunity() {
         })
         .eq("id", input.id)
         .select(
-          "id, name, description, avatar_url, university_id, created_by, created_at",
+          "id, name, description, avatar_url, university_id, created_by, created_at, updated_at",
         )
         .single();
 

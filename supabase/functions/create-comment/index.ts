@@ -72,7 +72,57 @@ serve(async (req: Request) => {
       throw new Error("Unauthorized");
     }
 
-    // 2. Rate limit check (before any expensive OpenAI calls)
+    // 2. Parse request body
+    const {
+      id: clientCommentId,
+      content,
+      post_id,
+      parent_comment_id,
+      is_anonymous,
+    } = await req.json();
+
+    // Idempotency key (optional, backward-compatible). The client may
+    // generate this comment's id itself and resend the same value if a
+    // prior attempt's response was lost (network drop, timeout, app
+    // backgrounded) without knowing whether the server actually created the
+    // comment. Older clients that omit it fall back to the DB's default id
+    // generation, exactly as before.
+    let idempotentCommentId: string | undefined;
+    if (clientCommentId !== undefined && clientCommentId !== null) {
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (typeof clientCommentId !== "string" || !UUID_RE.test(clientCommentId)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid comment id" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      idempotentCommentId = clientCommentId;
+
+      // If a comment with this id already exists, this is a retry of an
+      // earlier attempt that actually succeeded server-side — return it
+      // as-is instead of re-running rate-limit/moderation/insert/notification.
+      // Scoped to `user_id` too (on top of RLS) so a colliding id can never
+      // return someone else's comment.
+      const { data: existingComment, error: existingCommentError } = await supabase
+        .from("comments")
+        .select()
+        .eq("id", idempotentCommentId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (existingCommentError) {
+        console.error("Idempotency lookup error:", existingCommentError);
+      } else if (existingComment) {
+        return new Response(JSON.stringify(existingComment), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+    }
+
+    // Rate limit check (before any expensive OpenAI calls). Placed after
+    // the idempotency short-circuit above so resubmitting an
+    // already-created comment never costs part of the user's comment quota.
     const allowed = await checkRateLimit(
       `comment:${user.id}`,
       COMMENT_RATE_LIMIT_MAX,
@@ -81,14 +131,6 @@ serve(async (req: Request) => {
     if (!allowed) {
       return rateLimitExceededResponse(corsHeaders, COMMENT_RATE_LIMIT_WINDOW_SECONDS);
     }
-
-    // 3. Parse request body
-    const {
-      content,
-      post_id,
-      parent_comment_id,
-      is_anonymous,
-    } = await req.json();
 
     // 4. Validate required fields
     if (!content || !content.trim()) {
@@ -165,6 +207,9 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
       is_anonymous: is_anonymous ?? false,
       is_deleted: false,
     };
+    if (idempotentCommentId) {
+      commentData.id = idempotentCommentId;
+    }
 
     // Add parent_comment_id if it's a reply
     if (parent_comment_id) {
@@ -176,13 +221,35 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
     //     No assignment needed here.
 
     // 6. Insert into database
-    const { data, error: dbError } = await supabase
+    let { data, error: dbError } = await supabase
       .from("comments")
       .insert(commentData)
       .select()
       .single();
 
     if (dbError) {
+      // A duplicate-key error on the id we supplied means another request
+      // for this same idempotency key already committed the row between
+      // the lookup above and this insert (e.g. two retries in flight at
+      // once). Treat it the same as that lookup: fetch and return the row
+      // that won instead of failing the request — and skip the
+      // notification step below, since it already ran for the original
+      // insert.
+      if (dbError.code === "23505" && idempotentCommentId) {
+        const { data: racedComment, error: racedCommentError } = await supabase
+          .from("comments")
+          .select()
+          .eq("id", idempotentCommentId)
+          .single();
+
+        if (!racedCommentError && racedComment) {
+          return new Response(JSON.stringify(racedComment), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          });
+        }
+      }
+
       console.error("Database error:", dbError);
       throw dbError;
     }

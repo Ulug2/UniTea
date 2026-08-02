@@ -31,14 +31,20 @@ export function useUpdateProfile() {
       if (error) throw error;
     },
     onMutate: async (updates: UpdateProfileInput) => {
-      await queryClient.cancelQueries({ queryKey: ["current-user-profile"] });
+      // Must match useMyProfile's exact key (["current-user-profile", userId])
+      // — get/setQueryData require an exact match, not just a prefix, so a
+      // bare ["current-user-profile"] here silently wrote to/read from a
+      // cache entry the UI never reads, and this optimistic update never
+      // actually took effect (only the invalidateQueries below did, since
+      // invalidation defaults to prefix matching).
+      await queryClient.cancelQueries({ queryKey: ["current-user-profile", session?.user?.id] });
 
       const previousProfile =
-        queryClient.getQueryData<Profile | null>(["current-user-profile"]);
+        queryClient.getQueryData<Profile | null>(["current-user-profile", session?.user?.id]);
 
       if (previousProfile) {
         queryClient.setQueryData<Profile | null>(
-          ["current-user-profile"],
+          ["current-user-profile", session?.user?.id],
           {
             ...previousProfile,
             ...updates,
@@ -49,7 +55,7 @@ export function useUpdateProfile() {
       return { previousProfile };
     },
     onSuccess: (_data, updates) => {
-      queryClient.invalidateQueries({ queryKey: ["current-user-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["current-user-profile", session?.user?.id] });
       // Only invalidate heavy feed / post-list queries when the avatar changes.
       // Username-only changes do not need to bust the feed cache and would otherwise
       // cause scroll-position jumps on the profile posts list on iOS.
@@ -64,7 +70,7 @@ export function useUpdateProfile() {
       const currentUserId = session?.user?.id;
       if (currentUserId) {
         queryClient.setQueryData<Profile | null>(
-          ["current-user-profile"],
+          ["current-user-profile", session?.user?.id],
           (old) => {
             if (!old) return old;
             return { ...old, ...updates };
@@ -75,7 +81,7 @@ export function useUpdateProfile() {
     onError: (error, _updates, context) => {
       if (context?.previousProfile) {
         queryClient.setQueryData(
-          ["current-user-profile"],
+          ["current-user-profile", session?.user?.id],
           context.previousProfile
         );
       }

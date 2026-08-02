@@ -72,18 +72,9 @@ serve(async (req: Request) => {
       throw new Error("Unauthorized");
     }
 
-    // 2. Rate limit check (before any expensive OpenAI calls)
-    const allowed = await checkRateLimit(
-      `post:${user.id}`,
-      POST_RATE_LIMIT_MAX,
-      POST_RATE_LIMIT_WINDOW_SECONDS,
-    );
-    if (!allowed) {
-      return rateLimitExceededResponse(corsHeaders, POST_RATE_LIMIT_WINDOW_SECONDS);
-    }
-
-    // 4. Parse request body
+    // 2. Parse request body
     const {
+      id: clientPostId,
       content,
       title,
       image_url,
@@ -100,6 +91,57 @@ serve(async (req: Request) => {
       poll_expires_at,
       poll_allow_multiple,
     } = await req.json();
+
+    // Idempotency key (optional, backward-compatible). The client may
+    // generate this post's id itself and resend the same value if a prior
+    // attempt's response was lost (network drop, timeout, app backgrounded)
+    // without knowing whether the server actually created the post. Older
+    // clients that omit it fall back to the DB's default id generation,
+    // exactly as before.
+    let idempotentPostId: string | undefined;
+    if (clientPostId !== undefined && clientPostId !== null) {
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (typeof clientPostId !== "string" || !UUID_RE.test(clientPostId)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid post id" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      idempotentPostId = clientPostId;
+
+      // If a post with this id already exists, this is a retry of an
+      // earlier attempt that actually succeeded server-side — return it
+      // as-is instead of re-running moderation/rate-limit/insert. Scoped
+      // to `user_id` too (on top of RLS) so a colliding id can never
+      // return someone else's post.
+      const { data: existingPost, error: existingPostError } = await supabase
+        .from("posts")
+        .select()
+        .eq("id", idempotentPostId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (existingPostError) {
+        console.error("Idempotency lookup error:", existingPostError);
+      } else if (existingPost) {
+        return new Response(JSON.stringify(existingPost), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+    }
+
+    // Rate limit check (before any expensive OpenAI calls). Placed after
+    // the idempotency short-circuit above so resubmitting an
+    // already-created post never costs part of the user's post quota.
+    const allowed = await checkRateLimit(
+      `post:${user.id}`,
+      POST_RATE_LIMIT_MAX,
+      POST_RATE_LIMIT_WINDOW_SECONDS,
+    );
+    if (!allowed) {
+      return rateLimitExceededResponse(corsHeaders, POST_RATE_LIMIT_WINDOW_SECONDS);
+    }
 
     const trimmedTitle = typeof title === "string" ? title.trim() : "";
     const trimmedContent = typeof content === "string" ? content.trim() : "";
@@ -287,6 +329,9 @@ Output JSON ONLY: {"visual_explicit": boolean, "private_name": boolean, "explici
           : null,
       is_anonymous: is_anonymous ?? false,
     };
+    if (idempotentPostId) {
+      postData.id = idempotentPostId;
+    }
 
     // Add optional fields if they exist
     if (trimmedTitle) {
@@ -307,13 +352,33 @@ Output JSON ONLY: {"visual_explicit": boolean, "private_name": boolean, "explici
     }
 
     // 6. Insert into database
-    const { data, error: dbError } = await supabase
+    let { data, error: dbError } = await supabase
       .from("posts")
       .insert(postData)
       .select()
       .single();
 
     if (dbError) {
+      // A duplicate-key error on the id we supplied means another request
+      // for this same idempotency key already committed the row between
+      // the lookup above and this insert (e.g. two retries in flight at
+      // once). Treat it the same as that lookup: fetch and return the row
+      // that won instead of failing the request.
+      if (dbError.code === "23505" && idempotentPostId) {
+        const { data: racedPost, error: racedPostError } = await supabase
+          .from("posts")
+          .select()
+          .eq("id", idempotentPostId)
+          .single();
+
+        if (!racedPostError && racedPost) {
+          return new Response(JSON.stringify(racedPost), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          });
+        }
+      }
+
       console.error("Database error:", dbError);
       throw dbError;
     }
@@ -338,8 +403,11 @@ Output JSON ONLY: {"visual_explicit": boolean, "private_name": boolean, "explici
       }
 
       if (normalizedOptions.length >= 2) {
-        // Create poll row
-        const { data: poll, error: pollError } = await supabase
+        // Create poll row. `polls.post_id` is unique (migration
+        // 20260801120000), so a retry that already created this post's
+        // poll hits a conflict here instead of creating a second poll —
+        // fetch the existing one instead of failing.
+        let { data: poll, error: pollError } = await supabase
           .from("polls")
           .insert({
             post_id: data.id,
@@ -349,24 +417,44 @@ Output JSON ONLY: {"visual_explicit": boolean, "private_name": boolean, "explici
           .select()
           .single();
 
-        if (pollError) {
+        if (pollError?.code === "23505") {
+          const { data: existingPoll, error: existingPollError } = await supabase
+            .from("polls")
+            .select()
+            .eq("post_id", data.id)
+            .single();
+          poll = existingPoll;
+          pollError = existingPollError;
+        }
+
+        if (pollError || !poll) {
           console.error("Poll create error:", pollError);
           // Do not fail the whole post creation; just log.
         } else {
-          // Create poll options
-          const pollOptionsPayload = normalizedOptions.map((optionText, idx) => ({
-            poll_id: poll.id,
-            option_text: optionText,
-            position: idx,
-          }));
-
-          const { error: optionsError } = await supabase
+          // Only insert options if this poll doesn't have any yet — covers
+          // both a genuinely new poll and a retry where the poll row was
+          // created on a prior attempt but the options insert never ran
+          // (e.g. that attempt's response was lost right after this step).
+          const { count: existingOptionsCount } = await supabase
             .from("poll_options")
-            .insert(pollOptionsPayload);
+            .select("*", { count: "exact", head: true })
+            .eq("poll_id", poll.id);
 
-          if (optionsError) {
-            console.error("Poll options create error:", optionsError);
-            // Again, do not fail the post; worst case the poll is incomplete.
+          if (!existingOptionsCount) {
+            const pollOptionsPayload = normalizedOptions.map((optionText, idx) => ({
+              poll_id: poll.id,
+              option_text: optionText,
+              position: idx,
+            }));
+
+            const { error: optionsError } = await supabase
+              .from("poll_options")
+              .insert(pollOptionsPayload);
+
+            if (optionsError) {
+              console.error("Poll options create error:", optionsError);
+              // Again, do not fail the post; worst case the poll is incomplete.
+            }
           }
         }
       }

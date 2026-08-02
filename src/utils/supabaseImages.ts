@@ -161,14 +161,40 @@ const uploadWithTimeout = async <T>(
     return Promise.race([promise, timeoutPromise]);
 };
 
+export type UploadImageOptions = {
+    /**
+     * Caller-supplied deterministic key to upload to (e.g.
+     * `{userId}/{postId}/{index}` or `{chatId}/{clientMessageId}`),
+     * instead of the default random Date.now()-based filename. The
+     * resolved file extension is still appended by uploadImage() itself —
+     * the caller only owns the identifying part of the path, not the file
+     * type. uploadImage() has no knowledge of what this key means (post,
+     * chat, user, message, etc.) — that's entirely the caller's concern.
+     * `folder` is ignored when this is set (the caller's key already
+     * encodes everything needed).
+     */
+    path?: string;
+    /**
+     * Only meaningful together with `path`. When true, an upload to a
+     * path that already has an object overwrites it in place instead of
+     * failing — the point of a deterministic path is that a retry of the
+     * same logical attempt lands on the exact same key. Defaults to
+     * false. Ignored (always false) for random-filename uploads, since a
+     * random filename never legitimately collides with an existing
+     * object.
+     */
+    upsert?: boolean;
+};
+
 /**
  * Upload an image to Supabase Storage
  * @param localUri - Local file URI from device
  * @param supabase - Supabase client instance
  * @param bucket - Storage bucket name (default: "post-images")
- * @param folder - Optional folder path within bucket
+ * @param folder - Optional folder path within bucket (ignored when options.path is set)
  * @param mimeType - Picker-reported MIME type, if available (most reliable type signal)
  * @param fileName - Picker-reported filename, if available (second most reliable)
+ * @param options - Optional deterministic-path upload mode; omit for the default random-filename mode
  * @returns The uploaded file path
  */
 export const uploadImage = async (
@@ -178,6 +204,7 @@ export const uploadImage = async (
     folder?: string,
     mimeType?: string | null,
     fileName?: string | null,
+    options?: UploadImageOptions,
 ): Promise<string> => {
     try {
         const resolved = resolveImageType(localUri, mimeType, fileName);
@@ -189,8 +216,14 @@ export const uploadImage = async (
         // here for both the generated filename and the Content-Type below so
         // they can never disagree with what validation just accepted.
         const { extension: fileExt, contentType } = resolved!;
-        const generatedFileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const path = folder ? `${folder}/${generatedFileName}` : generatedFileName;
+        const path = options?.path
+            ? `${options.path}.${fileExt}`
+            : folder
+                ? `${folder}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+                : `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        // Deterministic-path uploads may opt into overwrite; random-filename
+        // uploads never do (nothing to legitimately collide with).
+        const upsert = options?.path ? (options.upsert ?? false) : false;
 
         // Fetch file with retry and timeout
         const uploadOperation = async () => {
@@ -212,7 +245,7 @@ export const uploadImage = async (
                 .upload(path, arrayBuffer, {
                     contentType,
                     cacheControl: '3600',
-                    upsert: false, // Prevent overwriting existing files
+                    upsert,
                 });
 
             if (error) {

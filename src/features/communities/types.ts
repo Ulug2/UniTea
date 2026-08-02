@@ -5,7 +5,17 @@
 
 import type { Database } from "../../types/database.types";
 
-export type Community = Database["public"]["Tables"]["communities"]["Row"];
+// `updated_at` was added by 20260802120000_avatar_community_updated_at_versioning.sql
+// (image cache-versioning for deterministic community avatar paths) but
+// isn't in the generated Database types yet — per project convention,
+// extend the alias here rather than hand-editing the generated file or
+// running `npm run types` (which pulls unrelated live schema drift).
+// Optional because most existing queries don't select it — only
+// useCommunity/useUpdateCommunity do, for the manage screen's avatar
+// cache-busting.
+export type Community = Database["public"]["Tables"]["communities"]["Row"] & {
+  updated_at?: string | null;
+};
 
 export type CommunityInsert =
   Database["public"]["Tables"]["communities"]["Insert"];

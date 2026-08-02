@@ -250,6 +250,90 @@ describe('uploadImage — retry logic', () => {
   });
 });
 
+// ── Deterministic path mode (Phase 6) ───────────────────────────────────────────
+
+describe('uploadImage — deterministic path mode', () => {
+  it('random mode (no options) is unchanged: random filename, upsert:false', async () => {
+    const supabase = makeMockSupabase() as any;
+    await uploadImage('file://photo.jpg', supabase, 'post-images', 'user-1');
+    const [path, , uploadOptions] = supabase._upload.mock.calls[0];
+    expect(path).toMatch(/^user-1\/\d+-[a-z0-9]+\.jpg$/);
+    expect(uploadOptions.upsert).toBe(false);
+  });
+
+  it('deterministic mode uploads to the caller-supplied path with the resolved extension appended', async () => {
+    const supabase = makeMockSupabase() as any;
+    await uploadImage(
+      'file://photo.jpg',
+      supabase,
+      'post-images',
+      undefined,
+      undefined,
+      undefined,
+      { path: 'user-1/post-1/0', upsert: true },
+    );
+    const [path, , uploadOptions] = supabase._upload.mock.calls[0];
+    expect(path).toBe('user-1/post-1/0.jpg');
+    expect(uploadOptions.upsert).toBe(true);
+  });
+
+  it('deterministic path ignores the folder argument (path already encodes everything needed)', async () => {
+    const supabase = makeMockSupabase() as any;
+    await uploadImage(
+      'file://photo.jpg',
+      supabase,
+      'chat-images',
+      'some-ignored-folder',
+      undefined,
+      undefined,
+      { path: 'chat-1/message-1', upsert: true },
+    );
+    const [path] = supabase._upload.mock.calls[0];
+    expect(path).toBe('chat-1/message-1.jpg');
+  });
+
+  it('deterministic path without upsert defaults to upsert:false', async () => {
+    const supabase = makeMockSupabase() as any;
+    await uploadImage('file://photo.jpg', supabase, 'post-images', undefined, undefined, undefined, {
+      path: 'user-1/post-1/0',
+    });
+    const [, , uploadOptions] = supabase._upload.mock.calls[0];
+    expect(uploadOptions.upsert).toBe(false);
+  });
+
+  it('retrying with the same deterministic path produces the identical path both times (overwrite target is stable)', async () => {
+    const supabase = makeMockSupabase() as any;
+    await uploadImage('file://photo.jpg', supabase, 'chat-images', undefined, undefined, undefined, {
+      path: 'chat-1/message-1',
+      upsert: true,
+    });
+    await uploadImage('file://photo.jpg', supabase, 'chat-images', undefined, undefined, undefined, {
+      path: 'chat-1/message-1',
+      upsert: true,
+    });
+    const [firstPath] = supabase._upload.mock.calls[0];
+    const [secondPath] = supabase._upload.mock.calls[1];
+    expect(firstPath).toBe(secondPath);
+    expect(firstPath).toBe('chat-1/message-1.jpg');
+  });
+
+  it('resolves the extension the same way for deterministic paths as for random ones (mimeType-driven)', async () => {
+    const supabase = makeMockSupabase() as any;
+    await uploadImage(
+      'content://media/external/images/media/1',
+      supabase,
+      'chat-images',
+      undefined,
+      'image/heic',
+      undefined,
+      { path: 'chat-1/message-2', upsert: true },
+    );
+    const [path, , uploadOptions] = supabase._upload.mock.calls[0];
+    expect(path).toBe('chat-1/message-2.heic');
+    expect(uploadOptions.contentType).toBe('image/heic');
+  });
+});
+
 // ── Timeout ───────────────────────────────────────────────────────────────────
 
 describe('uploadImage — timeout', () => {

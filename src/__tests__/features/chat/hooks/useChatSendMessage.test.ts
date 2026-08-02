@@ -211,6 +211,9 @@ describe('useChatSendMessage', () => {
       });
 
       await waitFor(() => {
+        // Phase 6: deterministic path is chatId/clientMessageId — the
+        // clientMessageId itself is a freshly generated UUID for a fresh
+        // send, so match its shape rather than an exact string.
         expect(mockUploadImage).toHaveBeenCalledWith(
           'file://photo.jpg',
           supabase,
@@ -218,6 +221,10 @@ describe('useChatSendMessage', () => {
           undefined,
           undefined,
           undefined,
+          {
+            path: expect.stringMatching(/^chat-1\/[0-9a-f-]{36}$/),
+            upsert: true,
+          },
         );
         expect(mockFrom).toHaveBeenCalledWith('chat_messages');
       });
@@ -246,6 +253,10 @@ describe('useChatSendMessage', () => {
           undefined,
           'image/heic',
           'IMG_0001.HEIC',
+          {
+            path: expect.stringMatching(/^chat-1\/[0-9a-f-]{36}$/),
+            upsert: true,
+          },
         );
       });
     });
@@ -500,6 +511,321 @@ describe('useChatSendMessage', () => {
       // Only chat_messages (insert) and chat_messages_view (follow-up) —
       // no third call to update the chats table.
       expect(mockFrom).not.toHaveBeenCalledWith('chats');
+    });
+  });
+
+  describe('idempotent retry (Phase 3)', () => {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    it('sends a client-generated uuid as the row id on a fresh (non-anonymous) send', async () => {
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'hello' });
+      });
+
+      const insertChain = mockFrom.mock.results[0].value;
+      const insertedId = insertChain.insert.mock.calls[0][0].id;
+      expect(insertedId).toMatch(UUID_RE);
+    });
+
+    it('two independent (non-retry) sends each get their own id', async () => {
+      mockFrom.mockReset();
+      mockFrom
+        .mockReturnValueOnce(buildInsertChain({ data: fakeMessage, error: null }))
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: null }))
+        .mockReturnValueOnce(buildInsertChain({ data: { ...fakeMessage, id: 'real-msg-2' }, error: null }))
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: null }));
+
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => { await result.current.send({ text: 'first' }); });
+      const firstId = mockFrom.mock.results[0].value.insert.mock.calls[0][0].id;
+
+      await act(async () => { await result.current.send({ text: 'second' }); });
+      const secondId = mockFrom.mock.results[2].value.insert.mock.calls[0][0].id;
+
+      expect(secondId).not.toBe(firstId);
+    });
+
+    it('non-anonymous: retry() reuses the exact same id the original failed attempt sent', async () => {
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      // First attempt: network-shaped failure.
+      const networkErr = Object.assign(new Error('network timeout'), {});
+      mockFrom.mockReset();
+      mockFrom.mockReturnValue(buildInsertChain({ data: null, error: networkErr }));
+
+      await act(async () => {
+        await result.current.send({ text: 'hello' });
+      });
+
+      await waitFor(() => expect(mockMarkFailed).toHaveBeenCalled());
+      const failedTempId = mockMarkFailed.mock.calls[0][2];
+      const firstAttemptId = mockFrom.mock.results[0].value.insert.mock.calls[0][0].id;
+
+      // Seed the cache with the failed bubble the way the real (mocked-out)
+      // cache module would have left it: sendStatus "failed", carrying the
+      // _clientPayload retry() reads from — including the id from the
+      // attempt above, exactly as onMutate stored it.
+      queryClient.setQueryData(['chat-messages', 'chat-1'], {
+        pages: [[{
+          id: failedTempId,
+          sendStatus: 'failed',
+          content: 'hello',
+          _clientPayload: {
+            messageText: 'hello',
+            replyToId: null,
+            clientMessageId: firstAttemptId,
+          },
+        }]],
+        pageParams: [0],
+      });
+
+      // Retry, this time succeeding.
+      mockFrom.mockReset();
+      mockFrom
+        .mockReturnValueOnce(buildInsertChain({ data: fakeMessage, error: null }))
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: null }));
+
+      await act(async () => {
+        result.current.retry(failedTempId);
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(mockReplaceOptimistic).toHaveBeenCalled());
+      const retryAttemptId = mockFrom.mock.results[0].value.insert.mock.calls[0][0].id;
+      expect(retryAttemptId).toBe(firstAttemptId);
+    });
+
+    it('anonymous: retry() reuses the exact same id the original failed attempt sent', async () => {
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', true, opts), {
+        wrapper: createWrapper(),
+      });
+
+      const networkErr = Object.assign(new Error('network timeout'), {});
+      mockFrom.mockReset();
+      mockFrom.mockReturnValue(buildInsertChain({ data: null, error: networkErr }));
+
+      await act(async () => {
+        await result.current.send({ text: 'hello anon' });
+      });
+
+      await waitFor(() => expect(mockMarkFailed).toHaveBeenCalled());
+      const failedTempId = mockMarkFailed.mock.calls[0][2];
+      const firstAttemptId = mockFrom.mock.results[0].value.insert.mock.calls[0][0].id;
+
+      queryClient.setQueryData(['chat-messages', 'chat-1'], {
+        pages: [[{
+          id: failedTempId,
+          sendStatus: 'failed',
+          content: 'hello anon',
+          _clientPayload: {
+            messageText: 'hello anon',
+            replyToId: null,
+            clientMessageId: firstAttemptId,
+          },
+        }]],
+        pageParams: [0],
+      });
+
+      mockFrom.mockReset();
+      mockFrom
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: null }))
+        .mockReturnValueOnce(buildInsertChain({ data: fakeMessage, error: null }));
+
+      await act(async () => {
+        result.current.retry(failedTempId);
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(mockReplaceOptimistic).toHaveBeenCalled());
+      const retryInsertChain = mockFrom.mock.results[0].value;
+      expect(retryInsertChain.insert.mock.calls[0][0].id).toBe(firstAttemptId);
+    });
+
+    it('an image message retry reuses the same id AND the same deterministic storage path (Phase 6: overwrite, not a new orphan)', async () => {
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      const networkErr = Object.assign(new Error('network timeout'), {});
+      mockFrom.mockReset();
+      mockFrom.mockReturnValue(buildInsertChain({ data: null, error: networkErr }));
+      mockUploadImage.mockResolvedValue('https://storage.example.com/image-1.webp');
+
+      await act(async () => {
+        await result.current.send({ text: '', localImageUri: 'file://photo.jpg' });
+      });
+
+      await waitFor(() => expect(mockMarkFailed).toHaveBeenCalled());
+      const failedTempId = mockMarkFailed.mock.calls[0][2];
+      const firstAttemptId = mockFrom.mock.results[0].value.insert.mock.calls[0][0].id;
+      // The first attempt's deterministic upload path (chatId/clientMessageId).
+      const firstUploadOptions = mockUploadImage.mock.calls[0][6];
+
+      queryClient.setQueryData(['chat-messages', 'chat-1'], {
+        pages: [[{
+          id: failedTempId,
+          sendStatus: 'failed',
+          content: '',
+          image_url: null,
+          _clientPayload: {
+            messageText: '',
+            imageUrl: 'https://storage.example.com/image-1.webp',
+            localImageUri: 'file://photo.jpg',
+            replyToId: null,
+            clientMessageId: firstAttemptId,
+          },
+        }]],
+        pageParams: [0],
+      });
+
+      mockFrom.mockReset();
+      mockFrom
+        .mockReturnValueOnce(buildInsertChain({ data: fakeMessage, error: null }))
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: null }));
+      // Phase 6: a retried send re-uploads, but to the SAME deterministic
+      // path as the first attempt (chatId/clientMessageId, both reused) —
+      // with upsert:true this overwrites the first attempt's object in
+      // place instead of leaving it behind as an orphan.
+      mockUploadImage.mockResolvedValue('https://storage.example.com/image-1.webp');
+
+      await act(async () => {
+        result.current.retry(failedTempId);
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(mockReplaceOptimistic).toHaveBeenCalled());
+      const retryInsertChain = mockFrom.mock.results[0].value;
+      expect(retryInsertChain.insert.mock.calls[0][0].id).toBe(firstAttemptId);
+
+      const retryUploadOptions = mockUploadImage.mock.calls[1][6];
+      expect(retryUploadOptions.path).toBe(firstUploadOptions.path);
+      expect(retryUploadOptions.path).toBe(`chat-1/${firstAttemptId}`);
+      expect(retryUploadOptions.upsert).toBe(true);
+    });
+
+    it('editing the message text before retrying is not supported by tap-to-retry (it always resends the original payload) — a fresh send() call after editing gets its own new id', async () => {
+      // There is no "edit a failed bubble in place" UI in this codebase —
+      // editing means the user types new text and presses Send again,
+      // which always goes through send() directly (never retry()), so it
+      // always gets a brand-new id, by construction. This test documents
+      // and locks in that guarantee.
+      mockFrom.mockReset();
+      mockFrom
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: Object.assign(new Error('network timeout'), {}) }))
+        .mockReturnValueOnce(buildInsertChain({ data: fakeMessage, error: null }))
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: null }));
+
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => { await result.current.send({ text: 'original text' }); });
+      await waitFor(() => expect(mockMarkFailed).toHaveBeenCalled());
+      const firstAttemptId = mockFrom.mock.results[0].value.insert.mock.calls[0][0].id;
+
+      // User edits the compose box and presses Send fresh (not tap-to-retry).
+      await act(async () => { await result.current.send({ text: 'edited text' }); });
+      const secondAttemptId = mockFrom.mock.results[1].value.insert.mock.calls[0][0].id;
+
+      expect(secondAttemptId).not.toBe(firstAttemptId);
+    });
+
+    it('non-anonymous: a 23505 conflict on insert is treated as success (fetches and returns the existing row)', async () => {
+      const conflictErr = { code: '23505', message: 'duplicate key value violates unique constraint "chat_messages_pkey"' };
+      mockFrom.mockReset();
+      mockFrom
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: conflictErr }))
+        .mockReturnValueOnce(buildInsertChain({ data: fakeMessage, error: null }))
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: null }));
+
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'hello' });
+      });
+
+      expect(mockMarkFailed).not.toHaveBeenCalled();
+      await waitFor(() => expect(mockReplaceOptimistic).toHaveBeenCalled());
+      const confirmed = mockReplaceOptimistic.mock.calls[0][3];
+      expect(confirmed.id).toBe(fakeMessage.id);
+    });
+
+    it('anonymous: a 23505 conflict on insert still falls through to the chat_messages_view read instead of failing', async () => {
+      const conflictErr = { code: '23505', message: 'duplicate key value violates unique constraint "chat_messages_pkey"' };
+      mockFrom.mockReset();
+      mockFrom
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: conflictErr }))
+        .mockReturnValueOnce(buildInsertChain({ data: fakeMessage, error: null }));
+
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', true, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'hello anon' });
+      });
+
+      expect(mockMarkFailed).not.toHaveBeenCalled();
+      await waitFor(() => expect(mockReplaceOptimistic).toHaveBeenCalled());
+    });
+
+    it('a genuine (non-23505) insert error still fails normally, is not swallowed as a false success', async () => {
+      const realErr = { code: '23514', message: 'check constraint violated' };
+      mockFrom.mockReset();
+      mockFrom.mockReturnValue(buildInsertChain({ data: null, error: realErr }));
+
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'hello' });
+      });
+
+      await waitFor(() => expect(Alert.alert).toHaveBeenCalled());
+      expect(mockReplaceOptimistic).not.toHaveBeenCalled();
+    });
+
+    it('double-tapping send() while a request is in flight only sends once', async () => {
+      mockFrom.mockReset();
+      mockFrom.mockReturnValue(buildInsertChain({ data: fakeMessage, error: null }));
+
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        const p1 = result.current.send({ text: 'first' });
+        const p2 = result.current.send({ text: 'second' });
+        await Promise.all([p1, p2]);
+      });
+
+      await waitFor(() => expect(mockReplaceOptimistic).toHaveBeenCalled());
+      // Exactly one message's worth of calls (insert + chats.update) — the
+      // second, overlapping send() bailed synchronously on isSendingRef.
+      expect(mockFrom).toHaveBeenCalledTimes(2);
+      expect(mockReplaceOptimistic).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -45,7 +45,7 @@ describe('useAvatarUpload', () => {
     jest.clearAllMocks();
     alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
-    mockUseAuth.mockReturnValue({ session: null });
+    mockUseAuth.mockReturnValue({ session: { user: { id: 'user-123' } } });
 
     mockPickAndPrepareImage = jest.fn();
     mockUseImagePipeline.mockReturnValue({ pickAndPrepareImage: mockPickAndPrepareImage });
@@ -98,7 +98,7 @@ describe('useAvatarUpload', () => {
       expect(outcome?.status).toBe('success');
     });
 
-    it('calls uploadImage with the picked URI and "avatars" bucket', async () => {
+    it('calls uploadImage with the deterministic per-user path and upsert:true', async () => {
       const { result } = renderHook(() => useAvatarUpload());
 
       await act(async () => { await result.current.startAvatarUpload(); });
@@ -107,6 +107,10 @@ describe('useAvatarUpload', () => {
         'file://photo.jpg',
         expect.anything(), // supabase client
         'avatars',
+        undefined,
+        undefined,
+        undefined,
+        { path: 'user-123/avatar', upsert: true },
       );
     });
 
@@ -126,6 +130,24 @@ describe('useAvatarUpload', () => {
       await act(async () => { await result.current.startAvatarUpload(); });
 
       expect(alertSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── no session ────────────────────────────────────────────────────────
+  describe('when there is no session', () => {
+    it('returns { status: "error" } without calling uploadImage (deterministic path requires a userId)', async () => {
+      mockUseAuth.mockReturnValue({ session: null });
+      mockPickAndPrepareImage.mockResolvedValue({ uri: 'file://photo.jpg', aspectRatio: 1 });
+
+      const { result } = renderHook(() => useAvatarUpload());
+      let outcome: { status: string; message?: string } | undefined;
+
+      await act(async () => {
+        outcome = await result.current.startAvatarUpload();
+      });
+
+      expect(outcome?.status).toBe('error');
+      expect(mockUploadImage).not.toHaveBeenCalled();
     });
   });
 

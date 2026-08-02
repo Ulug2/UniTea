@@ -97,7 +97,12 @@ describe('useCreateComment', () => {
   const postId = 'post-123';
   const viewerId = 'user-abc';
 
-  const defaultInput = { content: 'Great post!', parentId: null, isAnonymous: false };
+  const defaultInput = {
+    id: 'client-generated-id-1',
+    content: 'Great post!',
+    parentId: null,
+    isAnonymous: false,
+  };
 
   // ── guards ───────────────────────────────────────────────────────────────────
   describe('guards', () => {
@@ -179,7 +184,7 @@ describe('useCreateComment', () => {
       );
 
       act(() => {
-        result.current.mutate({ content: 'Reply', parentId: 'temp-1234', isAnonymous: false });
+        result.current.mutate({ id: 'client-id-reply-1', content: 'Reply', parentId: 'temp-1234', isAnonymous: false });
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -202,13 +207,36 @@ describe('useCreateComment', () => {
       );
 
       act(() => {
-        result.current.mutate({ content: 'Reply', parentId: realParentId, isAnonymous: false });
+        result.current.mutate({ id: 'client-id-reply-2', content: 'Reply', parentId: realParentId, isAnonymous: false });
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
       const fetchBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
       expect(fetchBody.parent_comment_id).toBe(realParentId);
+    });
+  });
+
+  // ── idempotency id (Phase 4) ────────────────────────────────────────────────
+  describe('idempotency id', () => {
+    it('sends the caller-provided idempotency id in the request body', async () => {
+      mockFetchSuccess({ id: 'c-idem-1', content: 'Great post!' });
+      const profileChain = buildChain({ data: { id: viewerId }, error: null });
+      mockFrom.mockReturnValueOnce(profileChain);
+
+      const { result } = renderHook(
+        () => useCreateComment({ postId, viewerId }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.mutate({ ...defaultInput, id: 'stable-retry-id-99' });
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const fetchBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(fetchBody.id).toBe('stable-retry-id-99');
     });
   });
 

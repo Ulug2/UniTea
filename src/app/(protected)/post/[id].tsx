@@ -57,6 +57,7 @@ import { CommentComposer } from "../../../features/comments/components/CommentCo
 import { PostHeaderCard } from "../../../features/posts/components/PostHeaderCard";
 import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
+import { generateUuidV4 } from "../../../utils/uuid";
 import {
   buildPostAuthorContext,
   resolvePostAuthorDisplay,
@@ -92,6 +93,15 @@ export default function PostDetailed() {
   );
   const inputRef = useRef<TextInput | null>(null);
   const commentsListRef = useRef<FlatList<CommentNode> | null>(null);
+  // Idempotency key for comment creation (Phase 4). Mirrors create-post.tsx's
+  // lastAttemptRef: the signature is built only from what the user actually
+  // controls, so an unedited resubmission (the normal recovery path after a
+  // failed/ambiguous send — draft preservation already keeps the text as-is)
+  // reuses the same id, while an actual edit gets a fresh one instead of
+  // silently colliding with the earlier, different-content attempt.
+  const lastCommentAttemptRef = useRef<{ signature: string; id: string } | null>(
+    null,
+  );
   // Remove bottom safe-area inset while keyboard is open to avoid extra gap
   // between the keyboard and composer on both iOS and Android.
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -503,7 +513,7 @@ export default function PostDetailed() {
     }
   }, []);
 
-  const handlePostComment = () => {
+  const handlePostComment = async () => {
     if (!commentText.trim()) return;
     if (!currentUserId) {
       Alert.alert("Error", "You must be logged in to post a comment");
@@ -512,12 +522,49 @@ export default function PostDetailed() {
     const content = commentText;
     const parentId = parentCommentId;
     const isAnonymous = isAnonymousMode;
-    // Clear input and reply state immediately so UI updates before request
-    setCommentText("");
-    setParentCommentId(null);
-    setReplyingToUsername(null);
     inputRef.current?.blur();
-    createCommentMutation.mutate({ content, parentId, isAnonymous });
+
+    // Resolve this attempt's idempotency id before submitting (Phase 4).
+    // Same content/target/anonymity as the last attempt on this screen ->
+    // reuse its id (a retry); anything different -> a fresh id (a genuinely
+    // new comment).
+    const attemptSignature = JSON.stringify({
+      postId,
+      content,
+      parentId,
+      isAnonymous,
+    });
+    let commentId: string;
+    if (lastCommentAttemptRef.current?.signature === attemptSignature) {
+      commentId = lastCommentAttemptRef.current.id;
+    } else {
+      commentId = generateUuidV4();
+      lastCommentAttemptRef.current = { signature: attemptSignature, id: commentId };
+    }
+
+    try {
+      // Awaited (not fire-and-forget) so the input/reply state below is only
+      // cleared once the server has actually confirmed the comment was
+      // created — previously the input was cleared immediately, so any
+      // failure (network/server/rate-limit/session-expired) silently lost
+      // whatever the user had typed. mutateAsync rejects instead of
+      // resolving on failure; the existing overlay (createCommentMutation.
+      // isPending, see commentsScreenBody above) already covers the screen
+      // for this whole awaited window, so there's no responsiveness cost to
+      // waiting instead of clearing eagerly.
+      await createCommentMutation.mutateAsync({ id: commentId, content, parentId, isAnonymous });
+      // Confirmed success — clear the retry memory so this screen instance
+      // never reuses a spent id if it somehow submits again.
+      lastCommentAttemptRef.current = null;
+      setCommentText("");
+      setParentCommentId(null);
+      setReplyingToUsername(null);
+    } catch (error) {
+      // Errors are already surfaced via the mutation's own onError (Alert).
+      // Intentionally leave commentText/parentCommentId/replyingToUsername
+      // untouched so the user's draft and reply target survive a failure —
+      // they can just retry.
+    }
   };
 
   const handleCancelReply = () => {

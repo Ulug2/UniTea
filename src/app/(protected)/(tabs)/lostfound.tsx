@@ -22,7 +22,6 @@ import { router } from "expo-router";
 import { FontAwesome, MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   useInfiniteQuery,
-  useIsMutating,
   useMutation,
 } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
@@ -63,8 +62,6 @@ export default function LostFoundScreen() {
   const universityId = currentUser?.university_id;
   const isPostOwner = selectedPost && currentUserId === selectedPost.userId;
   const canDeletePost = isPostOwner || isAdmin;
-
-  const isCreatingPost = useIsMutating({ mutationKey: ["create-post"] }) > 0;
 
   // Debounce search input to avoid filtering on every keystroke
   useEffect(() => {
@@ -481,29 +478,6 @@ export default function LostFoundScreen() {
       >
         <FontAwesome name="plus" size={fabIconSize} color="#fff" />
       </Pressable>
-
-      {/* Loading overlay while a lost&found post is being submitted */}
-      <Modal
-        visible={isCreatingPost}
-        transparent
-        animationType="none"
-        statusBarTranslucent
-        onRequestClose={() => {}}
-      >
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor: "rgba(255, 255, 255, 0.6)",
-              justifyContent: "center",
-              alignItems: "center",
-            },
-          ]}
-          pointerEvents="auto"
-        >
-          <ActivityIndicator size="large" color={theme.primary} />
-        </View>
-      </Modal>
     </View>
   );
 }

@@ -364,6 +364,7 @@ export default function ProfileScreen() {
         visible={avatarPreviewVisible}
         onClose={() => setAvatarPreviewVisible(false)}
         avatarUrl={currentUser?.avatar_url || null}
+        version={currentUser?.updated_at}
         showBadge={viewingBadge}
       />
     </View>

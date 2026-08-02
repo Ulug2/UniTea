@@ -17,6 +17,8 @@ type AvatarPreviewModalProps = {
   visible: boolean;
   onClose: () => void;
   avatarUrl: string | null;
+  /** Cache-busting token for a deterministic path overwritten in place — see SupabaseImage. */
+  version?: string | null;
   showBadge?: boolean;
 };
 
@@ -24,6 +26,7 @@ export function AvatarPreviewModal({
   visible,
   onClose,
   avatarUrl,
+  version,
   showBadge = false,
 }: AvatarPreviewModalProps) {
   return (
@@ -49,6 +52,7 @@ export function AvatarPreviewModal({
                 <SupabaseImage
                   path={avatarUrl}
                   bucket="avatars"
+                  version={version}
                   style={styles.avatarImage}
                 />
               )

@@ -24,35 +24,24 @@ export function useAvatarUpload() {
       if (!picked) return { status: "cancelled" };
       const { uri } = picked;
 
-      // Read the current avatar path BEFORE uploading the new one so we can
-      // delete it from storage after the DB update succeeds.
       const currentUserId = session?.user?.id;
-      let oldAvatarPath: string | null = null;
-      if (currentUserId) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("avatar_url")
-          .eq("id", currentUserId)
-          .single();
-        // Only track storage paths — ignore full HTTP URLs (e.g. OAuth avatars)
-        if (profile?.avatar_url && !profile.avatar_url.startsWith("http")) {
-          oldAvatarPath = profile.avatar_url;
-        }
+      if (!currentUserId) {
+        throw new Error("You must be logged in to update your avatar.");
       }
 
-      const imagePath = await uploadImage(uri, supabase, "avatars");
+      // Deterministic path: one stable object per user
+      // (avatars/{userId}/avatar.{ext}). Every replacement overwrites the
+      // same object in place (upsert) instead of creating a new random
+      // object each time — no separate "delete the old one" step needed
+      // or possible, since there is no longer an "old path" distinct from
+      // the current one. If this upload fails, the existing object at
+      // that path is untouched (upsert only replaces on success), so a
+      // failed replacement can never leave the user without an avatar.
+      const imagePath = await uploadImage(uri, supabase, "avatars", undefined, undefined, undefined, {
+        path: `${currentUserId}/avatar`,
+        upsert: true,
+      });
       await updateProfileMutation.mutateAsync({ avatar_url: imagePath });
-
-      // Delete the old avatar from storage now that the DB points to the new one.
-      // Non-fatal — a failed delete just leaves an orphaned file.
-      if (oldAvatarPath) {
-        const { error: storageError } = await supabase.storage
-          .from("avatars")
-          .remove([oldAvatarPath]);
-        if (storageError) {
-          console.warn("[useAvatarUpload] Failed to delete old avatar:", storageError.message);
-        }
-      }
 
       return { status: "success" };
     } catch (error: unknown) {

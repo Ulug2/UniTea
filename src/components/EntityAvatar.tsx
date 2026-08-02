@@ -18,10 +18,12 @@ import type { AvatarDescriptor } from "../utils/entityDisplay";
 type EntityAvatarProps = {
   descriptor: AvatarDescriptor;
   style: StyleProp<ImageStyle>;
+  /** Cache-busting token for a deterministic path overwritten in place — see SupabaseImage. */
+  version?: string | number | null;
   onLoad?: () => void;
 };
 
-function EntityAvatar({ descriptor, style, onLoad }: EntityAvatarProps) {
+function EntityAvatar({ descriptor, style, version, onLoad }: EntityAvatarProps) {
   const flatStyle = StyleSheet.flatten(style) ?? {};
   const size =
     typeof flatStyle.width === "number"
@@ -52,7 +54,7 @@ function EntityAvatar({ descriptor, style, onLoad }: EntityAvatarProps) {
       if (descriptor.bucket === "avatars") {
         return (
           <ExpoImage
-            source={{ uri: getAvatarUri(descriptor.url) }}
+            source={{ uri: getAvatarUri(descriptor.url, version ? String(version) : undefined) }}
             style={style}
             contentFit="cover"
             cachePolicy="disk"
@@ -65,6 +67,7 @@ function EntityAvatar({ descriptor, style, onLoad }: EntityAvatarProps) {
         <SupabaseImage
           path={descriptor.url}
           bucket={descriptor.bucket}
+          version={version}
           style={style}
           onLoad={handleLoad}
         />

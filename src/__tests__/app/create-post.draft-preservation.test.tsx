@@ -420,3 +420,53 @@ describe('create-post draft preservation on submission failure', () => {
     expect(mockReset).not.toHaveBeenCalled();
   });
 });
+
+describe('create-post idempotency id (Phase 2)', () => {
+  it('sends a string id on the first submission', async () => {
+    mockMutateAsync.mockResolvedValue({ id: 'post-1' });
+
+    render(<CreatePostScreen />);
+    pressPost();
+
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1));
+    const sentId = mockMutateAsync.mock.calls[0][0].id;
+    expect(typeof sentId).toBe('string');
+    expect(sentId.length).toBeGreaterThan(0);
+  });
+
+  it('retrying after a failed submission with unchanged content reuses the same id', async () => {
+    mockMutateAsync.mockRejectedValueOnce(new Error('Network request failed'));
+    mockMutateAsync.mockResolvedValueOnce({ id: 'post-1' });
+
+    render(<CreatePostScreen />);
+    pressPost();
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockSetIsSubmitting).toHaveBeenCalledWith(false));
+
+    pressPost();
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(2));
+
+    const firstId = mockMutateAsync.mock.calls[0][0].id;
+    const secondId = mockMutateAsync.mock.calls[1][0].id;
+    expect(secondId).toBe(firstId);
+  });
+
+  it('retrying after a failed submission with edited content generates a new id (does not silently collide with the earlier attempt)', async () => {
+    mockMutateAsync.mockRejectedValueOnce(new Error('Network request failed'));
+    mockMutateAsync.mockResolvedValueOnce({ id: 'post-1' });
+
+    const { rerender } = render(<CreatePostScreen />);
+    pressPost();
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockSetIsSubmitting).toHaveBeenCalledWith(false));
+
+    mockFormStateOverrides = { content: 'Edited after failure' };
+    rerender(<CreatePostScreen />);
+    pressPost();
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(2));
+
+    const firstId = mockMutateAsync.mock.calls[0][0].id;
+    const secondId = mockMutateAsync.mock.calls[1][0].id;
+    expect(secondId).not.toBe(firstId);
+  });
+});

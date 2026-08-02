@@ -2,6 +2,7 @@ import { ComponentProps, useMemo, useState, useEffect, useRef } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Image } from "expo-image";
 import { supabase } from "../lib/supabase";
+import { getPublicStorageUrl } from "../utils/publicStorageUrl";
 import React from "react";
 
 type SupabaseImageProps = {
@@ -9,6 +10,13 @@ type SupabaseImageProps = {
   path: string;
   contentFit?: "cover" | "contain" | "fill" | "scale-down";
   transition?: number;
+  /**
+   * Cache-busting token (e.g. the owning row's updated_at) for
+   * deterministic storage paths that get overwritten in place —
+   * appended as a `?v=` query param so a replaced image is refetched
+   * instead of served from a stale client/CDN cache under the same URL.
+   */
+  version?: string | number | null;
   /** Background color while loading (default: gainsboro) */
   loadingBackgroundColor?: string;
   /** ActivityIndicator color while loading */
@@ -19,8 +27,6 @@ type SupabaseImageProps = {
   onError?: () => void;
 } & Omit<ComponentProps<typeof Image>, "source" | "onLoad" | "onError">;
 
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-
 // Buckets confirmed as public — URL can be constructed synchronously, no HEAD check needed.
 const PUBLIC_BUCKETS = new Set(["avatars", "post-images", "chat-images"]);
 
@@ -29,10 +35,6 @@ const bucketCache = new Map<string, boolean>();
 
 // Cache for signed URLs with expiry tracking
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
-
-function getPublicStorageUrl(bucket: string, path: string): string {
-  return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
-}
 
 /**
  * PRODUCTION-READY: Uses public/signed URLs with expo-image's disk caching
@@ -46,6 +48,7 @@ function SupabaseImage({
   bucket = "post-images",
   contentFit = "cover",
   transition = bucket === "avatars" ? 0 : 200,
+  version,
   loadingBackgroundColor = "#F0F0F0",
   loadingIndicatorColor,
   onLoad,
@@ -53,13 +56,13 @@ function SupabaseImage({
   ...imageProps
 }: SupabaseImageProps) {
   const isKnownPublic = PUBLIC_BUCKETS.has(bucket);
-  const cacheKey = `${bucket}:${path}`;
+  const cacheKey = `${bucket}:${path}:${version ?? ""}`;
 
   // Lazy initialisers run synchronously before the first paint.
   // For known-public buckets the URL is available immediately — isLoading stays
   // false and the ActivityIndicator is never shown, even on cold start.
   const [imageUrl, setImageUrl] = useState<string | null>(() =>
-    isKnownPublic && path ? getPublicStorageUrl(bucket, path) : null
+    isKnownPublic && path ? getPublicStorageUrl(bucket, path, version) : null
   );
   const [isLoading, setIsLoading] = useState(() => !(isKnownPublic && path));
 
@@ -84,9 +87,9 @@ function SupabaseImage({
     }
 
     if (isKnownPublic) {
-      // URL is deterministic — update state if path/bucket changed and seed the
-      // runtime cache so other components skip the HEAD check too.
-      const url = getPublicStorageUrl(bucket, path);
+      // URL is deterministic — update state if path/bucket/version changed
+      // and seed the runtime cache so other components skip the HEAD check too.
+      const url = getPublicStorageUrl(bucket, path, version);
       bucketCache.set(bucket, true);
       if (isMountedRef.current) {
         setImageUrl(url);
@@ -180,7 +183,7 @@ function SupabaseImage({
     };
 
     getImageUrl();
-  }, [path, bucket, cacheKey, isKnownPublic]);
+  }, [path, bucket, cacheKey, isKnownPublic, version]);
 
   // Memoize the image source to prevent unnecessary re-renders
   // MUST be called before any early returns (Rules of Hooks)
@@ -260,6 +263,7 @@ export default React.memo(SupabaseImage, (prevProps, nextProps) => {
   return (
     prevProps.path === nextProps.path &&
     prevProps.bucket === nextProps.bucket &&
-    prevProps.contentFit === nextProps.contentFit
+    prevProps.contentFit === nextProps.contentFit &&
+    prevProps.version === nextProps.version
   );
 });

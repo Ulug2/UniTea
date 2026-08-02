@@ -93,7 +93,20 @@ export default function ManageCommunityScreen() {
       let avatarPath = community?.avatar_url ?? null;
       if (newAvatarUri) {
         try {
-          avatarPath = await uploadImage(newAvatarUri, supabase);
+          // Deterministic path: one stable object per community
+          // (post-images/{communityId}/avatar.{ext}). Every edit overwrites
+          // the same object in place (upsert) — there is no longer a
+          // separate "old path" to leak, closing the pre-existing bug
+          // where a replaced community image was never deleted.
+          avatarPath = await uploadImage(
+            newAvatarUri,
+            supabase,
+            "post-images",
+            undefined,
+            undefined,
+            undefined,
+            { path: `${communityId}/avatar`, upsert: true },
+          );
         } catch (error: any) {
           Alert.alert("Error", error?.message || "Failed to upload the image.");
           return;
@@ -232,6 +245,7 @@ export default function ManageCommunityScreen() {
                 <SupabaseImage
                   path={community.avatar_url}
                   bucket="post-images"
+                  version={community.updated_at}
                   style={styles.avatarImage}
                 />
               ) : (

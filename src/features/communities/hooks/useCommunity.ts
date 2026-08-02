@@ -9,9 +9,12 @@ export function useCommunity(communityId: string | undefined) {
     queryKey: communityKeys.detail(communityId),
     queryFn: async () => {
       if (!communityId) throw new Error("Missing community id");
-      const { data, error } = await communitiesTable()
+      // `updated_at` isn't reflected in the generated Database types yet
+      // (see types.ts) — cast per project convention rather than
+      // regenerating types from the live schema.
+      const { data, error } = await (communitiesTable() as any)
         .select(
-          "id, name, description, avatar_url, university_id, created_by, created_at",
+          "id, name, description, avatar_url, university_id, created_by, created_at, updated_at",
         )
         .eq("id", communityId)
         .single();

@@ -7,7 +7,6 @@ import {
   Text,
   RefreshControl,
   ActivityIndicator,
-  Modal,
   Dimensions,
   Animated,
   Platform,
@@ -23,8 +22,8 @@ import PostListSkeleton from "../../../components/PostListSkeleton";
 import CustomInput from "../../../components/CustomInput";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
-import { useQueryClient, useIsMutating } from "@tanstack/react-query";
-import { useCallback, useMemo, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useEffect, useRef, useState, memo } from "react";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import { useFilterContext } from "../../../context/FilterContext";
 import { useAuth } from "../../../context/AuthContext";
@@ -417,7 +416,32 @@ type CommunityFeedPagerProps = {
 // in one community's search bar can never leak into another's, and a pane's
 // search state survives switching away and back for the same reason
 // activePageIndex already does (the component instance itself persists).
-function CommunityFeedPager({
+//
+// Wrapped in memo(): FeedScreen re-renders for reasons that have nothing to
+// do with any specific community (e.g. the banner-hide Animated state).
+// Without memo, every mounted feedKey's CommunityFeedPager — and everything
+// under it, including every FlatList across every visited community — would
+// re-execute on each of those unrelated re-renders. Under opacity:0 (see
+// feedLayerHidden below), inactive panes stay fully laid out and painted, so
+// unnecessary re-renders there aren't free the way they were under
+// display:"none". memo bounds each pane's re-render to when its own props
+// actually change (its filter selection, or its own active/inactive
+// transition). Note: this is a real, worthwhile optimization on its own
+// merits, but it is NOT what fixed the post-creation freeze bug. That bug's
+// actual cause: this screen and lostfound.tsx each used to render their own
+// isCreatingPost <Modal> loading overlay off the global useIsMutating(
+// ["create-post"]) signal. Since create-post.tsx's mutateAsync is awaited
+// before navigating away (see create-post.tsx), that signal now flips
+// true->false while the user is still on the create-post screen — i.e.
+// still underneath create-post's own native fullScreenModal presentation —
+// so the overlay tried to present/dismiss itself while it wasn't the
+// topmost active presentation. That corrupts iOS's modal presentation
+// stack, freezing all touch input app-wide until a full reload. Fix: the
+// overlay was removed entirely (not just deduplicated) — it's redundant
+// now, since create-post.tsx already shows its own loading state
+// (isSubmitting / createPostMutation.isPending) for the entire awaited
+// mutation lifecycle.
+const CommunityFeedPager = memo(function CommunityFeedPager({
   communityId,
   selectedFilter,
   setSelectedFilter,
@@ -523,7 +547,7 @@ function CommunityFeedPager({
       ))}
     </ScrollView>
   );
-}
+});
 
 // Main feed screen: native pager (Instagram-style) – content slides with your finger
 export default function FeedScreen() {
@@ -601,8 +625,6 @@ export default function FeedScreen() {
       setActiveCommunityId(null);
     }
   }, [activeCommunityId, joinedIds, myCommunitiesPending]);
-
-  const isCreatingPost = useIsMutating({ mutationKey: ["create-post"] }) > 0;
 
   useEffect(() => {
     let isMounted = true;
@@ -716,27 +738,6 @@ export default function FeedScreen() {
           <FontAwesome name="plus" size={fabIconSize} color="#fff" />
         </Pressable>
       </View>
-      <Modal
-        visible={isCreatingPost}
-        transparent
-        animationType="none"
-        statusBarTranslucent
-        onRequestClose={() => {}}
-      >
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor: "rgba(255, 255, 255, 0.6)",
-              justifyContent: "center",
-              alignItems: "center",
-            },
-          ]}
-          pointerEvents="auto"
-        >
-          <ActivityIndicator size="large" color={theme.primary} />
-        </View>
-      </Modal>
     </>
   );
 }
@@ -761,6 +762,14 @@ const styles = StyleSheet.create({
   // (laid out off-screen inside a ScrollView, never display:"none"'d).
   // Touch-blocking is unaffected — pointerEvents="none" (set alongside this
   // style, not by it) already fully blocks interaction with inactive panes.
+  // opacity:0, not display:"none": the latter collapses the node out of
+  // Yoga layout, which was found to make the native image views beneath it
+  // lose their decoded bitmaps — forcing a redecode + fade-in "white flash"
+  // on every revisit. opacity keeps the pane laid out and mounted at the
+  // native level. Confirmed via a controlled experiment (temporarily
+  // reverting to display:"none") that this is NOT the cause of the
+  // post-creation scroll freeze — that freeze reproduces identically either
+  // way, so it's a separate, still-unidentified issue.
   feedLayerHidden: {
     opacity: 0,
   },

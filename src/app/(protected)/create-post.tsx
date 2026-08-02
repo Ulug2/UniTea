@@ -67,6 +67,7 @@ import {
 } from "../../components/FullscreenImageModal";
 import { mapWithConcurrency } from "../../utils/asyncConcurrency";
 import { moderateScale, scale, verticalScale } from "../../utils/scaling";
+import { generateUuidV4 } from "../../utils/uuid";
 
 const MAX_POLL_OPTIONS = 11;
 const MAX_POST_IMAGES = 5;
@@ -225,15 +226,6 @@ export default function CreatePostScreen() {
     }).start();
   }, [slideAnim]);
 
-  React.useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      closeScreen();
-      return true;
-    });
-    return () => sub.remove();
-  }, [closeScreen]);
-
   // Android: adjustResize is broken with edgeToEdgeEnabled:true on API 30+.
   // Manually track the IME height and pad the content wrapper so the footer
   // (action bar) is always visible above the keyboard.
@@ -290,6 +282,18 @@ export default function CreatePostScreen() {
   // True from when the picker closes until the compressed URIs land in state.
   // During this window images[] is stale, so we must block submission.
   const [isProcessingImages, setIsProcessingImages] = React.useState(false);
+
+  // Idempotency key for post creation (Phase 2). The signature is computed
+  // from the user-facing submission — not the uploaded image *paths*, which
+  // are freshly randomized on every upload call (see uploadImage) and would
+  // otherwise make every retry of an image post look like a "new" one. If
+  // the signature matches the previous attempt, the same id is resent so
+  // the server recognizes a retry and returns the original post instead of
+  // creating a duplicate; if the user actually changed the draft, a new id
+  // is generated, since that's genuinely a different submission.
+  const lastAttemptRef = React.useRef<{ signature: string; id: string } | null>(
+    null,
+  );
 
   const pickImage = async () => {
     setIsProcessingImages(true);
@@ -422,14 +426,44 @@ export default function CreatePostScreen() {
         cleanedPollOptions = normalized;
       }
 
+      // Resolve this attempt's idempotency id before uploading images, so
+      // the signature reflects only what the user actually controls.
+      const attemptSignature = JSON.stringify({
+        content,
+        title,
+        location,
+        isAnonymous,
+        category,
+        images,
+        pollOptions: cleanedPollOptions ?? null,
+        communityId: resolvedCommunityId ?? null,
+        repostId: repostId ?? null,
+      });
+      let postId: string;
+      if (lastAttemptRef.current?.signature === attemptSignature) {
+        postId = lastAttemptRef.current.id;
+      } else {
+        postId = generateUuidV4();
+        lastAttemptRef.current = { signature: attemptSignature, id: postId };
+      }
+
       // Upload selected images first if present.
       // The backend stores both image_url (first) and image_urls (all) for compatibility.
+      // Deterministic path (userId/postId/index) reuses the same
+      // idempotency id this attempt already resolved above (Phase 2) — a
+      // retry of the same submission uploads to the exact same paths and
+      // overwrites in place (upsert) instead of creating new orphaned
+      // objects on every attempt.
       if (images.length > 0) {
         try {
           imagePaths = await mapWithConcurrency(
             images,
             MAX_CONCURRENT_UPLOADS,
-            (localUri) => uploadImage(localUri, supabase, "post-images", session?.user?.id),
+            (localUri, index) =>
+              uploadImage(localUri, supabase, "post-images", undefined, undefined, undefined, {
+                path: `${session?.user?.id}/${postId}/${index}`,
+                upsert: true,
+              }),
           );
           imagePath = imagePaths[0];
         } catch (error: any) {
@@ -457,6 +491,7 @@ export default function CreatePostScreen() {
       // try/catch below already handles by falling through to `catch`
       // without touching the draft.
       await createPostMutation.mutateAsync({
+        id: postId,
         imagePath,
         imagePaths,
         imageAspectRatio: primaryAspectRatio,
@@ -468,6 +503,11 @@ export default function CreatePostScreen() {
         pollOptions: cleanedPollOptions,
         communityId: resolvedCommunityId ?? null,
       });
+
+      // Confirmed success — clear the retry memory so this screen instance
+      // (unusual, but cheap to guard) never reuses a spent id if it somehow
+      // submits again.
+      lastAttemptRef.current = null;
 
       // Only reached once the server has confirmed the post was created.
       // Reset form and return to the feed that was already mounted behind this modal.
@@ -506,6 +546,20 @@ export default function CreatePostScreen() {
 
   const isLoading = createPostMutation.isPending || isSubmitting;
 
+  React.useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      // Same guard as the header close button: don't let hardware back
+      // dismiss the screen mid-submission either — it bypasses goBack()
+      // entirely, so without this it could still navigate away while
+      // mutateAsync is in flight.
+      if (isLoading) return true;
+      closeScreen();
+      return true;
+    });
+    return () => sub.remove();
+  }, [closeScreen, isLoading]);
+
   const main = (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
@@ -522,7 +576,11 @@ export default function CreatePostScreen() {
           },
         ]}
       >
-        <Pressable onPress={goBack} style={styles.closeButton}>
+        <Pressable
+          onPress={goBack}
+          disabled={isLoading}
+          style={[styles.closeButton, isLoading && styles.closeButtonDisabled]}
+        >
           <AntDesign name="close" size={icon28} color={theme.text} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: theme.text }]}>
@@ -1124,6 +1182,9 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: moderateScale(5),
+  },
+  closeButtonDisabled: {
+    opacity: 0.4,
   },
   headerTitle: {
     fontSize: moderateScale(18),

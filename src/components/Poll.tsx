@@ -152,36 +152,36 @@ const Poll: React.FC<PollProps> = ({ postId }) => {
         (v) => v.option_id === optionId
       );
 
-      // Single-choice behavior (ignore allow_multiple for now)
+      // Single-choice behavior (ignore allow_multiple for now). Each branch
+      // is a single atomic statement — no more delete-then-insert pair —
+      // backed by the poll_votes_user_poll_unique constraint (one vote per
+      // user per poll), so a retry, a fast double-tap, or a race from a
+      // second device can never leave more than one row for this user,
+      // regardless of timing. Mirrors src/utils/votes.ts's post/comment
+      // vote pattern.
       if (alreadySelected) {
-        // Unvote: remove existing vote for this option
-        const toDelete = existingUserVotes
-          .filter((v) => v.option_id === optionId)
-          .map((v) => v.id);
-        if (toDelete.length === 0) return;
-
+        // Unvote: remove this user's vote for this poll. Targeted by
+        // (poll_id, user_id) rather than a client-held row id — the unique
+        // constraint guarantees at most one matching row.
         const { error } = await supabase
           .from("poll_votes")
           .delete()
-          .in("id", toDelete);
+          .eq("poll_id", poll.id)
+          .eq("user_id", currentUserId);
         if (error) throw error;
       } else {
-        // Change / add vote: remove all user votes for this poll, then insert new
-        const allUserVoteIds = existingUserVotes.map((v) => v.id);
-        if (allUserVoteIds.length > 0) {
-          const { error: delError } = await supabase
-            .from("poll_votes")
-            .delete()
-            .in("id", allUserVoteIds);
-          if (delError) throw delError;
-        }
-
-        const { error: insError } = await supabase.from("poll_votes").insert({
-          poll_id: poll.id,
-          option_id: optionId,
-          user_id: currentUserId,
-        });
-        if (insError) throw insError;
+        // Vote / change vote: a single upsert keyed on (user_id, poll_id).
+        // On conflict, Postgres updates option_id on the existing row
+        // instead of creating a second one.
+        const { error } = await supabase.from("poll_votes").upsert(
+          {
+            poll_id: poll.id,
+            option_id: optionId,
+            user_id: currentUserId,
+          },
+          { onConflict: "user_id,poll_id", ignoreDuplicates: false },
+        );
+        if (error) throw error;
       }
     },
     onMutate: async (optionId: string) => {

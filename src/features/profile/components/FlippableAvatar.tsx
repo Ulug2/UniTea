@@ -93,7 +93,7 @@ export function FlippableAvatar({
   // loading state, no spinner, and the image renders on the very first frame.
   const avatarContent = currentUser?.avatar_url ? (
     <ExpoImage
-      source={{ uri: getAvatarUri(currentUser.avatar_url) }}
+      source={{ uri: getAvatarUri(currentUser.avatar_url, currentUser.updated_at) }}
       contentFit="cover"
       cachePolicy="disk"
       style={styles.faceImage}

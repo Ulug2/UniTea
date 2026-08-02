@@ -11,6 +11,8 @@ import { getAvatarUri } from "../utils/avatarUri";
 type CachedAvatarProps = {
   avatarUrl?: string | null;
   style: StyleProp<ImageStyle>;
+  /** Cache-busting token for a deterministic path overwritten in place — see SupabaseImage. */
+  version?: string | null;
   onLoad?: () => void;
 };
 
@@ -24,6 +26,7 @@ const studentFallback = getAvatarForEntity("student", {});
 function CachedAvatar({
   avatarUrl,
   style,
+  version,
   onLoad,
 }: CachedAvatarProps) {
   if (!avatarUrl) {
@@ -38,7 +41,7 @@ function CachedAvatar({
 
   return (
     <ExpoImage
-      source={{ uri: getAvatarUri(avatarUrl) }}
+      source={{ uri: getAvatarUri(avatarUrl, version) }}
       style={style}
       contentFit="cover"
       cachePolicy="disk"

@@ -95,7 +95,7 @@ describe('useUpdateProfile', () => {
       await act(async () => { await result.current.mutateAsync({ username: 'x' }); });
 
       expect(invalidateSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: ['current-user-profile'] }),
+        expect.objectContaining({ queryKey: ['current-user-profile', 'user-123'] }),
       );
     });
 
@@ -150,7 +150,7 @@ describe('useUpdateProfile', () => {
   describe('optimistic update (onMutate)', () => {
     it('applies optimistic update before mutationFn resolves', async () => {
       const previousProfile = { id: 'user-123', username: 'old', avatar_url: null };
-      queryClient.setQueryData(['current-user-profile'], previousProfile);
+      queryClient.setQueryData(['current-user-profile', 'user-123'], previousProfile);
 
       // Delay resolution so we can check mid-flight state
       let resolveUpdate!: () => void;
@@ -170,7 +170,7 @@ describe('useUpdateProfile', () => {
       // onMutate fires synchronously before the async mutationFn
       await waitFor(() => {
         expect(setDataSpy).toHaveBeenCalledWith(
-          ['current-user-profile'],
+          ['current-user-profile', 'user-123'],
           expect.objectContaining({ username: 'new-name' }),
         );
       });
@@ -184,7 +184,7 @@ describe('useUpdateProfile', () => {
   describe('when mutation fails', () => {
     it('rolls back optimistic update to previous value', async () => {
       const previousProfile = { id: 'user-123', username: 'original', avatar_url: null };
-      queryClient.setQueryData(['current-user-profile'], previousProfile);
+      queryClient.setQueryData(['current-user-profile', 'user-123'], previousProfile);
 
       const chain: Record<string, jest.Mock> = {};
       chain.update = jest.fn(() => chain);
@@ -213,7 +213,7 @@ describe('useUpdateProfile', () => {
       chain.update = jest.fn(() => chain);
       chain.eq = jest.fn(() => Promise.resolve({ data: null, error: { message: 'update failed' } }));
       mockFrom.mockReturnValue(chain);
-      queryClient.setQueryData(['current-user-profile'], { id: 'user-123', username: 'x' });
+      queryClient.setQueryData(['current-user-profile', 'user-123'], { id: 'user-123', username: 'x' });
 
       const { result } = renderHook(() => useUpdateProfile(), { wrapper: wrapper(queryClient) });
 
