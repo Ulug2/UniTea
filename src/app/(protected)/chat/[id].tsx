@@ -413,6 +413,24 @@ export default function ChatDetailScreen() {
     [messagesData, blocks, isChatAnonymous],
   );
 
+  // Captured exactly once: the message ids present the very first time this
+  // screen has real data to show (the render right after isInitialLoading
+  // first flips false below — whether that data came from the
+  // saveChatMessagesToStorage/seedChatMessagesCacheFromStorage cold-start
+  // seed or a fresh network fetch). Those messages' images can skip their
+  // loading-spinner frame (assumeCached, passed to ChatMessageRow below) —
+  // this screen already rendered them as "loaded" on first paint, so
+  // there's nothing to visibly wait for. Messages that arrive afterward
+  // (realtime, a message the user just sent, older pages loaded via
+  // "load more") are never in this set and keep normal loading behavior
+  // (Phase 7.2).
+  const initialCachedMessageIdsRef = useRef<Set<string> | null>(null);
+  if (initialCachedMessageIdsRef.current === null && messagesData?.pages?.[0]?.length) {
+    initialCachedMessageIdsRef.current = new Set(
+      messagesData.pages[0].map((m: any) => m.id),
+    );
+  }
+
   // Clean up abandoned empty chats: a chat created by tapping "contact" but never
   // used (no message sent) has a null last_message_at. If the user leaves such a
   // chat without sending anything, delete the row so it is neither stored nor
@@ -1313,6 +1331,7 @@ export default function ChatDetailScreen() {
           getReplyAuthorName={getReplyAuthorName}
           isDark={isDark}
           hasVisibleSiblingSameDay={hasVisibleSiblingSameDay}
+          assumeCached={initialCachedMessageIdsRef.current?.has(item.id) ?? false}
         />
       );
     },

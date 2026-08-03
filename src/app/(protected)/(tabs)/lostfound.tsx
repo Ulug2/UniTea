@@ -279,10 +279,11 @@ export default function LostFoundScreen() {
   // Skip the reveal-overlay when data is already in cache (seeded from
   // AsyncStorage). Images are served from expo-image's disk cache so there is
   // nothing to wait for.
+  const hasCachedPosts = !!postsData;
   const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
     minItems: 3,
     timeoutMs: 2500,
-    initialRevealed: !!postsData,
+    initialRevealed: hasCachedPosts,
   });
 
   const renderItem = useCallback(
@@ -303,9 +304,10 @@ export default function LostFoundScreen() {
         isVerified={item.is_verified}
         onLongPress={handleItemLongPress}
         onImageLoad={index < 5 ? onItemReady : undefined}
+        imagesAssumeCached={hasCachedPosts}
       />
     ),
-    [handleItemLongPress, onItemReady],
+    [handleItemLongPress, onItemReady, hasCachedPosts],
   );
 
   // Show skeleton while loading initial data. isPending (not isLoading) so the

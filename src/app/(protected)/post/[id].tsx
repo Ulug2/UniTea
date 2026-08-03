@@ -55,6 +55,7 @@ import { useFilterContext } from "../../../context/FilterContext";
 import { CommentsTreeList } from "../../../features/comments/components/CommentsTreeList";
 import { CommentComposer } from "../../../features/comments/components/CommentComposer";
 import { PostHeaderCard } from "../../../features/posts/components/PostHeaderCard";
+import { usePoll } from "../../../hooks/usePoll";
 import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { generateUuidV4 } from "../../../utils/uuid";
@@ -326,6 +327,21 @@ export default function PostDetailed() {
     isLoading: isUserLoading,
     error: userError,
   } = useProfileById(detailedPost?.user_id ?? undefined);
+
+  // 2b. Poll readiness (Phase 7.2). PostListItem/Poll.tsx render
+  // <Poll postId={repostedFromPostId ?? postId} /> — a repost's poll
+  // belongs to the ORIGINAL post, not the repost itself. Mirror that same
+  // id choice here so this check is for the exact poll (if any) that will
+  // actually render below. Uses the same usePoll hook Poll.tsx itself
+  // calls, so this is the same query (React Query dedupes it — no extra
+  // network request), just subscribed to one level up so its pending state
+  // can be folded into this screen's own "ready" gate below instead of
+  // popping in after the post already looks fully loaded. enabled only
+  // once detailedPost has resolved, so this never adds delay before that.
+  const pollPostId = detailedPost
+    ? (detailedPost.reposted_from_post_id ?? detailedPost.post_id)
+    : undefined;
+  const { isLoading: isPollLoading } = usePoll(pollPostId, currentUserId);
 
   const { data: currentUser } = useMyProfile(currentUserId ?? undefined);
   const isAdmin = currentUser?.is_admin === true;
@@ -606,9 +622,18 @@ export default function PostDetailed() {
     ],
   );
 
-  // Only gate on post/user loading — comments show an inline spinner via
-  // CommentsTreeList so the header is always immediately visible.
-  if (isPostLoading || isUserLoading) {
+  // Gate on post/user loading, plus the post's own poll (if it has one) —
+  // comments still show their own inline spinner via CommentsTreeList
+  // rather than gating here, since a missing comment LIST doesn't read as
+  // "half loaded" the way a post that's visible-but-then-grows-a-poll-block
+  // does (Phase 7.2: a poll changes layout/meaning significantly, so it's
+  // worth the brief wait; comments are a distinct, expected-to-load-in
+  // section, not something that makes the header look unfinished).
+  // isPollLoading is only ever true while detailedPost is also still
+  // loading (nothing to check yet) or while the SAME query Poll.tsx itself
+  // needs is genuinely in flight — never an extra fetch, and already
+  // resolved instantly whenever this post's poll was already seeded/cached.
+  if (isPostLoading || isUserLoading || isPollLoading) {
     return wrapScreen(
       <View style={{ flex: 1, backgroundColor: theme.background }}>
         {screenChrome}

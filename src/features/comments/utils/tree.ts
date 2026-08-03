@@ -8,6 +8,13 @@ export type CommentVM = Comment & {
   user: Profile | undefined;
   score: number;
   /**
+   * Current viewer's own vote on this comment, aggregated server-side
+   * alongside `score` in the same votes query (see usePostComments.ts's
+   * fetchCommentsWithMeta) — seeds useVote so a comment's vote-arrow
+   * highlight doesn't pop in after its score already shows (Phase 7.2).
+   */
+  user_vote: "upvote" | "downvote" | null;
+  /**
    * Optional per-post anonymous id (User 1, User 2, ...)
    * Populated for anonymous comments when available.
    */

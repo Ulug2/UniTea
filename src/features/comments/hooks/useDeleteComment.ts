@@ -69,7 +69,11 @@ export function useDeleteComment(commentId: string, options?: Options) {
       } else {
         queryClient.invalidateQueries({ queryKey: ["posts"], refetchType: "none" });
       }
-      queryClient.invalidateQueries({ queryKey: ["user-posts"], refetchType: "none" });
+      // Refetch immediately if Profile's "user-posts" query is mounted (default
+      // 'active' behavior) — Profile's tab screen never unmounts once visited,
+      // so 'none' here used to leave this permanently stale for the rest of the
+      // session once Profile had already been opened once (Phase 7.2).
+      queryClient.invalidateQueries({ queryKey: ["user-posts"] });
       queryClient.invalidateQueries({ queryKey: ["bookmarked-posts"] });
       onSuccess?.();
     },

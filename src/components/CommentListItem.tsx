@@ -41,6 +41,8 @@ type CommentWithReplies = Comment & {
   replies?: CommentWithReplies[];
   user?: Profile;
   score?: number;
+  /** Current viewer's own vote on this comment — seeds useVote (Phase 7.2). */
+  user_vote?: "upvote" | "downvote" | null;
   post_specific_anon_id?: number | null;
 };
 
@@ -139,6 +141,8 @@ const CommentListItem = ({
     isVoting,
   } = useVote({
     commentId: comment.id,
+    initialScore: comment.score,
+    initialUserVote: comment.user_vote,
   });
 
   const deleteCommentMutation = useDeleteComment(comment.id, {
@@ -764,6 +768,7 @@ function arePropsEqual(
     prev.comment.id === next.comment.id &&
     prev.comment.content === next.comment.content &&
     prev.comment.score === next.comment.score &&
+    prev.comment.user_vote === next.comment.user_vote &&
     prev.comment.is_deleted === next.comment.is_deleted &&
     prev.comment.is_anonymous === next.comment.is_anonymous &&
     (prev.comment.replies?.length ?? 0) ===

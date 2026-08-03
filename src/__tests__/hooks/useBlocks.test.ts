@@ -12,6 +12,7 @@ import {
   useBlocks,
   isBlockedChat,
   isBlockedPost,
+  fetchBlockRecords,
   type BlockRecord,
 } from '../../hooks/useBlocks';
 import { useAuth } from '../../context/AuthContext';
@@ -144,6 +145,57 @@ describe('useBlocks', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     const data = result.current.data ?? [];
     expect(data.some((r) => r.userId === 'user-A')).toBe(true);
+  });
+});
+
+describe('fetchBlockRecords (Phase 7.2: shared by useBlocks() and _layout.tsx\'s cold-start prefetch)', () => {
+  // Regression test for the blocks-cache-shape bug: _layout.tsx used to
+  // reimplement this fetch independently and write a flat string[] under
+  // the same ["blocks", userId] key useBlocks() reads — every isBlockedX()
+  // check silently evaluated to false whenever that write won the race.
+  // _layout.tsx now calls this exact function instead, so asserting its
+  // return shape here is what protects against that regression recurring.
+  it('returns BlockRecord[] ({userId, scope}[]), never a flat id array', async () => {
+    mockFrom
+      .mockReturnValueOnce(buildSelectChain([{ blocked_id: 'user-A', block_scope: 'profile_only' }]))
+      .mockReturnValueOnce(buildSelectChain([{ blocker_id: 'user-B', block_scope: 'anonymous_only' }]));
+
+    const records = await fetchBlockRecords('current-user');
+
+    expect(records).toEqual(
+      expect.arrayContaining([
+        { userId: 'user-A', scope: 'profile_only' },
+        { userId: 'user-B', scope: 'anonymous_only' },
+      ]),
+    );
+    // Every entry must be a {userId, scope} object, not a bare string —
+    // this is exactly the shape mismatch the original bug had.
+    records.forEach((r) => {
+      expect(typeof r).toBe('object');
+      expect(r).toHaveProperty('userId');
+      expect(r).toHaveProperty('scope');
+    });
+  });
+
+  it('produces output identical in shape to what useBlocks() itself resolves, for the same data', async () => {
+    const byMe = [{ blocked_id: 'user-A', block_scope: 'profile_only' }];
+    const byOthers = [{ blocker_id: 'user-B', block_scope: 'anonymous_only' }];
+
+    mockFrom.mockReturnValueOnce(buildSelectChain(byMe)).mockReturnValueOnce(buildSelectChain(byOthers));
+    const direct = await fetchBlockRecords('current-user');
+
+    mockFrom.mockReturnValueOnce(buildSelectChain(byMe)).mockReturnValueOnce(buildSelectChain(byOthers));
+    const { result } = renderHook(() => useBlocks(), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const sortByUser = (arr: BlockRecord[]) => [...arr].sort((a, b) => a.userId.localeCompare(b.userId));
+    expect(sortByUser(direct)).toEqual(sortByUser(result.current.data ?? []));
+  });
+
+  it('returns an empty array when userId is missing, same as useBlocks() being disabled', async () => {
+    const records = await fetchBlockRecords(undefined);
+    expect(records).toEqual([]);
+    expect(mockFrom).not.toHaveBeenCalled();
   });
 });
 

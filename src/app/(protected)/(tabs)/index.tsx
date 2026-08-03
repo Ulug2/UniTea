@@ -36,6 +36,7 @@ import CommunityFilterBar from "../../../features/communities/components/Communi
 import { useMyCommunities } from "../../../features/communities/hooks/useMyCommunities";
 import MatchmakingBanner from "../../../features/matchmaking/components/MatchmakingBanner";
 import { logActivity } from "../../../utils/activityLogger";
+import { saveCampusFeedToStorage, saveCommunityFeedToStorage } from "../../../utils/feedPersistence";
 
 type PostSummary = PostsSummaryViewRow;
 
@@ -82,7 +83,7 @@ function FeedPageContent({
   const { theme } = useTheme();
   const fontScale = PixelRatio.getFontScale();
   const searchActionIconSize = moderateScale(24) * fontScale;
-  const { session } = useAuth();
+  const { session, cachedProfile } = useAuth();
   const currentUserId = session?.user?.id;
   const { hiddenPostIds } = useFilterContext();
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
@@ -91,7 +92,13 @@ function FeedPageContent({
 
   const { data: currentUser } = useMyProfile(currentUserId);
   const isAdmin = currentUser?.is_admin === true;
-  const universityId = currentUser?.university_id;
+  // Falls back to AuthContext's AsyncStorage-persisted profile (available
+  // synchronously on cold start) while useMyProfile's own network fetch is
+  // still in flight — otherwise universityId is undefined for that window,
+  // which both disables useFeedPosts (enabled: !!universityId) and computes
+  // a differently-keyed, unseeded query key, defeating the AsyncStorage seed
+  // in feedPersistence.ts regardless of whether it exists (Phase 7.1).
+  const universityId = currentUser?.university_id ?? cachedProfile?.university_id ?? undefined;
 
   // Fetch posts for this filter + active community (Campus Feed when null).
   const {
@@ -138,6 +145,31 @@ function FeedPageContent({
       (post) => !hiddenPostIds.includes(post.post_id),
     );
   }, [postsData, hiddenPostIds]);
+
+  // Persist the Campus Feed's "hot" (default) tab first page to AsyncStorage
+  // after every successful fetch, so the next cold start can seed the RQ
+  // cache before the splash screen hides — same pattern as Lost & Found's
+  // save-effect (lostfound.tsx). Scoped to hot+Campus only: that's the
+  // default tab actually shown on cold start.
+  useEffect(() => {
+    if (filter !== "hot" || communityId !== null) return;
+    if (postsData?.pages?.length) {
+      saveCampusFeedToStorage(universityId, postsData.pages as PostSummary[][]);
+    }
+  }, [filter, communityId, postsData, universityId]);
+
+  // Same persistence for the single most-recently-viewed community's "hot"
+  // feed (Phase 7.1 follow-up: opening a community after a cold start showed
+  // the same skeleton/pop-in Campus Feed used to). Every community pane
+  // writes here on its own successful fetch — the storage key only ever
+  // holds the LAST one written, which is exactly the "most recently viewed"
+  // semantics seedCommunityFeedCacheFromStorage expects.
+  useEffect(() => {
+    if (filter !== "hot" || communityId === null) return;
+    if (postsData?.pages?.length) {
+      saveCommunityFeedToStorage(universityId, communityId, postsData.pages as PostSummary[][]);
+    }
+  }, [filter, communityId, postsData, universityId]);
 
   useEffect(() => {
     if (!__DEV__ || !ENABLE_FEED_DIAGNOSTICS) return;
@@ -201,6 +233,7 @@ function FeedPageContent({
         isVerified={item.is_verified}
         commentCount={item.comment_count}
         voteScore={item.vote_score}
+        userVote={item.user_vote}
         repostCount={item.repost_count}
         repostedFromPostId={item.reposted_from_post_id}
         repostComment={item.repost_comment}
@@ -217,9 +250,10 @@ function FeedPageContent({
         onImagePress={setFullscreenUri}
         onImageLoad={index < 5 ? onItemReady : undefined}
         isAdmin={isAdmin}
+        imagesAssumeCached={hasCachedPosts}
       />
     ),
-    [onItemReady, isAdmin],
+    [onItemReady, isAdmin, hasCachedPosts],
   );
 
   useEffect(() => {
@@ -569,7 +603,18 @@ export default function FeedScreen() {
     return () => clearTimeout(t);
   }, [feedScreenUniversityId, currentUserId]);
 
-  const bannerAnim = useRef(new Animated.Value(1)).current;
+  // Starts collapsed (was 1, i.e. "reserve full height from mount"). That
+  // never actually reserved anything in practice: MatchmakingBanner
+  // renders null while its own eligibility queries are still resolving, so
+  // the Animated.View wrapping it had no content to stretch its maxHeight
+  // to — actual height stayed 0 regardless of bannerAnim's value, and the
+  // real jump only happened later, abruptly, when MatchmakingBanner
+  // switched from null to real content with no animation involved at all.
+  // Starting at 0 here is the same effective starting point; the
+  // difference is handleBannerVisibilityResolved below now animates
+  // smoothly to 1 at the exact moment real content is about to appear,
+  // instead of an instant, unannounced snap (Phase 7.2).
+  const bannerAnim = useRef(new Animated.Value(0)).current;
   const bannerHiddenRef = useRef(false);
 
   const handleBannerScroll = useCallback(
@@ -580,6 +625,21 @@ export default function FeedScreen() {
       Animated.timing(bannerAnim, {
         toValue: shouldHide ? 0 : 1,
         duration: 200,
+        useNativeDriver: false,
+      }).start();
+    },
+    [bannerAnim],
+  );
+
+  const handleBannerVisibilityResolved = useCallback(
+    (visible: boolean) => {
+      // Nothing to show (ineligible), or the user already scrolled past
+      // the hide threshold before eligibility resolved — either way, stay
+      // collapsed; there's nothing to reveal, or it should stay hidden.
+      if (!visible || bannerHiddenRef.current) return;
+      Animated.timing(bannerAnim, {
+        toValue: 1,
+        duration: 300,
         useNativeDriver: false,
       }).start();
     },
@@ -678,7 +738,7 @@ export default function FeedScreen() {
             overflow: "hidden",
           }}
         >
-          <MatchmakingBanner />
+          <MatchmakingBanner onVisibilityResolved={handleBannerVisibilityResolved} />
         </Animated.View>
         <View style={styles.feedStack}>
           {mountedFeedKeyList.map((feedKey) => {

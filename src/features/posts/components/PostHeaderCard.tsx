@@ -51,6 +51,7 @@ export function PostHeaderCard({
       isVerified={post.is_verified || postUser?.is_verified || null}
       commentCount={commentCount}
       voteScore={post.vote_score ?? 0}
+      userVote={post.user_vote}
       repostCount={post.repost_count || 0}
       repostedFromPostId={post.reposted_from_post_id}
       repostComment={post.repost_comment}

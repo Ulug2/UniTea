@@ -331,3 +331,40 @@ describe('useMyPosts — totalVotes', () => {
     expect(result.current.totalVotes).toBe(8); // 5 + 3
   });
 });
+
+// ============================================================
+// isLoadingUserPosts / isLoadingTotalVotes (Phase 7.2: exposed so the
+// profile screen can fold these into its own initial loading gate instead
+// of showing "0 total votes" / an empty post list before they resolve).
+// ============================================================
+describe('useMyPosts — exposed loading states', () => {
+  it('both start true before either query resolves', () => {
+    mockFrom.mockReturnValue(makeSupabaseChain([]));
+
+    const { result } = renderHook(
+      () => useMyPosts('user-1', 'all'),
+      { wrapper: createWrapper() }
+    );
+
+    expect(result.current.isLoadingUserPosts).toBe(true);
+    expect(result.current.isLoadingTotalVotes).toBe(true);
+  });
+
+  it('both settle to false once their queries resolve', async () => {
+    const posts = [makePost({ post_id: 'p1', vote_score: 2 })];
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'bookmarks') return makeSupabaseChain([]);
+      return makeSupabaseChain(posts);
+    });
+
+    const { result } = renderHook(
+      () => useMyPosts('user-1', 'all'),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoadingUserPosts).toBe(false);
+      expect(result.current.isLoadingTotalVotes).toBe(false);
+    });
+  });
+});

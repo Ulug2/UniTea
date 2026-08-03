@@ -9,7 +9,8 @@ type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Vote = Database["public"]["Tables"]["votes"]["Row"];
 
 async function fetchCommentsWithMeta(
-  postId: string
+  postId: string,
+  viewerId: string | null,
 ): Promise<CommentVM[]> {
   if (!postId) return [];
 
@@ -37,24 +38,34 @@ async function fetchCommentsWithMeta(
   );
 
   const commentIds = comments.map((c) => c.id);
+  // Selecting user_id too (not just for the score aggregation) lets us also
+  // pick out the viewer's own vote per comment from this same, already-
+  // fetched result — no second query — so CommentListItem's useVote can be
+  // seeded with initialUserVote and never has to fetch it separately after
+  // the comment already rendered (Phase 7.2).
   const { data: votes } = await supabase
     .from("votes")
-    .select("comment_id, vote_type")
+    .select("comment_id, vote_type, user_id")
     .in("comment_id", commentIds);
 
   const scoreByCommentId = new Map<string, number>();
+  const userVoteByCommentId = new Map<string, "upvote" | "downvote">();
   (votes || []).forEach((vote) => {
     const id = vote.comment_id;
     if (!id) return;
     const current = scoreByCommentId.get(id) || 0;
     const delta = vote.vote_type === "upvote" ? 1 : -1;
     scoreByCommentId.set(id, current + delta);
+    if (viewerId && vote.user_id === viewerId) {
+      userVoteByCommentId.set(id, vote.vote_type as "upvote" | "downvote");
+    }
   });
 
   return comments.map((c) => ({
     ...c,
     user: c.user_id ? usersById.get(c.user_id) : undefined,
     score: scoreByCommentId.get(c.id) || 0,
+    user_vote: userVoteByCommentId.get(c.id) ?? null,
   }));
 }
 
@@ -81,7 +92,7 @@ export function usePostComments(
     enabled: Boolean(postId),
     queryFn: async () => {
       if (!postId) return [];
-      return fetchCommentsWithMeta(postId);
+      return fetchCommentsWithMeta(postId, viewerId);
     },
     staleTime: 1000 * 30, // show cached comments immediately; silently refresh after 30 s
     gcTime: 1000 * 60 * 15,

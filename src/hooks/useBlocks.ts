@@ -9,6 +9,64 @@ export type BlockRecord = {
   scope: BlockScope;
 };
 
+/**
+ * Single source of truth for fetching this user's block records, in the
+ * exact BlockRecord[] shape every consumer (isBlockedPost, isBlockedChat,
+ * isBlockedDirectMessage, hasBlockForScope) expects. Exported so
+ * _layout.tsx's cold-start prefetch can seed the ["blocks", userId] query
+ * cache with data from this same function, instead of maintaining a second,
+ * independent implementation that can silently drift out of sync with this
+ * one — which is exactly how the Phase 7.2 blocks-cache-shape bug happened
+ * (the prefetch wrote a flat string[] under this key, so every isBlockedX()
+ * check silently evaluated to false whenever that write won the race
+ * against this query's own fetch).
+ */
+export async function fetchBlockRecords(
+  currentUserId: string | null | undefined,
+): Promise<BlockRecord[]> {
+  if (!currentUserId) return [];
+
+  const [blockedByMe, blockedMe] = await Promise.all([
+    supabase
+      .from("blocks")
+      .select("blocked_id, block_scope")
+      .eq("blocker_id", currentUserId),
+    supabase
+      .from("blocks")
+      .select("blocker_id, block_scope")
+      .eq("blocked_id", currentUserId),
+  ]);
+
+  // Track unique (userId, scope) pairs — a user can have BOTH scopes
+  const seen = new Set<string>();
+  const records: BlockRecord[] = [];
+
+  blockedByMe.data?.forEach((b) => {
+    const scope = (b.block_scope as BlockScope) ?? "profile_only";
+    const key = `${b.blocked_id}:${scope}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      records.push({ userId: b.blocked_id, scope });
+    }
+  });
+
+  // For users who blocked me, preserve their real scope so
+  // isBlockedPost/isBlockedChat can scope-match correctly in both
+  // directions (an anonymous_only block placed on me must not be
+  // treated as if it were profile_only, or it would incorrectly
+  // affect my non-anonymous content's visibility to them).
+  blockedMe.data?.forEach((b) => {
+    const scope = (b.block_scope as BlockScope) ?? "profile_only";
+    const key = `${b.blocker_id}:${scope}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      records.push({ userId: b.blocker_id, scope });
+    }
+  });
+
+  return records;
+}
+
 export function useBlocks() {
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
@@ -16,49 +74,7 @@ export function useBlocks() {
   return useQuery<BlockRecord[]>({
     queryKey: ["blocks", currentUserId],
     enabled: Boolean(currentUserId),
-    queryFn: async () => {
-      if (!currentUserId) return [];
-
-      const [blockedByMe, blockedMe] = await Promise.all([
-        supabase
-          .from("blocks")
-          .select("blocked_id, block_scope")
-          .eq("blocker_id", currentUserId),
-        supabase
-          .from("blocks")
-          .select("blocker_id, block_scope")
-          .eq("blocked_id", currentUserId),
-      ]);
-
-      // Track unique (userId, scope) pairs — a user can have BOTH scopes
-      const seen = new Set<string>();
-      const records: BlockRecord[] = [];
-
-      blockedByMe.data?.forEach((b) => {
-        const scope = (b.block_scope as BlockScope) ?? "profile_only";
-        const key = `${b.blocked_id}:${scope}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          records.push({ userId: b.blocked_id, scope });
-        }
-      });
-
-      // For users who blocked me, preserve their real scope so
-      // isBlockedPost/isBlockedChat can scope-match correctly in both
-      // directions (an anonymous_only block placed on me must not be
-      // treated as if it were profile_only, or it would incorrectly
-      // affect my non-anonymous content's visibility to them).
-      blockedMe.data?.forEach((b) => {
-        const scope = (b.block_scope as BlockScope) ?? "profile_only";
-        const key = `${b.blocker_id}:${scope}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          records.push({ userId: b.blocker_id, scope });
-        }
-      });
-
-      return records;
-    },
+    queryFn: () => fetchBlockRecords(currentUserId),
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 30,
   });

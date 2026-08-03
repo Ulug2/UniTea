@@ -253,3 +253,21 @@ describe('ChatMessageRow — deleted image-only message uses the existing tombst
     expect(screen.queryByText('This message was deleted')).toBeNull();
   });
 });
+
+describe('ChatMessageRow — assumeCached image prop forwarding (Phase 7.2)', () => {
+  it('forwards assumeCached=true to ResponsiveImage for restored/cached messages', () => {
+    const item = makeMessage({ image_url: 'chat-images/photo.jpg' });
+
+    render(<ChatMessageRow item={item} {...defaultProps} assumeCached />);
+
+    expect(screen.getByTestId('responsive-image').props.assumeCached).toBe(true);
+  });
+
+  it('defaults assumeCached to false for genuinely new messages', () => {
+    const item = makeMessage({ image_url: 'chat-images/photo.jpg' });
+
+    render(<ChatMessageRow item={item} {...defaultProps} />);
+
+    expect(screen.getByTestId('responsive-image').props.assumeCached).toBe(false);
+  });
+});

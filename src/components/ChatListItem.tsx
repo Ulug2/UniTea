@@ -68,13 +68,25 @@ const ChatListItem = React.memo(function ChatListItem({
   const onImageLoadCalledRef = useRef(false);
 
   const hasRemoteAvatar = !isAnonymous && !!otherUser?.avatar_url;
+  // "No avatar to load yet" (the profile fetch hasn't resolved) must be
+  // treated differently from "genuinely no avatar" (profile resolved, no
+  // avatar_url) — conflating them defeated the chat list's reveal gate:
+  // this used to fire onImageLoad() immediately whenever
+  // otherUser?.avatar_url was falsy, which is also true while the profile
+  // is still loading, so the list could decide it was "ready" before real
+  // avatars/usernames had actually arrived (Phase 7.2).
+  const isProfileResolved = isAnonymous || otherUser !== null;
 
   useEffect(() => {
+    // Still waiting on the profile fetch — don't report ready yet. Either
+    // handleAvatarLoad (has an avatar) fires once the image itself loads,
+    // or this effect re-runs once isProfileResolved flips true (no avatar).
+    if (!isProfileResolved) return;
     if (!onImageLoad || hasRemoteAvatar) return;
     if (onImageLoadCalledRef.current) return;
     onImageLoadCalledRef.current = true;
     onImageLoad();
-  }, [onImageLoad, hasRemoteAvatar]);
+  }, [onImageLoad, hasRemoteAvatar, isProfileResolved]);
 
   const handleAvatarLoad = () => {
     if (!onImageLoad || onImageLoadCalledRef.current) return;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,7 +11,23 @@ import { useMatchWindowStatus } from '../hooks/useMatchWindowStatus';
 import MatchmakingFormModal from './MatchmakingFormModal';
 import MatchRevealModal from './MatchRevealModal';
 
-export default function MatchmakingBanner() {
+type MatchmakingBannerProps = {
+  /**
+   * Reports once — the first time this component's own eligibility logic
+   * resolves whether it will render real content or nothing — so the
+   * parent (the feed screen) can animate its reserved space into place
+   * exactly when real content appears, instead of the space snapping open
+   * instantly the moment this component's async data resolves (Phase 7.2).
+   * Never called again after the first report, even if visibility changes
+   * later (e.g. the user dismisses the banner) — that's a separate,
+   * already-existing interaction this fix doesn't touch.
+   */
+  onVisibilityResolved?: (visible: boolean) => void;
+};
+
+export default function MatchmakingBanner({
+  onVisibilityResolved,
+}: MatchmakingBannerProps = {}) {
   const { theme } = useTheme();
   const { session } = useAuth();
   const userId = session?.user?.id;
@@ -55,14 +71,31 @@ export default function MatchmakingBanner() {
     );
   }, [dismissKey]);
 
-  // ── Visibility logic (matches the spec state machine exactly) ──
-  if (!phase || phase === 'inactive' || phase === 'locked') return null;
-  if (phase === 'accepting' && submission) return null;
-  // In the revealed phase, only participants (who submitted) can see their match.
-  // Non-participants and users whose 24h window has expired both see nothing.
-  if (phase === 'revealed' && !submission) return null;
-  if (phase === 'revealed' && windowStatus.isExpired) return null;
-  if (phase === 'revealed' && dismissed) return null;
+  // ── Visibility logic (matches the spec state machine exactly — same
+  // conditions as before, restructured from early-returns into one
+  // boolean so it can also drive the onVisibilityResolved report below) ──
+  // In the revealed phase, only participants (who submitted) can see their
+  // match. Non-participants and users whose 24h window has expired both
+  // see nothing.
+  const isEligibilityLoading = phase === undefined;
+  const isVisible =
+    !isEligibilityLoading &&
+    phase !== 'inactive' &&
+    phase !== 'locked' &&
+    !(phase === 'accepting' && submission) &&
+    !(phase === 'revealed' && !submission) &&
+    !(phase === 'revealed' && windowStatus.isExpired) &&
+    !(phase === 'revealed' && dismissed);
+
+  const reportedVisibilityRef = useRef(false);
+  useEffect(() => {
+    if (isEligibilityLoading) return; // not determined yet — don't report
+    if (reportedVisibilityRef.current) return;
+    reportedVisibilityRef.current = true;
+    onVisibilityResolved?.(isVisible);
+  }, [isEligibilityLoading, isVisible, onVisibilityResolved]);
+
+  if (!isVisible) return null;
 
   const isAccepting = phase === 'accepting';
   const isRevealed = phase === 'revealed';

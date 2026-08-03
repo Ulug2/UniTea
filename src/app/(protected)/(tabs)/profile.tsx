@@ -101,6 +101,8 @@ export default function ProfileScreen() {
     isFetchingNextPage,
     refetchPosts,
     isRefetching,
+    isLoadingUserPosts,
+    isLoadingTotalVotes,
   } = useMyPosts(session?.user?.id, activeTab);
 
   // Get current user data
@@ -249,8 +251,16 @@ export default function ProfileScreen() {
     setForgotPasswordVisible(true);
   };
 
-  // Show loading while fetching profile to prevent "User" flicker
-  if (isLoadingProfile) {
+  // Show loading while fetching profile, this user's own posts, or their
+  // total vote count — all three change what the header/list actually say
+  // (username, "N total votes", the post list itself), so all three gate
+  // the initial reveal. Previously only isLoadingProfile gated this,
+  // so the header could show "0 total votes" and an empty post list for a
+  // beat before both popped in once useMyPosts' two queries settled
+  // (Phase 7.2). Bookmarked-tab loading is intentionally not included —
+  // "all" is the default tab shown here; switching tabs later is a
+  // separate, user-initiated action with its own inline loading.
+  if (isLoadingProfile || isLoadingUserPosts || isLoadingTotalVotes) {
     return (
       <View
         style={[

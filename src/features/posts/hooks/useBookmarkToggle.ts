@@ -50,9 +50,12 @@ export function useBookmarkToggle({ postId, viewerId }: UseBookmarkToggleOptions
       // Invalidating ["posts","feed"] used to force every mounted community's
       // (and Campus's) feed to refetch simultaneously for no reason.
       queryClient.invalidateQueries({ queryKey: ["bookmarks", postId] });
+      // Refetch immediately if Profile's "user-posts" query is mounted (default
+      // 'active' behavior) — Profile's tab screen never unmounts once visited,
+      // so 'none' here used to leave this permanently stale for the rest of the
+      // session once Profile had already been opened once (Phase 7.2).
       queryClient.invalidateQueries({
         queryKey: ["user-posts", viewerId],
-        refetchType: "none",
       });
     },
   });

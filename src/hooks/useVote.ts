@@ -116,11 +116,13 @@ export function useVote({
                     queryKey: ['post', postId],
                     refetchType: 'none'
                 });
-                // Mark the profile's post list stale so vote_score refreshes next
-                // time the profile tab is visited.
+                // Mark the profile's post list stale and refetch immediately if
+                // it's mounted (default 'active' behavior) — Profile's tab screen
+                // never unmounts once visited, so 'none' here used to leave this
+                // permanently stale for the rest of the session once Profile had
+                // already been opened once (Phase 7.2).
                 queryClient.invalidateQueries({
                     queryKey: ['user-posts'],
-                    refetchType: 'none'
                 });
                 // Immediately refetch the profile's total vote count so the
                 // header updates in real time (active = refetch if query is mounted).

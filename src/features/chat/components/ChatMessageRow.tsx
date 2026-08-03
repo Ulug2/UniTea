@@ -40,6 +40,15 @@ type ChatMessageRowProps = {
   isDark?: boolean;
   /** True when there is at least one other visible message on the same day. */
   hasVisibleSiblingSameDay?: boolean;
+  /**
+   * When true, this message's image skips its initial loading-spinner frame
+   * (see ResponsiveImage's assumeCached prop) — set for messages that were
+   * already part of the chat screen's very first render (restored from
+   * cache or an already-resolved fetch), never for messages that arrive
+   * afterward (realtime, a message the user just sent, older pages loaded
+   * via pagination), which keep their normal loading behavior (Phase 7.2).
+   */
+  assumeCached?: boolean;
 };
 
 function ChatMessageRowInner({
@@ -57,6 +66,7 @@ function ChatMessageRowInner({
   getReplyAuthorName,
   isDark = false,
   hasVisibleSiblingSameDay = false,
+  assumeCached = false,
 }: ChatMessageRowProps) {
   const isCurrentUser = item.user_id === currentUserId;
   const sendStatus = item.sendStatus;
@@ -264,6 +274,7 @@ function ChatMessageRowInner({
                 knownAspectRatio={item.image_aspect_ratio}
                 borderRadius={0}
                 backgroundColor="#F3F4F6"
+                assumeCached={assumeCached}
               />
               {item.id.startsWith("temp-") && (
                 <View style={chatDetailStyles.messageImageSendingOverlay}>
@@ -440,7 +451,8 @@ function areMessageRowPropsEqual(
     (prev.nextMsg?.id ?? null) === (next.nextMsg?.id ?? null) &&
     prev.currentUserId === next.currentUserId &&
     prev.isDark === next.isDark &&
-    prev.theme === next.theme
+    prev.theme === next.theme &&
+    prev.assumeCached === next.assumeCached
   );
 }
 

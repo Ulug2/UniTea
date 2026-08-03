@@ -47,6 +47,13 @@ type LostFoundListItemProps = {
   onLongPress?: (post: LostFoundPostForMenu) => void;
   /** Called when avatar and post image (if any) have finished loading (for skeleton reveal) */
   onImageLoad?: () => void;
+  /**
+   * When true, this post's images skip their initial loading-spinner frame
+   * (see ResponsiveImage's assumeCached prop) — pass the list's own
+   * hasCachedPosts-equivalent flag so a cold start seeded from AsyncStorage
+   * doesn't show a spinner-then-pop-in for every image.
+   */
+  imagesAssumeCached?: boolean;
 };
 
 function normalizeImagePaths(
@@ -70,11 +77,13 @@ function LostFoundGalleryItem({
   isLast,
   onLoadImage,
   onPress,
+  assumeCached,
 }: {
   uri: string;
   isLast: boolean;
   onLoadImage?: () => void;
   onPress: () => void;
+  assumeCached?: boolean;
 }) {
   return (
     <Pressable
@@ -90,6 +99,7 @@ function LostFoundGalleryItem({
         mode="galleryPreview"
         backgroundColor="#F3F4F6"
         onLoad={onLoadImage}
+        assumeCached={assumeCached}
       />
     </Pressable>
   );
@@ -99,10 +109,12 @@ function LostFoundSingleImage({
   uri,
   onPress,
   onLoadImage,
+  assumeCached,
 }: {
   uri: string;
   onPress: () => void;
   onLoadImage?: () => void;
+  assumeCached?: boolean;
 }) {
   return (
     <ResponsiveImage
@@ -114,6 +126,7 @@ function LostFoundSingleImage({
       backgroundColor="#F3F4F6"
       onLoad={onLoadImage}
       onPress={onPress}
+      assumeCached={assumeCached}
     />
   );
 }
@@ -139,7 +152,8 @@ const arePropsEqual = (
     prevProps.avatarUrl === nextProps.avatarUrl &&
     prevProps.isVerified === nextProps.isVerified &&
     prevProps.onLongPress === nextProps.onLongPress &&
-    prevProps.onImageLoad === nextProps.onImageLoad
+    prevProps.onImageLoad === nextProps.onImageLoad &&
+    prevProps.imagesAssumeCached === nextProps.imagesAssumeCached
   );
 };
 
@@ -158,6 +172,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   avatarUrl,
   onLongPress,
   onImageLoad,
+  imagesAssumeCached = false,
 }: LostFoundListItemProps) {
   const { theme } = useTheme();
   const fontScale = PixelRatio.getFontScale();
@@ -581,6 +596,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
               uri={displayImageUrls[0]}
               onLoadImage={() => setImageLoaded(true)}
               onPress={() => router.push(`/lostfoundpost/${postId}`)}
+              assumeCached={imagesAssumeCached}
             />
           ) : (
             <ScrollView
@@ -597,6 +613,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
                   isLast={index === displayImageUrls.length - 1}
                   onLoadImage={() => setImageLoaded(true)}
                   onPress={() => router.push(`/lostfoundpost/${postId}`)}
+                  assumeCached={imagesAssumeCached}
                 />
               ))}
             </ScrollView>

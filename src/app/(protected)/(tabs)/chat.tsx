@@ -661,21 +661,34 @@ export default function ChatScreen() {
   );
 
   // Persist chat list to AsyncStorage so cold-start shows data instantly.
-  // Wait until users are loaded too so avatars/names are cached alongside summaries.
+  // Wait until users are loaded too so avatars/names are cached alongside
+  // summaries — the comment already said this, but the guard below never
+  // actually checked isLoadingUsers, so a save could fire with users still
+  // [] (still loading). If the app was then backgrounded/killed before a
+  // later, correct write happened, the next cold start would seed
+  // summaries with empty profiles, reproducing the same avatar/username
+  // pop-in on what should have been a cache hit (Phase 7.2).
   useEffect(() => {
-    if (!currentUserId || !chatSummaries.length) return;
+    if (!currentUserId || !chatSummaries.length || isLoadingUsers) return;
     saveChatToStorage(
       currentUserId,
       chatSummaries as Record<string, unknown>[],
       users as Record<string, unknown>[],
       participantIds,
     );
-  }, [chatSummaries, users, participantIds, currentUserId]);
+  }, [chatSummaries, users, participantIds, currentUserId, isLoadingUsers]);
 
+  // initialRevealed must also wait on isLoadingUsers, not just chatSummaries
+  // — chat-users is a separate, dependent query (its key depends on
+  // chatSummaries already existing), so summaries can settle (from a
+  // cold-start seed OR a live refetch) before the corresponding users
+  // query does. Without this, the list could decide it was already
+  // "ready" (skipping the reveal wait entirely) while every row's real
+  // avatar/username was still in flight (Phase 7.2).
   const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
     minItems: 3,
     timeoutMs: 2500,
-    initialRevealed: chatSummaries.length > 0,
+    initialRevealed: chatSummaries.length > 0 && !isLoadingUsers,
   });
 
   // Render function for FlatList - must be defined at component level (Rules of Hooks)

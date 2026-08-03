@@ -28,6 +28,7 @@ import type { PostsSummaryViewRow } from "../../../types/posts";
 import ResponsiveImage from "../../../components/ResponsiveImage";
 import EntityAvatar from "../../../components/EntityAvatar";
 import { getAvatarForEntity } from "../../../utils/entityDisplay";
+import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -305,10 +306,12 @@ function LostFoundDetailGalleryItem({
   uri,
   isLast,
   onPress,
+  onLoad,
 }: {
   uri: string;
   isLast: boolean;
   onPress: () => void;
+  onLoad?: () => void;
 }) {
   return (
     <Pressable
@@ -323,6 +326,7 @@ function LostFoundDetailGalleryItem({
         sourceKind={uri.startsWith("http") ? "uri" : "supabasePath"}
         mode="galleryPreview"
         backgroundColor="#F3F4F6"
+        onLoad={onLoad}
       />
     </Pressable>
   );
@@ -331,9 +335,11 @@ function LostFoundDetailGalleryItem({
 function LostFoundDetailSingleImage({
   uri,
   onPress,
+  onLoad,
 }: {
   uri: string;
   onPress: () => void;
+  onLoad?: () => void;
 }) {
   return (
     <ResponsiveImage
@@ -344,6 +350,7 @@ function LostFoundDetailSingleImage({
       style={{ width: "100%" }}
       backgroundColor="#F3F4F6"
       onPress={onPress}
+      onLoad={onLoad}
     />
   );
 }
@@ -447,6 +454,32 @@ export default function LostFoundPostDetailed() {
     },
     enabled: !!postId,
   });
+
+  const displayImageUrls = normalizeImagePaths(post?.image_url, post?.image_urls);
+
+  // Mirrors LostFoundListItem's own avatar/image readiness coordination —
+  // this screen previously had none, so once `post` resolved, the whole
+  // card rendered immediately with avatar+image each independently
+  // starting their own async load, popping in separately after the card
+  // already looked "done" (Phase 7.2). minItems stays fixed at 2 (an
+  // avatar slot + an image slot); when a slot has nothing to load (no
+  // avatar / no image on this post), the effects below immediately report
+  // that slot ready instead of waiting on it. Bounded by the hook's own
+  // 2.5s timeout, same safety net the feed/list already rely on.
+  const { shouldReveal: isMediaReady, onItemReady: reportMediaReady } =
+    useRevealAfterFirstNImages({
+      minItems: 2,
+      timeoutMs: 2500,
+      resetKey: postId,
+    });
+
+  useEffect(() => {
+    if (post && !post.avatar_url) reportMediaReady();
+  }, [post, reportMediaReady]);
+
+  useEffect(() => {
+    if (post && displayImageUrls.length === 0) reportMediaReady();
+  }, [post, displayImageUrls.length, reportMediaReady]);
 
   // ── Chat handler ─────────────────────────────────────────────────────────────
   const handleContactPress = async () => {
@@ -557,11 +590,25 @@ export default function LostFoundPostDetailed() {
     );
   }
 
+  // Post data is ready, but avatar/image aren't confirmed loaded yet (or
+  // confirmed unnecessary) — same lightweight spinner as the isLoading
+  // case above, just extended slightly (bounded by the 2.5s timeout in
+  // the hook) so the card never appears "done" and then changes.
+  if (!isMediaReady) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    );
+  }
+
   // ── Derived data ─────────────────────────────────────────────────────────────
+  // displayImageUrls is computed earlier (before the loading gates above —
+  // it feeds the media-readiness effects) using post?.image_url/image_urls;
+  // it's identical here now that post is confirmed non-null.
   const isLost = post.category === "lost";
   const isAnonymous = post.is_anonymous ?? false;
   const isOwnPost = currentUserId === post.user_id;
-  const displayImageUrls = normalizeImagePaths(post.image_url, post.image_urls);
 
   const categoryPrefix = isLost ? "Lost" : "Found";
   const title = post.title
@@ -620,12 +667,14 @@ export default function LostFoundPostDetailed() {
                   <Image
                     source={{ uri: post.avatar_url }}
                     style={styles.avatarImage}
+                    onLoad={reportMediaReady}
                   />
                 ) : (
                   <SupabaseImage
                     path={post.avatar_url}
                     bucket="avatars"
                     style={styles.avatarImage}
+                    onLoad={reportMediaReady}
                   />
                 )
               ) : isAnonymous ? (
@@ -718,6 +767,7 @@ export default function LostFoundPostDetailed() {
                   onPress={() =>
                     setFullscreenUri(resolvePostImageUri(displayImageUrls[0]))
                   }
+                  onLoad={reportMediaReady}
                 />
               ) : (
                 <ScrollView
@@ -746,6 +796,7 @@ export default function LostFoundPostDetailed() {
                       uri={uri}
                       isLast={index === displayImageUrls.length - 1}
                       onPress={() => setFullscreenUri(resolvePostImageUri(uri))}
+                      onLoad={index === 0 ? reportMediaReady : undefined}
                     />
                   ))}
                 </ScrollView>

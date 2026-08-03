@@ -26,6 +26,7 @@ export function useMyPosts(userId: string | undefined, activeTab: ProfileTab) {
     isFetchingNextPage,
     refetch: refetchPosts,
     isRefetching,
+    isLoading: isLoadingUserPosts,
   } = useInfiniteQuery<PostSummary[]>({
     queryKey: ["user-posts", userId],
     queryFn: async ({ pageParam }) => {
@@ -132,7 +133,7 @@ export function useMyPosts(userId: string | undefined, activeTab: ProfileTab) {
   // Fetch the TRUE total vote count across ALL of the user's posts in one query.
   // Computing it from the paginated userPosts was wrong — it grew as more pages
   // loaded (e.g. 20 → 26 as page 2 arrived). This query has no pagination limit.
-  const { data: totalVotes = 0 } = useQuery<number>({
+  const { data: totalVotes = 0, isLoading: isLoadingTotalVotes } = useQuery<number>({
     queryKey: ["user-total-votes", userId],
     queryFn: async () => {
       if (!userId) return 0;
@@ -188,6 +189,17 @@ export function useMyPosts(userId: string | undefined, activeTab: ProfileTab) {
     isFetchingNextPage,
     refetchPosts,
     isRefetching,
+    // Exposed so the profile screen can fold these into its own initial
+    // loading gate (Phase 7.2) — without this, the screen showed as
+    // "loaded" (via isLoadingProfile alone) while these two independent
+    // queries were still resolving, so the header briefly showed "0 total
+    // votes" and the post list rendered blank before both popped in a beat
+    // later. Only userPosts/totalVotes are exposed (not the bookmarked
+    // query) — "all" is the default tab shown on first paint, and
+    // bookmarked's own loading is a separate, tab-switch-triggered concern
+    // out of scope here.
+    isLoadingUserPosts,
+    isLoadingTotalVotes,
   };
 }
 

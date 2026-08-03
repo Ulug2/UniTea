@@ -13,6 +13,7 @@ const mockSupabaseImage = jest.fn((_props: any) => null);
 jest.mock('../../components/SupabaseImage', () => (props: any) => mockSupabaseImage(props));
 
 import React from 'react';
+import { ActivityIndicator } from 'react-native';
 import { render } from '@testing-library/react-native';
 import ResponsiveImage from '../../components/ResponsiveImage';
 
@@ -79,6 +80,44 @@ describe('ResponsiveImage cachePolicy', () => {
     expect(mockSupabaseImage).toHaveBeenCalledWith(
       expect.objectContaining({ cachePolicy: 'disk' }),
     );
+  });
+});
+
+describe('ResponsiveImage assumeCached (Phase 7.1 follow-up: no spinner-then-pop-in for cached posts)', () => {
+  it('skips the initial loading-spinner overlay when assumeCached is true', () => {
+    const utils = render(
+      <ResponsiveImage
+        source="u1/post-image.webp"
+        bucket="post-images"
+        mode="single"
+        knownAspectRatio={1}
+        assumeCached
+      />,
+    );
+
+    expect(utils.UNSAFE_queryByType(ActivityIndicator)).toBeNull();
+  });
+
+  it('shows the loading-spinner overlay by default (assumeCached omitted) — existing behavior unchanged', () => {
+    const utils = render(
+      <ResponsiveImage source="u1/post-image.webp" bucket="post-images" mode="single" knownAspectRatio={1} />,
+    );
+
+    expect(utils.UNSAFE_queryByType(ActivityIndicator)).not.toBeNull();
+  });
+
+  it('shows the loading-spinner overlay when assumeCached is explicitly false', () => {
+    const utils = render(
+      <ResponsiveImage
+        source="u1/post-image.webp"
+        bucket="post-images"
+        mode="single"
+        knownAspectRatio={1}
+        assumeCached={false}
+      />,
+    );
+
+    expect(utils.UNSAFE_queryByType(ActivityIndicator)).not.toBeNull();
   });
 });
 

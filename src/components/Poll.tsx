@@ -1,48 +1,16 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
-import { logger } from "../utils/logger";
+import { savePollToStorage } from "../utils/feedPersistence";
+import { usePoll, type PollOption, type PollVote, type PollData } from "../hooks/usePoll";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
-function isLikelyTransientGatewayError(error: unknown): boolean {
-  const msg = String(
-    error && typeof error === "object" && "message" in error
-      ? (error as { message?: string }).message
-      : error,
-  );
-  return (
-    msg.includes("502") ||
-    msg.includes("Bad gateway") ||
-    msg.includes("<!DOCTYPE html>")
-  );
-}
-
 type PollProps = {
   postId: string;
-};
-
-type PollOption = {
-  id: string;
-  option_text: string;
-  position: number;
-};
-
-type PollVote = {
-  id: string;
-  option_id: string;
-  user_id: string;
-};
-
-type PollData = {
-  id: string;
-  expires_at: string | null;
-  allow_multiple: boolean;
-  poll_options: PollOption[];
-  poll_votes: PollVote[];
 };
 
 const Poll: React.FC<PollProps> = ({ postId }) => {
@@ -51,51 +19,19 @@ const Poll: React.FC<PollProps> = ({ postId }) => {
   const queryClient = useQueryClient();
   const currentUserId = session?.user?.id ?? null;
 
-  const {
-    data: poll,
-    isLoading,
-  } = useQuery<PollData | null>({
-    queryKey: ["poll", postId, currentUserId],
-    enabled: !!postId && !postId.startsWith("temp-"),
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("polls")
-        .select(
-          `
-            id,
-            expires_at,
-            allow_multiple,
-            poll_options (
-              id,
-              option_text,
-              position
-            ),
-            poll_votes (
-              id,
-              option_id,
-              user_id
-            )
-          `
-        )
-        .eq("post_id", postId)
-        .maybeSingle();
+  const { data: poll, isLoading } = usePoll(postId, currentUserId);
 
-      if (error) {
-        if (!isLikelyTransientGatewayError(error)) {
-          logger.error("[Poll] fetch error", error as Error);
-        }
-        throw error;
-      }
-
-      if (!data) return null;
-
-      return data as PollData;
-    },
-    retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 8000),
-    staleTime: 1000 * 30,
-    gcTime: 1000 * 60 * 5,
-  });
+  // Persist after every successful fetch so the next cold start can seed
+  // this exact poll's cache (see feedPersistence.ts's
+  // seedPollCachesForPosts, called from _layout.tsx for the Campus Feed's
+  // seeded posts) — without this, a post's own row renders immediately from
+  // the feed seed, but its poll still popped in only once this component's
+  // own query resolved fresh, every cold start.
+  useEffect(() => {
+    if (poll) {
+      savePollToStorage(postId, poll);
+    }
+  }, [poll, postId]);
 
   const { options, totalVotes, votesByOptionId, userSelectedOptionId, isExpired } =
     useMemo(() => {

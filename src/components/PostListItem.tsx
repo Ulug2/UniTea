@@ -243,6 +243,8 @@ type PostListItemProps = {
   // Aggregated data from view
   commentCount: number;
   voteScore: number;
+  /** Current viewer's own vote on this post, from posts_summary_view.user_vote — seeds useVote so the arrow highlight doesn't pop in after the score already shows (Phase 7.2). */
+  userVote?: "upvote" | "downvote" | null;
 
   // Repost data from view
   repostCount?: number;
@@ -266,6 +268,14 @@ type PostListItemProps = {
   onBookmarkPress?: () => void;
   /** Called when all images/avatars in this post have finished loading (for feed skeleton) */
   onImageLoad?: () => void;
+  /**
+   * When true, this post's own images skip their initial loading-spinner
+   * frame (see ResponsiveImage's assumeCached prop) — pass the feed's
+   * hasCachedPosts flag so a cold start seeded from AsyncStorage doesn't
+   * show a spinner-then-pop-in for every image even though the outer feed
+   * skeleton is already skipped (Phase 7.1 follow-up).
+   */
+  imagesAssumeCached?: boolean;
   /** Called when any post image is tapped — parent screen manages the fullscreen modal. */
   onImagePress?: (uri: string) => void;
   /**
@@ -298,6 +308,7 @@ type HorizontalGalleryProps = {
   onImagePress?: (uri: string) => void;
   onLoadImage?: () => void;
   topMargin?: number;
+  assumeCached?: boolean;
 };
 
 function HorizontalImageGallery({
@@ -305,6 +316,7 @@ function HorizontalImageGallery({
   onImagePress,
   onLoadImage,
   topMargin = 14,
+  assumeCached = false,
 }: HorizontalGalleryProps) {
   return (
     <FlatList
@@ -319,6 +331,7 @@ function HorizontalImageGallery({
           isLast={index === imagePaths.length - 1}
           onPress={onImagePress}
           onLoadImage={onLoadImage}
+          assumeCached={assumeCached}
         />
       )}
       contentContainerStyle={{
@@ -335,6 +348,7 @@ type HorizontalGalleryItemProps = {
   isLast: boolean;
   onPress?: (uri: string) => void;
   onLoadImage?: () => void;
+  assumeCached?: boolean;
 };
 
 function HorizontalImageGalleryItem({
@@ -342,6 +356,7 @@ function HorizontalImageGalleryItem({
   isLast,
   onPress,
   onLoadImage,
+  assumeCached = false,
 }: HorizontalGalleryItemProps) {
   const resolvedUri = resolvePostImageUri(path);
 
@@ -365,6 +380,7 @@ function HorizontalImageGalleryItem({
         mode="galleryPreview"
         backgroundColor="#F0F0F0"
         onLoad={onLoadImage}
+        assumeCached={assumeCached}
       />
     </Pressable>
   );
@@ -375,11 +391,13 @@ function AdaptiveSingleImage({
   aspectRatio,
   onPress,
   onLoadImage,
+  assumeCached = false,
 }: {
   path: string;
   aspectRatio?: number | null;
   onPress?: (uri: string) => void;
   onLoadImage?: () => void;
+  assumeCached?: boolean;
 }) {
   const resolvedUri = resolvePostImageUri(path);
   return (
@@ -392,6 +410,7 @@ function AdaptiveSingleImage({
       style={stylesForAdaptiveSingleImage}
       backgroundColor="#F0F0F0"
       onLoad={onLoadImage}
+      assumeCached={assumeCached}
       onPress={
         onPress && resolvedUri
           ? () => {
@@ -460,7 +479,9 @@ const arePropsEqual = (
       nextProps.disableCommentInteraction &&
     prevProps.isBookmarked === nextProps.isBookmarked &&
     prevProps.onImagePress === nextProps.onImagePress &&
-    prevProps.isAdmin === nextProps.isAdmin
+    prevProps.isAdmin === nextProps.isAdmin &&
+    prevProps.imagesAssumeCached === nextProps.imagesAssumeCached &&
+    prevProps.userVote === nextProps.userVote
   );
 };
 
@@ -480,6 +501,7 @@ const PostListItem = React.memo(function PostListItem({
   isVerified,
   commentCount,
   voteScore,
+  userVote: initialUserVote,
   repostCount = 0,
   repostedFromPostId,
   repostComment,
@@ -504,6 +526,7 @@ const PostListItem = React.memo(function PostListItem({
   onImageLoad,
   onImagePress,
   isAdmin = false,
+  imagesAssumeCached = false,
 }: PostListItemProps) {
   const { theme } = useTheme();
   const { session } = useAuth();
@@ -691,6 +714,7 @@ const PostListItem = React.memo(function PostListItem({
   } = useVote({
     postId,
     initialScore: voteScore,
+    initialUserVote,
   });
 
   const anonChatMutation = useInitiateAnonymousChat();
@@ -827,12 +851,14 @@ const PostListItem = React.memo(function PostListItem({
                   aspectRatio={imageAspectRatio}
                   onPress={onImagePress}
                   onLoadImage={markImageLoaded}
+                  assumeCached={imagesAssumeCached}
                 />
               ) : (
                 <AdaptiveSingleImage
                   path={displayImageUrls[0]}
                   aspectRatio={imageAspectRatio}
                   onLoadImage={markImageLoaded}
+                  assumeCached={imagesAssumeCached}
                 />
               )
             ) : (
@@ -840,6 +866,7 @@ const PostListItem = React.memo(function PostListItem({
                 imagePaths={displayImageUrls}
                 onImagePress={onImagePress}
                 onLoadImage={markImageLoaded}
+                assumeCached={imagesAssumeCached}
               />
             ))}
 
@@ -922,11 +949,13 @@ const PostListItem = React.memo(function PostListItem({
                         path={displayOriginalImageUrls[0]}
                         aspectRatio={originalImageAspectRatio}
                         onPress={onImagePress}
+                        assumeCached={imagesAssumeCached}
                       />
                     ) : (
                       <AdaptiveSingleImage
                         path={displayOriginalImageUrls[0]}
                         aspectRatio={originalImageAspectRatio}
+                        assumeCached={imagesAssumeCached}
                       />
                     )
                   ) : (
@@ -934,6 +963,7 @@ const PostListItem = React.memo(function PostListItem({
                       imagePaths={displayOriginalImageUrls}
                       onImagePress={onImagePress}
                       topMargin={14}
+                      assumeCached={imagesAssumeCached}
                     />
                   ))}
                 {/* Original post poll (Poll renders null if the post has no poll) */}
@@ -956,12 +986,14 @@ const PostListItem = React.memo(function PostListItem({
                         aspectRatio={imageAspectRatio}
                         onPress={onImagePress}
                         onLoadImage={markImageLoaded}
+                        assumeCached={imagesAssumeCached}
                       />
                     ) : (
                       <AdaptiveSingleImage
                         path={displayImageUrls[0]}
                         aspectRatio={imageAspectRatio}
                         onLoadImage={markImageLoaded}
+                        assumeCached={imagesAssumeCached}
                       />
                     )
                   ) : (
@@ -969,6 +1001,7 @@ const PostListItem = React.memo(function PostListItem({
                       imagePaths={displayImageUrls}
                       onImagePress={onImagePress}
                       onLoadImage={markImageLoaded}
+                      assumeCached={imagesAssumeCached}
                     />
                   ))}
                 {hasPostTitle && (

@@ -38,6 +38,9 @@ import { logger } from "../utils/logger";
 import ErrorBoundary from "../components/ErrorBoundary";
 import {
   seedLostFoundCacheFromStorage,
+  seedCampusFeedCacheFromStorage,
+  seedCommunityFeedCacheFromStorage,
+  seedPollCachesForPosts,
   seedChatCacheFromStorage,
   seedChatMessagesCacheFromStorage,
   seedUserPostsCacheFromStorage,
@@ -45,6 +48,8 @@ import {
 } from "../utils/feedPersistence";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
 import { preloadUniversityAvatars } from "../config/universityBranding";
+import { fetchBlockRecords } from "../hooks/useBlocks";
+import { getAvatarUri } from "../utils/avatarUri";
 
 // RN host components accept runtime defaultProps; typings omit it.
 (Text as any).defaultProps ??= {};
@@ -61,7 +66,6 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 const POSTS_PER_PAGE = 10;
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 
 // Prefetch initial data for authenticated users
 async function prefetchInitialData(userId: string, queryClient: any) {
@@ -119,17 +123,16 @@ async function prefetchInitialData(userId: string, queryClient: any) {
       );
     }
 
-    // Prefetch blocked users
-    const [blockedByMe, blockedMe] = await Promise.all([
-      supabase.from("blocks").select("blocked_id").eq("blocker_id", userId),
-      supabase.from("blocks").select("blocker_id").eq("blocked_id", userId),
-    ]);
-
-    const blockedUserIds = new Set<string>();
-    blockedByMe.data?.forEach((b: any) => blockedUserIds.add(b.blocked_id));
-    blockedMe.data?.forEach((b: any) => blockedUserIds.add(b.blocker_id));
-
-    queryClient.setQueryData(["blocks", userId], Array.from(blockedUserIds));
+    // Prefetch blocked users — via the exact same function useBlocks() uses,
+    // so this cache entry can never drift out of the BlockRecord[] shape
+    // every consumer (isBlockedPost, isBlockedChat, isBlockedDirectMessage)
+    // expects. Previously this reimplemented the fetch independently and
+    // wrote a flat string[] instead — whichever write landed last (this one,
+    // or useBlocks()'s own fetch) determined whether block filtering worked
+    // at all for up to staleTime, since every isBlockedX() check silently
+    // evaluates to false against a string[] (Phase 7.2 fix).
+    const blockRecords = await fetchBlockRecords(userId);
+    queryClient.setQueryData(["blocks", userId], blockRecords);
 
     return profileData ?? null;
   } catch (error) {
@@ -229,14 +232,27 @@ function RootLayoutContent() {
         //    without waiting on the network profile fetch below. On a brand-new
         //    login with no prior cached profile it's undefined and the seed is a
         //    no-op, same as any first visit.
-        await Promise.all([
+        const [, campusFeedPostIds, communityFeedPostIds] = await Promise.all([
           seedLostFoundCacheFromStorage(queryClient, cachedProfile?.university_id),
+          seedCampusFeedCacheFromStorage(queryClient, cachedProfile?.university_id),
+          seedCommunityFeedCacheFromStorage(queryClient, cachedProfile?.university_id),
           seedChatCacheFromStorage(queryClient, session.user.id),
           seedChatMessagesCacheFromStorage(queryClient, session.user.id),
           seedUserPostsCacheFromStorage(queryClient, session.user.id),
           seedUserTotalVotesCacheFromStorage(queryClient, session.user.id),
           preloadUniversityAvatars(),
         ]);
+
+        // 1b. Poll data can't be seeded until we know which posts the Campus
+        //     and community feed seeds above actually contain
+        //     (posts_summary_view carries no has-a-poll flag) — see
+        //     feedPersistence.ts's seedPollCachesForPosts. Still runs before
+        //     setCacheReady(true) below, same as every other seed here.
+        await seedPollCachesForPosts(
+          queryClient,
+          [...(campusFeedPostIds ?? []), ...(communityFeedPostIds ?? [])],
+          session.user.id,
+        );
 
         // 2. Ungate <Slot />. The Animated.View still has opacity:0 so the user
         //    sees nothing, but hooks now run against the pre-seeded cache.
@@ -266,10 +282,13 @@ function RootLayoutContent() {
               });
 
               if (profileData.avatar_url) {
-                const avatarUrl = profileData.avatar_url.startsWith("http")
-                  ? profileData.avatar_url
-                  : `${SUPABASE_URL}/storage/v1/object/public/avatars/${profileData.avatar_url}`;
-                ExpoImage.prefetch(avatarUrl);
+                // Must match the exact URL FlippableAvatar/CachedAvatar/EntityAvatar
+                // request (including the ?v= cache-busting param) — expo-image's
+                // disk cache keys purely on the URL string, so a mismatched prefetch
+                // URL silently warms a cache entry that's never read (Phase 7.2).
+                ExpoImage.prefetch(
+                  getAvatarUri(profileData.avatar_url, profileData.updated_at),
+                );
               }
             }
           } catch (error) {

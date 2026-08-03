@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ActivityIndicator,
   ImageStyle,
@@ -32,6 +32,18 @@ type ResponsiveImageProps = {
   knownAspectRatio?: number | null;
   /** Cache-busting token for a deterministic path that was overwritten in place — see SupabaseImage. */
   version?: string | number | null;
+  /**
+   * When true, skip the initial loading-spinner-overlay frame — used when
+   * the caller already knows this exact image was successfully rendered in
+   * a prior session (e.g. the feed's AsyncStorage-seeded cold-start data,
+   * see feedPersistence.ts) and is very likely already in expo-image's disk
+   * cache. onLoad/onError still fire normally and correct the state if the
+   * assumption is wrong (e.g. genuinely new content), so this is a
+   * best-effort optimization, not a correctness guarantee. Defaults to
+   * false — every other caller (chat, avatars, communities, a first-ever
+   * fetch) is unaffected.
+   */
+  assumeCached?: boolean;
   borderRadius?: number;
   backgroundColor?: string;
   onPress?: () => void;
@@ -62,6 +74,7 @@ export default function ResponsiveImage({
   mode = "single",
   knownAspectRatio,
   version,
+  assumeCached = false,
   borderRadius = moderateScale(10),
   backgroundColor = DEFAULT_BACKGROUND,
   onPress,
@@ -75,17 +88,36 @@ export default function ResponsiveImage({
   const aspectRatio = hasKnownRatio ? knownAspectRatio : dynamicAspectRatio;
   const isDirectUri = sourceKind === "uri" || (sourceKind === "auto" && isUri(source));
 
-  // Always start "loading" and let the real onLoad/onError event decide when
-  // that's no longer true. Knowing the image URL synchronously (true for
-  // public buckets) is not the same as the image's bytes being downloaded and
-  // decoded — treating them as equivalent was why previously-sent chat images
-  // showed a bare white flash with no spinner while fetching from network.
-  // For an already-cached image, expo-image resolves onLoad within the same
-  // tick, so this never produces a visible placeholder flash in practice.
-  const [isImageLoading, setIsImageLoading] = useState(true);
+  // Default to always starting "loading" and letting the real onLoad/onError
+  // event decide when that's no longer true. Knowing the image URL
+  // synchronously (true for public buckets) is not the same as the image's
+  // bytes being downloaded and decoded — treating them as equivalent was why
+  // previously-sent chat images showed a bare white flash with no spinner
+  // while fetching from network.
+  //
+  // assumeCached opts out of that initial spinner frame specifically for
+  // callers that already know (from a prior successful render, persisted
+  // across cold starts — see the assumeCached prop doc above) that this
+  // exact image is very likely already in expo-image's disk cache. Without
+  // this, every image re-showed its loading-spinner overlay on every cold
+  // start even once the Phase 7.1 feed-list fix eliminated the outer
+  // skeleton — onLoad/onError still fire and correct isImageLoading either
+  // way, so a wrong assumption just means one missed optimization, not a
+  // stuck or broken state.
+  const [isImageLoading, setIsImageLoading] = useState(!assumeCached);
   const [isImageError, setIsImageError] = useState(false);
 
+  // Skip the reset on the very first render — it would otherwise immediately
+  // flip an assumeCached-optimized isImageLoading=false back to true on
+  // mount, since effects always run at least once after the initial render.
+  // Only a genuine source change afterward (e.g. this component instance
+  // reused for a different image) should reset to the loading state.
+  const isFirstRenderRef = useRef(true);
   useEffect(() => {
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+      return;
+    }
     setIsImageLoading(true);
     setIsImageError(false);
   }, [source]);
