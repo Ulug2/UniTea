@@ -20,6 +20,20 @@ export type BlockRecord = {
  * (the prefetch wrote a flat string[] under this key, so every isBlockedX()
  * check silently evaluated to false whenever that write won the race
  * against this query's own fetch).
+ *
+ * Only fetches block_scope='profile_only' rows. anonymous_only rows are
+ * deliberately excluded here, not just filtered after the fact: for an
+ * anonymous_only block created via block_chat_partner (the only real
+ * creation path — see supabase/migrations/...block_chat_partner), userId
+ * is the anonymous chat partner's real UUID. Every existing consumer of
+ * this array already compares that value against ids that are themselves
+ * null-redacted server-side for anonymous chats (chats_view/
+ * user_chats_summary/chat_messages_view already exclude blocked anonymous
+ * rows entirely before the client ever sees them — see
+ * 20260803000000_redact_anonymous_chat_initiator_id.sql's audit trail), so
+ * fetching anonymous_only rows here served no remaining filtering purpose
+ * and only exposed the partner's real identity to the client. profile_only
+ * rows (all normal, non-anonymous blocking) are completely unaffected.
  */
 export async function fetchBlockRecords(
   currentUserId: string | null | undefined,
@@ -30,37 +44,44 @@ export async function fetchBlockRecords(
     supabase
       .from("blocks")
       .select("blocked_id, block_scope")
-      .eq("blocker_id", currentUserId),
+      .eq("blocker_id", currentUserId)
+      .eq("block_scope", "profile_only"),
     supabase
       .from("blocks")
       .select("blocker_id, block_scope")
-      .eq("blocked_id", currentUserId),
+      .eq("blocked_id", currentUserId)
+      .eq("block_scope", "profile_only"),
   ]);
 
-  // Track unique (userId, scope) pairs — a user can have BOTH scopes
+  // Track unique userIds — every row reaching this point is already
+  // profile_only (both by the .eq() filter above and the defensive
+  // re-check below), so there's only one scope left to dedupe against.
   const seen = new Set<string>();
   const records: BlockRecord[] = [];
 
+  // Defensive re-check, independent of the .eq() filter above: even if a
+  // future change accidentally widened the query, a non-profile_only row
+  // is still never turned into a BlockRecord the client can read.
   blockedByMe.data?.forEach((b) => {
+    // Missing block_scope defaults to profile_only, same fallback this
+    // function has always used — only an explicit "anonymous_only" is
+    // excluded.
     const scope = (b.block_scope as BlockScope) ?? "profile_only";
-    const key = `${b.blocked_id}:${scope}`;
+    if (scope !== "profile_only") return;
+    const key = b.blocked_id;
     if (!seen.has(key)) {
       seen.add(key);
-      records.push({ userId: b.blocked_id, scope });
+      records.push({ userId: b.blocked_id, scope: "profile_only" });
     }
   });
 
-  // For users who blocked me, preserve their real scope so
-  // isBlockedPost/isBlockedChat can scope-match correctly in both
-  // directions (an anonymous_only block placed on me must not be
-  // treated as if it were profile_only, or it would incorrectly
-  // affect my non-anonymous content's visibility to them).
   blockedMe.data?.forEach((b) => {
     const scope = (b.block_scope as BlockScope) ?? "profile_only";
-    const key = `${b.blocker_id}:${scope}`;
+    if (scope !== "profile_only") return;
+    const key = b.blocker_id;
     if (!seen.has(key)) {
       seen.add(key);
-      records.push({ userId: b.blocker_id, scope });
+      records.push({ userId: b.blocker_id, scope: "profile_only" });
     }
   });
 

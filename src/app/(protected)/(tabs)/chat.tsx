@@ -22,6 +22,7 @@ import {
   resolveOtherParticipant,
 } from "../../../features/chat/utils/getChatIdentity";
 import { getCurrentViewedChatId } from "../../../hooks/usePushNotifications";
+import { prefetchChatMessages } from "../../../features/chat/hooks/useChatMessagesInfinite";
 
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
 type User = Database["public"]["Tables"]["profiles"]["Row"];
@@ -743,6 +744,12 @@ export default function ChatScreen() {
                 updatedAt: 0,
               });
             }
+            // Head-start the messages fetch too (was previously the only
+            // piece of the detail screen's skeleton gate left unprimed —
+            // see Phase 7.4 audit). Fire-and-forget: respects the same
+            // staleTime as useChatMessagesInfinite, so this is a no-op
+            // when already fresh, and never blocks navigation.
+            prefetchChatMessages(queryClient, item.chat_id);
           }}
         />
       );

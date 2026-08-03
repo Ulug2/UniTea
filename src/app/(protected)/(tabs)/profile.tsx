@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../../context/AuthContext";
 import ManageAccountModal from "../../../components/ManageAccountModal";
 import NotificationSettingsModal from "../../../components/NotificationSettingsModal";
+import TextSizeSettingsModal from "../../../components/TextSizeSettingsModal";
 import ForgotPasswordModal from "../../../components/ForgotPasswordModal";
 import { ProfileHeader } from "../../../features/profile/components/ProfileHeader";
 import { ProfileTabs } from "../../../features/profile/components/ProfileTabs";
@@ -46,6 +47,7 @@ export default function ProfileScreen() {
     "all" | "anonymous" | "bookmarked"
   >("all");
   const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [textSizeVisible, setTextSizeVisible] = useState(false);
 
   const handleOpenTerms = useCallback(() => {
     openExternalLink(TERMS_URL).catch((error: unknown) => {
@@ -323,6 +325,10 @@ export default function ProfileScreen() {
           setSettingsVisible(false);
           setNotificationsVisible(true);
         }}
+        onPressTextSize={() => {
+          setSettingsVisible(false);
+          setTextSizeVisible(true);
+        }}
         onPressTerms={handleOpenTerms}
         onPressPrivacy={handleOpenPrivacy}
         onPressManageAccount={() => {
@@ -363,6 +369,12 @@ export default function ProfileScreen() {
       <NotificationSettingsModal
         visible={notificationsVisible}
         onClose={() => setNotificationsVisible(false)}
+      />
+
+      {/* Text Size Settings Modal */}
+      <TextSizeSettingsModal
+        visible={textSizeVisible}
+        onClose={() => setTextSizeVisible(false)}
       />
 
       <ForgotPasswordModal

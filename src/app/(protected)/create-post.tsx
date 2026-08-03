@@ -283,6 +283,35 @@ export default function CreatePostScreen() {
   // During this window images[] is stale, so we must block submission.
   const [isProcessingImages, setIsProcessingImages] = React.useState(false);
 
+  // Purely additive progress-label state layered on top of the existing
+  // isProcessingImages/isSubmitting booleans above — neither of those is
+  // touched or replaced, so every existing disable/guard/spinner behavior
+  // driven by them is unchanged. This only drives the new progress-area
+  // text (see SubmissionProgressBar below); it never gates any logic.
+  type SubmissionPhase =
+    | "idle"
+    | "preparing_images"
+    | "uploading_images"
+    | "publishing";
+  const [submissionPhase, setSubmissionPhase] =
+    React.useState<SubmissionPhase>("idle");
+  const [uploadProgress, setUploadProgress] = React.useState({
+    completed: 0,
+    total: 0,
+  });
+  const progressLabel = React.useMemo(() => {
+    switch (submissionPhase) {
+      case "preparing_images":
+        return "Preparing images...";
+      case "uploading_images":
+        return `Uploading images (${uploadProgress.completed}/${uploadProgress.total})`;
+      case "publishing":
+        return "Publishing post...";
+      default:
+        return "";
+    }
+  }, [submissionPhase, uploadProgress]);
+
   // Idempotency key for post creation (Phase 2). The signature is computed
   // from the user-facing submission — not the uploaded image *paths*, which
   // are freshly randomized on every upload call (see uploadImage) and would
@@ -297,6 +326,7 @@ export default function CreatePostScreen() {
 
   const pickImage = async () => {
     setIsProcessingImages(true);
+    setSubmissionPhase("preparing_images");
     try {
       const selected = await pickAndPrepareImages();
       if (selected.length > 0) {
@@ -312,6 +342,7 @@ export default function CreatePostScreen() {
       }
     } finally {
       setIsProcessingImages(false);
+      setSubmissionPhase("idle");
     }
   };
 
@@ -455,6 +486,8 @@ export default function CreatePostScreen() {
       // overwrites in place (upsert) instead of creating new orphaned
       // objects on every attempt.
       if (images.length > 0) {
+        setSubmissionPhase("uploading_images");
+        setUploadProgress({ completed: 0, total: images.length });
         try {
           imagePaths = await mapWithConcurrency(
             images,
@@ -464,6 +497,7 @@ export default function CreatePostScreen() {
                 path: `${session?.user?.id}/${postId}/${index}`,
                 upsert: true,
               }),
+            (completed, total) => setUploadProgress({ completed, total }),
           );
           imagePath = imagePaths[0];
         } catch (error: any) {
@@ -490,6 +524,7 @@ export default function CreatePostScreen() {
       // rejects instead of resolving on failure, which the existing
       // try/catch below already handles by falling through to `catch`
       // without touching the draft.
+      setSubmissionPhase("publishing");
       await createPostMutation.mutateAsync({
         id: postId,
         imagePath,
@@ -528,6 +563,8 @@ export default function CreatePostScreen() {
       // all survive, and the user remains on this screen to retry.
     } finally {
       setIsSubmitting(false);
+      setSubmissionPhase("idle");
+      setUploadProgress({ completed: 0, total: 0 });
     }
   };
 
@@ -604,13 +641,32 @@ export default function CreatePostScreen() {
             },
           ]}
         >
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.postButtonText}>Post</Text>
-          )}
+          {/* No spinner here anymore — the progress bar below the header
+              (submissionPhase) is now the single source of "what's
+              happening" during submission; this button just stays
+              disabled/greyed out via isLoading like before. */}
+          <Text style={styles.postButtonText}>Post</Text>
         </Pressable>
       </View>
+
+      {/* SUBMISSION PROGRESS — real, honest phases only (no fake percentage).
+          Positioned below the header and above all form content (Title /
+          Category inputs alike) for both feed and Lost & Found posts, since
+          this screen is shared between them. Compact, conditionally
+          mounted, so it only affects layout while actually submitting. */}
+      {submissionPhase !== "idle" && (
+        <View
+          style={[
+            styles.progressBar,
+            { backgroundColor: theme.card, borderBottomColor: theme.border },
+          ]}
+        >
+          <ActivityIndicator size="small" color={theme.primary} />
+          <Text style={[styles.progressBarText, { color: theme.text }]}>
+            {progressLabel}
+          </Text>
+        </View>
+      )}
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -1113,6 +1169,7 @@ export default function CreatePostScreen() {
                     />
                   </Pressable>
                   <Pressable
+                    testID="create-post-image-picker-button"
                     onPress={pickImage}
                     style={styles.footerButton}
                     disabled={isProcessingImages}
@@ -1202,6 +1259,18 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
     fontSize: moderateScale(15),
+    fontFamily: "Poppins_500Medium",
+  },
+  progressBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: moderateScale(8),
+    paddingHorizontal: scale(15),
+    paddingVertical: verticalScale(8),
+    borderBottomWidth: 1,
+  },
+  progressBarText: {
+    fontSize: moderateScale(13),
     fontFamily: "Poppins_500Medium",
   },
   scrollView: {

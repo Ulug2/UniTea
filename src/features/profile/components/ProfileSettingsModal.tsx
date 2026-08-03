@@ -12,6 +12,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Theme } from "../../../context/ThemeContext";
+import { useFontScale } from "../../../context/FontScaleContext";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type ProfileSettingsModalProps = {
@@ -22,11 +23,19 @@ type ProfileSettingsModalProps = {
   isManualDark: boolean;
   toggleTheme: () => void;
   onPressNotifications: () => void;
+  onPressTextSize: () => void;
   onPressTerms: () => void;
   onPressPrivacy: () => void;
   onPressManageAccount: () => void;
   onPressContactSupport: () => void;
 };
+
+const FONT_SCALE_LABELS = {
+  automatic: "Automatic",
+  small: "Small",
+  default: "Default",
+  large: "Large",
+} as const;
 
 export function ProfileSettingsModal({
   visible,
@@ -36,6 +45,7 @@ export function ProfileSettingsModal({
   isManualDark,
   toggleTheme,
   onPressNotifications,
+  onPressTextSize,
   onPressTerms,
   onPressPrivacy,
   onPressManageAccount,
@@ -45,6 +55,7 @@ export function ProfileSettingsModal({
   const fontScale = PixelRatio.getFontScale();
   const rowIconSize = moderateScale(22) * fontScale;
   const chevronIconSize = moderateScale(20) * fontScale;
+  const { preference: fontScalePreference } = useFontScale();
 
   return (
     <Modal
@@ -122,6 +133,38 @@ export function ProfileSettingsModal({
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
                   Notifications
                 </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={chevronIconSize}
+                color={theme.secondaryText}
+              />
+            </Pressable>
+
+            {/* Text Size */}
+            <Pressable
+              style={[styles.settingRow, { borderBottomColor: theme.border }]}
+              onPress={onPressTextSize}
+            >
+              <View style={styles.settingLeft}>
+                <Ionicons
+                  name="text-outline"
+                  size={rowIconSize}
+                  color={theme.text}
+                />
+                <View>
+                  <Text style={[styles.settingLabel, { color: theme.text }]}>
+                    Text Size
+                  </Text>
+                  <Text
+                    style={[
+                      styles.settingSubLabel,
+                      { color: theme.secondaryText },
+                    ]}
+                  >
+                    {FONT_SCALE_LABELS[fontScalePreference]}
+                  </Text>
+                </View>
               </View>
               <Ionicons
                 name="chevron-forward"

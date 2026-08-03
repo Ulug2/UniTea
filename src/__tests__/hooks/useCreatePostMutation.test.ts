@@ -313,6 +313,39 @@ describe('useCreatePostMutation', () => {
       const fetchBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
       expect(fetchBody.is_anonymous).toBe(false);
     });
+
+    it('mutateAsync() does not resolve until the lost&found list has actually finished refetching, not merely until the refetch was requested (Phase 7.6)', async () => {
+      mockFetchSuccess({ id: 'post-10' });
+
+      let resolveInvalidate!: () => void;
+      const invalidatePromise = new Promise<void>((r) => { resolveInvalidate = r; });
+      const invalidateSpy = jest
+        .spyOn(queryClient, 'invalidateQueries')
+        .mockImplementation(() => invalidatePromise as any);
+
+      const { result } = renderHook(
+        () => useCreatePostMutation({ isLostFound: true, currentUserId: USER_ID }),
+        { wrapper: createWrapper() }
+      );
+
+      let mutateAsyncResolved = false;
+      const mutatePromise = result.current
+        .mutateAsync({ ...defaultVars, postContent: 'Lost keys', postLocation: 'Gym' })
+        .then(() => { mutateAsyncResolved = true; });
+
+      // The fetch has resolved and invalidateQueries has been called, but its
+      // own promise is still pending — mutateAsync must not have resolved yet.
+      await waitFor(() => expect(invalidateSpy).toHaveBeenCalled());
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(mutateAsyncResolved).toBe(false);
+
+      // Only once the refetch itself completes does mutateAsync resolve —
+      // this is exactly what lets create-post.tsx safely navigate away only
+      // once the post is genuinely visible in the Lost & Found feed.
+      resolveInvalidate();
+      await mutatePromise;
+      expect(mutateAsyncResolved).toBe(true);
+    });
   });
 
   // ── repostId resolution ───────────────────────────────────────────────────────
@@ -339,10 +372,17 @@ describe('useCreatePostMutation', () => {
     });
   });
 
-  // ── optimistic update ─────────────────────────────────────────────────────────
-  describe('optimistic update (feed posts)', () => {
-    it('prepends a temp post to ["posts","feed","new"] on mutate', async () => {
-      // Spy on setQueryData to capture optimistic updates before gcTime:0 GC removes them
+  // ── feed cache insertion (Phase 7.6: no optimistic pre-insert) ─────────────────
+  // The user stays on the create-post screen until the post is genuinely
+  // confirmed AND reflected in the feed, so nothing is ever written to the
+  // feed cache before the server has responded — see useCreatePostMutation.ts's
+  // onSuccess. Every test here spies on setQueryData and replays the captured
+  // calls itself (the same technique the pre-existing tests in this file
+  // used), rather than reading back queryClient.getQueryData() afterward —
+  // this queryClient's gcTime:0 garbage-collects unobserved cache entries on
+  // the next tick, so a post-hoc read is a real race, not just a style choice.
+  describe('feed cache insertion on success (no optimistic pre-insert)', () => {
+    function spyOnSetQueryData() {
       const capturedCalls: Array<{ key: unknown; value: unknown }> = [];
       const originalSetQueryData = queryClient.setQueryData.bind(queryClient);
       jest.spyOn(queryClient, 'setQueryData').mockImplementation(
@@ -351,49 +391,72 @@ describe('useCreatePostMutation', () => {
           return originalSetQueryData(key, value);
         }
       );
+      return capturedCalls;
+    }
 
-      mockFetchSuccess({ id: 'post-1' });
+    function feedCallsFor(capturedCalls: Array<{ key: unknown; value: unknown }>) {
+      return capturedCalls.filter(
+        (c) => JSON.stringify(c.key) === JSON.stringify(DEFAULT_FEED_CACHE_KEY)
+      );
+    }
+
+    it('never calls setQueryData for the feed key while the mutation is still pending', async () => {
+      let resolveFetch!: (v: any) => void;
+      const pending = new Promise((r) => { resolveFetch = r; });
+      (global.fetch as jest.Mock).mockImplementationOnce(() => pending);
+      const capturedCalls = spyOnSetQueryData();
 
       const { result } = renderHook(
         () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
-      act(() => { result.current.mutate({ ...defaultVars, postContent: 'Optimistic' }); });
+      act(() => { result.current.mutate({ ...defaultVars, postContent: 'Not yet' }); });
+      await act(async () => { await Promise.resolve(); });
 
+      expect(feedCallsFor(capturedCalls)).toHaveLength(0);
+
+      await act(async () => {
+        resolveFetch({ ok: true, json: async () => ({ id: 'post-1' }) });
+        await pending;
+      });
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      // Find the optimistic setQueryData call for ['posts','feed','new']
-      const optimisticCall = capturedCalls.find(
-        (c) => JSON.stringify(c.key) === JSON.stringify(DEFAULT_FEED_CACHE_KEY)
-      );
-      expect(optimisticCall).toBeDefined();
+      // Only after success does the write happen, and exactly once.
+      expect(feedCallsFor(capturedCalls)).toHaveLength(1);
+    });
 
-      // The value is a function updater — call it with undefined to get initial pages
+    it('inserts the confirmed post (real server id, not a temp id) into ["posts","feed","new"] only after success', async () => {
+      mockFetchSuccess({ id: 'post-1' });
+      const capturedCalls = spyOnSetQueryData();
+
+      const { result } = renderHook(
+        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => { result.current.mutate({ ...defaultVars, postContent: 'Confirmed' }); });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const feedCalls = feedCallsFor(capturedCalls);
+      expect(feedCalls).toHaveLength(1);
       const computedValue: any =
-        typeof optimisticCall!.value === 'function'
-          ? (optimisticCall!.value as Function)(undefined)
-          : optimisticCall!.value;
+        typeof feedCalls[0].value === 'function'
+          ? (feedCalls[0].value as Function)(undefined)
+          : feedCalls[0].value;
 
       const firstPage = computedValue?.pages?.[0];
       expect(Array.isArray(firstPage)).toBe(true);
-      const tempPost = firstPage?.[0];
-      expect(tempPost?.post_id).toMatch(/^temp-/);
-      expect(tempPost?.content).toBe('Optimistic');
-      expect(tempPost?.title).toBeNull();
+      const post = firstPage?.[0];
+      expect(post?.post_id).toBe('post-1');
+      expect(post?.post_id).not.toMatch(/^temp-/);
+      expect(post?.content).toBe('Confirmed');
+      expect(post?.title).toBeNull();
     });
 
-    it('stores title in optimistic post when feed title is provided', async () => {
-      const capturedCalls: Array<{ key: unknown; value: unknown }> = [];
-      const originalSetQueryData = queryClient.setQueryData.bind(queryClient);
-      jest.spyOn(queryClient, 'setQueryData').mockImplementation(
-        (key: any, value: any) => {
-          capturedCalls.push({ key, value });
-          return originalSetQueryData(key, value);
-        }
-      );
-
+    it('stores title on the confirmed post when feed title is provided', async () => {
       mockFetchSuccess({ id: 'post-6' });
+      const capturedCalls = spyOnSetQueryData();
 
       const { result } = renderHook(
         () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
@@ -407,41 +470,23 @@ describe('useCreatePostMutation', () => {
           postTitle: 'Feed heading',
         });
       });
-
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      const optimisticCall = capturedCalls.find(
-        (c) => JSON.stringify(c.key) === JSON.stringify(DEFAULT_FEED_CACHE_KEY)
-      );
-      expect(optimisticCall).toBeDefined();
-
+      const feedCalls = feedCallsFor(capturedCalls);
       const computedValue: any =
-        typeof optimisticCall!.value === 'function'
-          ? (optimisticCall!.value as Function)(undefined)
-          : optimisticCall!.value;
-
-      const tempPost = computedValue?.pages?.[0]?.[0];
-      expect(tempPost?.title).toBe('Feed heading');
+        typeof feedCalls[0].value === 'function'
+          ? (feedCalls[0].value as Function)(undefined)
+          : feedCalls[0].value;
+      expect(computedValue?.pages?.[0]?.[0]?.title).toBe('Feed heading');
     });
 
-    it('reconciles the temp post in place with the real server row on success, instead of leaving the temp id or requiring a refetch', async () => {
-      const capturedCalls: Array<{ key: unknown; value: unknown }> = [];
-      const originalSetQueryData = queryClient.setQueryData.bind(queryClient);
-      jest.spyOn(queryClient, 'setQueryData').mockImplementation(
-        (key: any, value: any) => {
-          capturedCalls.push({ key, value });
-          return originalSetQueryData(key, value);
-        }
-      );
-
-      // Server echoes back the authoritative row: real id, and content after
-      // its own normalization (trailing space collapsed) — different from
-      // what the client optimistically guessed.
+    it('server-authoritative fields from the response win, while client-resolved display fields the response does not carry are preserved', async () => {
       mockFetchSuccess({
         id: 'real-post-id-42',
-        content: 'Optimistic content',
+        content: 'Final content',
         created_at: '2026-01-01T00:00:00.000Z',
       });
+      const capturedCalls = spyOnSetQueryData();
 
       const { result } = renderHook(
         () =>
@@ -454,49 +499,35 @@ describe('useCreatePostMutation', () => {
       );
 
       act(() => {
-        result.current.mutate({ ...defaultVars, postContent: 'Optimistic content  ' });
+        result.current.mutate({ ...defaultVars, postContent: 'Draft content' });
       });
-
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      // Replay every captured setQueryData call for the feed cache key, in
-      // order, the same way React Query would apply them.
-      let state: any;
-      for (const call of capturedCalls) {
-        if (JSON.stringify(call.key) !== JSON.stringify(DEFAULT_FEED_CACHE_KEY)) continue;
-        state = typeof call.value === 'function' ? (call.value as Function)(state) : call.value;
-      }
-
-      const posts = state?.pages?.flat() ?? [];
-      // Exactly one post — reconciled in place, not appended alongside a
-      // lingering temp entry.
+      const feedCalls = feedCallsFor(capturedCalls);
+      expect(feedCalls).toHaveLength(1);
+      const computedValue: any =
+        typeof feedCalls[0].value === 'function'
+          ? (feedCalls[0].value as Function)(undefined)
+          : feedCalls[0].value;
+      const posts = computedValue?.pages?.flat() ?? [];
+      // Exactly one post — inserted once, never a temp entry alongside it.
       expect(posts).toHaveLength(1);
       const finalPost = posts[0];
 
-      // Real id replaces the temp id.
       expect(finalPost.post_id).toBe('real-post-id-42');
-      expect(finalPost.post_id).not.toMatch(/^temp-/);
       // Server-authoritative fields win...
-      expect(finalPost.content).toBe('Optimistic content');
+      expect(finalPost.content).toBe('Final content');
       expect(finalPost.created_at).toBe('2026-01-01T00:00:00.000Z');
       // ...but client-resolved display fields the server response doesn't
-      // carry are preserved, not wiped out.
+      // carry are filled in, not left missing.
       expect(finalPost.community_name).toBe('Chess Club');
       expect(finalPost.vote_score).toBe(0);
       expect(finalPost.comment_count).toBe(0);
     });
 
-    it('uses the real username/avatarUrl passed via options for a non-anonymous optimistic post', async () => {
-      const capturedCalls: Array<{ key: unknown; value: unknown }> = [];
-      const originalSetQueryData = queryClient.setQueryData.bind(queryClient);
-      jest.spyOn(queryClient, 'setQueryData').mockImplementation(
-        (key: any, value: any) => {
-          capturedCalls.push({ key, value });
-          return originalSetQueryData(key, value);
-        }
-      );
-
+    it('uses the real username/avatarUrl passed via options for a non-anonymous post', async () => {
       mockFetchSuccess({ id: 'post-7' });
+      const capturedCalls = spyOnSetQueryData();
 
       const { result } = renderHook(
         () =>
@@ -512,33 +543,21 @@ describe('useCreatePostMutation', () => {
       act(() => {
         result.current.mutate({ ...defaultVars, postIsAnonymous: false });
       });
-
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      const optimisticCall = capturedCalls.find(
-        (c) => JSON.stringify(c.key) === JSON.stringify(DEFAULT_FEED_CACHE_KEY)
-      );
+      const feedCalls = feedCallsFor(capturedCalls);
       const computedValue: any =
-        typeof optimisticCall!.value === 'function'
-          ? (optimisticCall!.value as Function)(undefined)
-          : optimisticCall!.value;
-
-      const tempPost = computedValue?.pages?.[0]?.[0];
-      expect(tempPost?.username).toBe('realuser');
-      expect(tempPost?.avatar_url).toBe('https://cdn.example.com/avatar.png');
+        typeof feedCalls[0].value === 'function'
+          ? (feedCalls[0].value as Function)(undefined)
+          : feedCalls[0].value;
+      const post = computedValue?.pages?.[0]?.[0];
+      expect(post?.username).toBe('realuser');
+      expect(post?.avatar_url).toBe('https://cdn.example.com/avatar.png');
     });
 
-    it('still shows "You" for an anonymous optimistic post regardless of the real username/avatarUrl passed', async () => {
-      const capturedCalls: Array<{ key: unknown; value: unknown }> = [];
-      const originalSetQueryData = queryClient.setQueryData.bind(queryClient);
-      jest.spyOn(queryClient, 'setQueryData').mockImplementation(
-        (key: any, value: any) => {
-          capturedCalls.push({ key, value });
-          return originalSetQueryData(key, value);
-        }
-      );
-
+    it('still shows "You" for an anonymous post regardless of the real username/avatarUrl passed', async () => {
       mockFetchSuccess({ id: 'post-8' });
+      const capturedCalls = spyOnSetQueryData();
 
       const { result } = renderHook(
         () =>
@@ -554,22 +573,17 @@ describe('useCreatePostMutation', () => {
       act(() => {
         result.current.mutate({ ...defaultVars, postIsAnonymous: true });
       });
-
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      const optimisticCall = capturedCalls.find(
-        (c) => JSON.stringify(c.key) === JSON.stringify(DEFAULT_FEED_CACHE_KEY)
-      );
+      const feedCalls = feedCallsFor(capturedCalls);
       const computedValue: any =
-        typeof optimisticCall!.value === 'function'
-          ? (optimisticCall!.value as Function)(undefined)
-          : optimisticCall!.value;
-
-      const tempPost = computedValue?.pages?.[0]?.[0];
-      expect(tempPost?.username).toBe('You');
+        typeof feedCalls[0].value === 'function'
+          ? (feedCalls[0].value as Function)(undefined)
+          : feedCalls[0].value;
+      expect(computedValue?.pages?.[0]?.[0]?.username).toBe('You');
     });
 
-    it('does NOT add optimistic post for lost&found (isLostFound=true)', async () => {
+    it('never calls setQueryData for the feed key for lost&found (isLostFound=true), before or after success', async () => {
       (global.fetch as jest.Mock).mockImplementationOnce(
         () =>
           new Promise((resolve) =>
@@ -580,6 +594,7 @@ describe('useCreatePostMutation', () => {
             )
           )
       );
+      const capturedCalls = spyOnSetQueryData();
 
       const { result } = renderHook(
         () => useCreatePostMutation({ isLostFound: true, currentUserId: USER_ID }),
@@ -597,22 +612,17 @@ describe('useCreatePostMutation', () => {
       await act(async () => {
         await new Promise((r) => setTimeout(r, 10));
       });
+      expect(feedCallsFor(capturedCalls)).toHaveLength(0);
 
-      const cache = queryClient.getQueryData(DEFAULT_FEED_CACHE_KEY);
-      expect(cache).toBeUndefined();
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      // Still untouched after success too — lost&found never uses this key.
+      expect(feedCallsFor(capturedCalls)).toHaveLength(0);
     });
   });
 
-  // ── rollback on error ─────────────────────────────────────────────────────────
-  describe('rollback on error', () => {
-    it('restores previous ["posts","feed","new"] data when mutation fails', async () => {
-      const previousPosts = {
-        pages: [[{ post_id: 'old-post', content: 'Old' }]],
-        pageParams: [0],
-      };
-      queryClient.setQueryData(DEFAULT_FEED_CACHE_KEY, previousPosts);
-
-      // Spy to capture ALL setQueryData calls (including the rollback from onError)
+  // ── no cache mutation on error ──────────────────────────────────────────────────
+  describe('no cache mutation on error (nothing to roll back)', () => {
+    it('never calls setQueryData for the feed key when the mutation fails', async () => {
       const capturedCalls: Array<{ key: unknown; value: unknown }> = [];
       const originalSetQueryData = queryClient.setQueryData.bind(queryClient);
       jest.spyOn(queryClient, 'setQueryData').mockImplementation(
@@ -636,15 +646,12 @@ describe('useCreatePostMutation', () => {
 
       await waitFor(() => expect(result.current.isError).toBe(true));
 
-      // onError calls setQueryData with the previousData captured during onMutate
+      // No setQueryData call for the feed key at all — there was never an
+      // optimistic write to roll back, and a failure writes nothing either.
       const feedNewCalls = capturedCalls.filter(
         (c) => JSON.stringify(c.key) === JSON.stringify(DEFAULT_FEED_CACHE_KEY)
       );
-      // Last call should be the rollback value (previousPosts)
-      const rollbackCall = feedNewCalls[feedNewCalls.length - 1];
-      expect(rollbackCall).toBeDefined();
-      // The rollback value is previousPosts (set directly, not via updater function)
-      expect(rollbackCall!.value).toEqual(previousPosts);
+      expect(feedNewCalls).toHaveLength(0);
     });
   });
 

@@ -169,151 +169,127 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
 
       return responseData;
     },
-    onMutate: async (variables) => {
-      if (isLostFound) return;
-
-      const effectiveCommunityId =
-        variables.communityId ?? defaultCommunityId ?? null;
-      const feedCacheKey = feedKeys.list(
-        "new",
-        "",
-        universityId ?? undefined,
-        effectiveCommunityId,
-      );
-
-      // Scoped to this community/Campus only — cancelling the broad
-      // ["posts","feed"] prefix would abort in-flight fetches for every
-      // other mounted feed too, which could leave them stuck showing stale
-      // data until a manual refresh restarted the aborted request.
-      await queryClient.cancelQueries({
-        predicate: feedKeys.belongsToCommunity(effectiveCommunityId),
-      });
-      const previousData = queryClient.getQueryData(feedCacheKey);
-
-      const tempId = `temp-${Date.now()}`;
-      const now = new Date().toISOString();
-
-      const authorDisplay = resolvePostAuthorDisplay(
-        buildPostAuthorContext({
-          isAnonymous: variables.postIsAnonymous,
-          username,
-          avatarUrl,
-          universityDomain,
-          communityId: effectiveCommunityId,
-          communityName,
-          communityAvatarUrl,
-          userId: currentUserId,
-          currentUserId,
-        }),
-      );
-
-      const optimisticPost = {
-        post_id: tempId,
-        user_id: currentUserId || "",
-        content: variables.postContent.trim(),
-        image_url: variables.imagePath || null,
-        image_urls:
-          variables.imagePaths && variables.imagePaths.length > 0
-            ? variables.imagePaths
-            : variables.imagePath
-              ? [variables.imagePath]
-              : null,
-        image_aspect_ratio: variables.imageAspectRatio ?? null,
-        title: variables.postTitle.trim() || null,
-        category: null,
-        location: null,
-        post_type: "feed",
-        community_id: effectiveCommunityId,
-        community_name: communityName ?? null,
-        community_avatar_url: communityAvatarUrl ?? null,
-        university_id: universityId ?? "",
-        university_domain: universityDomain ?? "",
-        is_anonymous: variables.postIsAnonymous,
-        is_deleted: false,
-        is_edited: false,
-        created_at: now,
-        updated_at: now,
-        edited_at: null,
-        view_count: 0,
-        username: authorDisplay.displayName,
-        avatar_url: avatarUrl ?? null,
-        is_verified: false,
-        is_banned: false,
-        comment_count: 0,
-        vote_score: 0,
-        user_vote: null,
-        reposted_from_post_id: resolvedRepostId || null,
-        repost_comment: resolvedRepostId ? variables.postContent.trim() : null,
-        repost_count: 0,
-        original_post_id: null,
-        original_title: null,
-        original_content: null,
-        original_user_id: null,
-        original_author_username: null,
-        original_author_avatar: null,
-        original_is_anonymous: null,
-        original_created_at: null,
-      };
-
-      queryClient.setQueryData(feedCacheKey, (oldData: any) => {
-        if (!oldData) {
-          return {
-            pages: [[optimisticPost]],
-            pageParams: [0],
-          };
-        }
-
-        const pages = Array.isArray(oldData.pages) ? oldData.pages : [];
-        const newPages = pages.length
-          ? [[optimisticPost, ...pages[0]], ...pages.slice(1)]
-          : [[optimisticPost]];
-
-        return {
-          ...oldData,
-          pages: newPages,
-        };
-      });
-
-      return { previousData, tempId, feedCacheKey, optimisticPost };
-    },
-    onError: (error, _variables, context) => {
+    // No onMutate / optimistic insert (Phase 7.6 — product decision: the
+    // user stays on the create-post screen, seeing only the honest
+    // submission-progress states from create-post.tsx, until the post is
+    // genuinely confirmed AND reflected in the feed — never a temp
+    // placeholder that then gets swapped for the real row once they've
+    // already navigated away). Everything below runs only after the server
+    // has actually created the post.
+    onError: (error) => {
       logger.error("Error creating post", error as Error);
-      if (context?.previousData && context.feedCacheKey) {
-        queryClient.setQueryData(context.feedCacheKey, context.previousData);
-      }
-
       const message =
         error instanceof Error
           ? error.message
           : "Failed to create post. Please try again.";
       Alert.alert("Error", message);
     },
-    onSuccess: (data, _variables, context) => {
+    onSuccess: async (data, variables) => {
       if (isLostFound) {
-        queryClient.invalidateQueries({ queryKey: ["posts", "lost_found"] });
-      } else if (context?.feedCacheKey && context.optimisticPost) {
-        // Reconcile the temp post in place with the real server row instead
-        // of invalidating. `data` is the raw `posts` row (not the full
-        // posts_summary_view), so this only overwrites fields the server
-        // actually returned (id, timestamps, normalized content, etc.) —
-        // display-only fields resolved client-side (username, avatar,
-        // community name, vote/comment counts) are left untouched. This
-        // avoids a visible flicker/replace, and — since the cache entry's
-        // post_id now matches the real id — avoids a transient duplicate if
-        // the realtime "new post" listener also refetches this feed before
-        // the temp id would otherwise have been cleared.
-        const { tempId, optimisticPost, feedCacheKey } = context;
+        // Awaited — onSuccess's returned promise is awaited internally by
+        // TanStack Query before mutateAsync() resolves, so create-post.tsx
+        // does not navigate away until the Lost & Found list has actually
+        // refetched and contains the new post (not merely until the
+        // refetch was *requested*).
+        await queryClient.invalidateQueries({
+          queryKey: ["posts", "lost_found"],
+        });
+      } else {
+        const effectiveCommunityId =
+          variables.communityId ?? defaultCommunityId ?? null;
+        const feedCacheKey = feedKeys.list(
+          "new",
+          "",
+          universityId ?? undefined,
+          effectiveCommunityId,
+        );
+
+        const authorDisplay = resolvePostAuthorDisplay(
+          buildPostAuthorContext({
+            isAnonymous: variables.postIsAnonymous,
+            username,
+            avatarUrl,
+            universityDomain,
+            communityId: effectiveCommunityId,
+            communityName,
+            communityAvatarUrl,
+            userId: currentUserId,
+            currentUserId,
+          }),
+        );
+
+        // Built from the server-confirmed response (`data`) only — never
+        // written to the cache before this point — so Campus/community
+        // feeds never show a placeholder version of the post. Display-only
+        // fields the server response doesn't carry (username, avatar,
+        // community name, vote/comment counts) are filled in client-side,
+        // same as the old optimistic-post reconciliation did; every
+        // server-authoritative field in `data` wins via the spread below.
+        const confirmedPost = {
+          user_id: currentUserId || "",
+          content: variables.postContent.trim(),
+          image_url: variables.imagePath || null,
+          image_urls:
+            variables.imagePaths && variables.imagePaths.length > 0
+              ? variables.imagePaths
+              : variables.imagePath
+                ? [variables.imagePath]
+                : null,
+          image_aspect_ratio: variables.imageAspectRatio ?? null,
+          title: variables.postTitle.trim() || null,
+          category: null,
+          location: null,
+          post_type: "feed",
+          community_id: effectiveCommunityId,
+          community_name: communityName ?? null,
+          community_avatar_url: communityAvatarUrl ?? null,
+          university_id: universityId ?? "",
+          university_domain: universityDomain ?? "",
+          is_anonymous: variables.postIsAnonymous,
+          is_deleted: false,
+          is_edited: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          edited_at: null,
+          view_count: 0,
+          username: authorDisplay.displayName,
+          avatar_url: avatarUrl ?? null,
+          is_verified: false,
+          is_banned: false,
+          comment_count: 0,
+          vote_score: 0,
+          user_vote: null,
+          reposted_from_post_id: resolvedRepostId || null,
+          repost_comment: resolvedRepostId ? variables.postContent.trim() : null,
+          repost_count: 0,
+          original_post_id: null,
+          original_title: null,
+          original_content: null,
+          original_user_id: null,
+          original_author_username: null,
+          original_author_avatar: null,
+          original_is_anonymous: null,
+          original_created_at: null,
+          ...data,
+          post_id: data.id,
+        };
+
         queryClient.setQueryData(feedCacheKey, (oldData: any) => {
-          if (!oldData?.pages) return oldData;
+          if (!oldData) {
+            return {
+              pages: [[confirmedPost]],
+              pageParams: [0],
+            };
+          }
+
+          const pages = Array.isArray(oldData.pages) ? oldData.pages : [];
+          const newPages = pages.length
+            ? [[confirmedPost, ...pages[0]], ...pages.slice(1)]
+            : [[confirmedPost]];
+
           return {
             ...oldData,
-            pages: oldData.pages.map((page: any[]) =>
-              page.map((post) =>
-                post.post_id === tempId
-                  ? { ...optimisticPost, ...data, post_id: data.id }
-                  : post,
-              ),
-            ),
+            pages: newPages,
           };
         });
       }
@@ -321,9 +297,9 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         logActivity("post_created", universityId, currentUserId);
       }
     },
-    onSettled: (_data, _error, _variables, context) => {
+    onSettled: (_data, _error, variables) => {
       if (!isLostFound) {
-        const communityId = context?.feedCacheKey?.[5] ?? null;
+        const communityId = variables?.communityId ?? defaultCommunityId ?? null;
         queryClient.invalidateQueries({
           predicate: feedKeys.belongsToCommunity(communityId),
           refetchType: "none",

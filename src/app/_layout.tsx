@@ -12,7 +12,6 @@ import {
   Animated,
   View,
   Text,
-  TextInput,
   Pressable,
   StyleSheet,
   Platform,
@@ -22,6 +21,7 @@ import { Image as ExpoImage } from "expo-image";
 import { Asset } from "expo-asset";
 import { StatusBar } from "expo-status-bar";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
+import { FontScaleProvider } from "../context/FontScaleContext";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import {
   QueryClient,
@@ -50,12 +50,12 @@ import { moderateScale, scale, verticalScale } from "../utils/scaling";
 import { preloadUniversityAvatars } from "../config/universityBranding";
 import { fetchBlockRecords } from "../hooks/useBlocks";
 import { getAvatarUri } from "../utils/avatarUri";
+import { patchGlobalTextScaling } from "../utils/textScaling";
 
-// RN host components accept runtime defaultProps; typings omit it.
-(Text as any).defaultProps ??= {};
-(Text as any).defaultProps.maxFontSizeMultiplier = 1.1;
-(TextInput as any).defaultProps ??= {};
-(TextInput as any).defaultProps.maxFontSizeMultiplier = 1.1;
+// Must run before anything renders a <Text>/<TextInput> — see textScaling.tsx
+// for why the old `Text.defaultProps.maxFontSizeMultiplier` assignment never
+// actually worked (React 19's automatic JSX runtime never reads defaultProps).
+patchGlobalTextScaling();
 
 // Initialize Sentry before anything else
 initSentry();
@@ -438,9 +438,11 @@ export default function RootLayout() {
       <ErrorBoundary fallback={<RecoveryFallback />}>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
-            <AuthProvider>
-              <RootLayoutContent />
-            </AuthProvider>
+            <FontScaleProvider>
+              <AuthProvider>
+                <RootLayoutContent />
+              </AuthProvider>
+            </FontScaleProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </ErrorBoundary>

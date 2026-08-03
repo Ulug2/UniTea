@@ -65,18 +65,16 @@ describe('useBlocks', () => {
     expect(result.current.data).toEqual([]);
   });
 
-  it('returns BlockRecords for users blocked by the current user', async () => {
+  it('returns profile_only BlockRecords for users blocked by the current user', async () => {
     mockFrom
       .mockReturnValueOnce(buildSelectChain([
         { blocked_id: 'user-A', block_scope: 'profile_only' },
-        { blocked_id: 'user-B', block_scope: 'anonymous_only' },
       ]))
       .mockReturnValueOnce(buildSelectChain([]));
     const { result } = renderHook(() => useBlocks(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     const data = result.current.data ?? [];
-    expect(data.some((r) => r.userId === 'user-A' && r.scope === 'profile_only')).toBe(true);
-    expect(data.some((r) => r.userId === 'user-B' && r.scope === 'anonymous_only')).toBe(true);
+    expect(data).toEqual([{ userId: 'user-A', scope: 'profile_only' }]);
   });
 
   it('returns profile_only BlockRecord for users who blocked the current user with profile_only', async () => {
@@ -89,18 +87,44 @@ describe('useBlocks', () => {
     expect(data.some((r) => r.userId === 'user-C' && r.scope === 'profile_only')).toBe(true);
   });
 
-  it('preserves anonymous_only scope for users who blocked the current user anonymously (does not coerce to profile_only)', async () => {
-    // Regression test: coercing a reverse anonymous_only block to profile_only
-    // would make isBlockedPost/isBlockedChat incorrectly hide that person's
-    // unrelated public content, recreating the anonymous-chat deanonymization bug.
+  it('queries only block_scope=profile_only rows, in both directions (the fix for the anonymous-chat-partner identity leak)', async () => {
+    // Root cause this guards against: anonymous_only rows' blocked_id/
+    // blocker_id is the real UUID of an anonymous chat partner (see
+    // block_chat_partner RPC). Every legitimate use of BlockRecord[] already
+    // works off ids that chats_view/user_chats_summary/chat_messages_view
+    // null out for anonymous chats server-side, so the client has no
+    // remaining need to ever receive an anonymous_only row.
+    const byMeChain = buildSelectChain([]);
+    const byOthersChain = buildSelectChain([]);
+    mockFrom.mockReturnValueOnce(byMeChain).mockReturnValueOnce(byOthersChain);
+
+    await fetchBlockRecords('current-user');
+
+    expect(byMeChain.eq).toHaveBeenCalledWith('blocker_id', 'current-user');
+    expect(byMeChain.eq).toHaveBeenCalledWith('block_scope', 'profile_only');
+    expect(byOthersChain.eq).toHaveBeenCalledWith('blocked_id', 'current-user');
+    expect(byOthersChain.eq).toHaveBeenCalledWith('block_scope', 'profile_only');
+  });
+
+  it('excludes anonymous_only rows client-side even if the backend ever returned one anyway (defense in depth)', async () => {
+    // Simulates a hypothetical case where the .eq('block_scope', ...) filter
+    // didn't apply (e.g. a mocked/misconfigured backend) — the real partner
+    // UUID must still never reach the returned BlockRecord[].
     mockFrom
-      .mockReturnValueOnce(buildSelectChain([]))
-      .mockReturnValueOnce(buildSelectChain([{ blocker_id: 'user-D', block_scope: 'anonymous_only' }]));
-    const { result } = renderHook(() => useBlocks(), { wrapper: createWrapper() });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    const data = result.current.data ?? [];
-    expect(data.some((r) => r.userId === 'user-D' && r.scope === 'anonymous_only')).toBe(true);
-    expect(data.some((r) => r.userId === 'user-D' && r.scope === 'profile_only')).toBe(false);
+      .mockReturnValueOnce(buildSelectChain([
+        { blocked_id: 'user-A', block_scope: 'profile_only' },
+        { blocked_id: 'anon-partner-real-uuid', block_scope: 'anonymous_only' },
+      ]))
+      .mockReturnValueOnce(buildSelectChain([
+        { blocker_id: 'anon-partner-real-uuid-2', block_scope: 'anonymous_only' },
+      ]));
+
+    const records = await fetchBlockRecords('current-user');
+
+    expect(records).toEqual([{ userId: 'user-A', scope: 'profile_only' }]);
+    expect(records.some((r) => r.userId === 'anon-partner-real-uuid')).toBe(false);
+    expect(records.some((r) => r.userId === 'anon-partner-real-uuid-2')).toBe(false);
+    expect(records.some((r) => r.scope === 'anonymous_only')).toBe(false);
   });
 
   it('merges both directions without duplicates', async () => {
@@ -158,14 +182,14 @@ describe('fetchBlockRecords (Phase 7.2: shared by useBlocks() and _layout.tsx\'s
   it('returns BlockRecord[] ({userId, scope}[]), never a flat id array', async () => {
     mockFrom
       .mockReturnValueOnce(buildSelectChain([{ blocked_id: 'user-A', block_scope: 'profile_only' }]))
-      .mockReturnValueOnce(buildSelectChain([{ blocker_id: 'user-B', block_scope: 'anonymous_only' }]));
+      .mockReturnValueOnce(buildSelectChain([{ blocker_id: 'user-B', block_scope: 'profile_only' }]));
 
     const records = await fetchBlockRecords('current-user');
 
     expect(records).toEqual(
       expect.arrayContaining([
         { userId: 'user-A', scope: 'profile_only' },
-        { userId: 'user-B', scope: 'anonymous_only' },
+        { userId: 'user-B', scope: 'profile_only' },
       ]),
     );
     // Every entry must be a {userId, scope} object, not a bare string —
@@ -179,7 +203,7 @@ describe('fetchBlockRecords (Phase 7.2: shared by useBlocks() and _layout.tsx\'s
 
   it('produces output identical in shape to what useBlocks() itself resolves, for the same data', async () => {
     const byMe = [{ blocked_id: 'user-A', block_scope: 'profile_only' }];
-    const byOthers = [{ blocker_id: 'user-B', block_scope: 'anonymous_only' }];
+    const byOthers = [{ blocker_id: 'user-B', block_scope: 'profile_only' }];
 
     mockFrom.mockReturnValueOnce(buildSelectChain(byMe)).mockReturnValueOnce(buildSelectChain(byOthers));
     const direct = await fetchBlockRecords('current-user');
@@ -196,6 +220,40 @@ describe('fetchBlockRecords (Phase 7.2: shared by useBlocks() and _layout.tsx\'s
     const records = await fetchBlockRecords(undefined);
     expect(records).toEqual([]);
     expect(mockFrom).not.toHaveBeenCalled();
+  });
+});
+
+describe('existing consumers are unaffected by anonymous_only records being dropped from useBlocks()', () => {
+  // Every consumer of BlockRecord[] compares b.userId against an id that is
+  // itself already null-redacted server-side for anonymous chats
+  // (chats_view/user_chats_summary null the counterpart's participant
+  // column; chat_messages_view nulls the counterpart's message user_id).
+  // So an anonymous_only record was never actually reachable through any
+  // of these call sites for its intended purpose — these tests prove that
+  // removing it from fetchBlockRecords()'s output changes nothing
+  // observable for isBlockedChat/isBlockedPost, the two exported helpers
+  // every anonymous-chat-adjacent consumer (chat.tsx, useGlobalUnreadCount,
+  // features/chat/types.ts's selectMessages) is ultimately built on.
+  it('isBlockedChat: an anonymous chat with a null otherUserId (the real client shape) behaves identically with or without an anonymous_only record present', () => {
+    const withAnonymousOnlyRecord: BlockRecord[] = [
+      { userId: 'partner-real-uuid', scope: 'anonymous_only' },
+    ];
+    expect(isBlockedChat(withAnonymousOnlyRecord, null, true)).toBe(false);
+    expect(isBlockedChat([], null, true)).toBe(false);
+  });
+
+  it('isBlockedPost: an anonymous post with a null author id behaves identically with or without an anonymous_only record present', () => {
+    const withAnonymousOnlyRecord: BlockRecord[] = [
+      { userId: 'author-real-uuid', scope: 'anonymous_only' },
+    ];
+    expect(isBlockedPost(withAnonymousOnlyRecord, null, true)).toBe(false);
+    expect(isBlockedPost([], null, true)).toBe(false);
+  });
+
+  it('non-anonymous (profile_only) blocking is completely unaffected: isBlockedChat/isBlockedPost still match on a real, known id', () => {
+    const blocks: BlockRecord[] = [{ userId: 'partner', scope: 'profile_only' }];
+    expect(isBlockedChat(blocks, 'partner', false)).toBe(true);
+    expect(isBlockedPost(blocks, 'partner', false)).toBe(true);
   });
 });
 
