@@ -28,7 +28,20 @@ export function useUpdateProfile() {
         .update(updates)
         .eq("id", currentUserId);
 
-      if (error) throw error;
+      if (error) {
+        // Phase 7.6.1: map the DB's format/uniqueness guards
+        // (profiles_username_format_check / idx_profiles_username_unique_ci)
+        // to messages a user can act on, instead of a raw Postgres string.
+        if (error.code === "23505") {
+          throw new Error("That username is already taken. Please choose another.");
+        }
+        if (error.code === "23514") {
+          throw new Error(
+            "Username must be 3-20 characters, using only letters, numbers, and underscores.",
+          );
+        }
+        throw error;
+      }
     },
     onMutate: async (updates: UpdateProfileInput) => {
       // Must match useMyProfile's exact key (["current-user-profile", userId])

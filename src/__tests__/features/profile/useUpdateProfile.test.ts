@@ -224,4 +224,99 @@ describe('useUpdateProfile', () => {
       expect(alertSpy).toHaveBeenCalledWith('Error', expect.any(String));
     });
   });
+
+  // ── Phase 7.6.1: Postgres error-code mapping for username validation ────
+  describe('username validation error mapping (Phase 7.6.1)', () => {
+    it('maps a unique_violation (23505) — profiles_username_unique_ci — to a friendly "already taken" message', async () => {
+      const chain: Record<string, jest.Mock> = {};
+      chain.update = jest.fn(() => chain);
+      chain.eq = jest.fn(() =>
+        Promise.resolve({
+          data: null,
+          error: { code: '23505', message: 'duplicate key value violates unique constraint "idx_profiles_username_unique_ci"' },
+        }),
+      );
+      mockFrom.mockReturnValue(chain);
+
+      const { result } = renderHook(() => useUpdateProfile(), { wrapper: wrapper(queryClient) });
+
+      await act(async () => {
+        await result.current.mutateAsync({ username: 'taken' }).catch(() => {});
+      });
+
+      expect(alertSpy).toHaveBeenCalledWith('Error', 'That username is already taken. Please choose another.');
+    });
+
+    it('maps a check_violation (23514) — profiles_username_format_check — to a friendly format message', async () => {
+      const chain: Record<string, jest.Mock> = {};
+      chain.update = jest.fn(() => chain);
+      chain.eq = jest.fn(() =>
+        Promise.resolve({
+          data: null,
+          error: { code: '23514', message: 'new row for relation "profiles" violates check constraint "profiles_username_format_check"' },
+        }),
+      );
+      mockFrom.mockReturnValue(chain);
+
+      const { result } = renderHook(() => useUpdateProfile(), { wrapper: wrapper(queryClient) });
+
+      await act(async () => {
+        await result.current.mutateAsync({ username: 'a' }).catch(() => {});
+      });
+
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Error',
+        'Username must be 3-20 characters, using only letters, numbers, and underscores.',
+      );
+    });
+
+    it('does not apply the username-specific friendly messages to an unrelated error code', async () => {
+      const chain: Record<string, jest.Mock> = {};
+      chain.update = jest.fn(() => chain);
+      chain.eq = jest.fn(() =>
+        Promise.resolve({ data: null, error: { code: '08006', message: 'connection failure' } }),
+      );
+      mockFrom.mockReturnValue(chain);
+
+      const { result } = renderHook(() => useUpdateProfile(), { wrapper: wrapper(queryClient) });
+
+      await act(async () => {
+        await result.current.mutateAsync({ username: 'z' }).catch(() => {});
+      });
+
+      const [, shownMessage] = alertSpy.mock.calls[0];
+      expect(shownMessage).not.toBe('That username is already taken. Please choose another.');
+      expect(shownMessage).not.toBe(
+        'Username must be 3-20 characters, using only letters, numbers, and underscores.',
+      );
+    });
+
+    it('still rolls back the optimistic update for a mapped username error', async () => {
+      const previousProfile = { id: 'user-123', username: 'original', avatar_url: null };
+      queryClient.setQueryData(['current-user-profile', 'user-123'], previousProfile);
+
+      const chain: Record<string, jest.Mock> = {};
+      chain.update = jest.fn(() => chain);
+      chain.eq = jest.fn(() =>
+        Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key' } }),
+      );
+      mockFrom.mockReturnValue(chain);
+
+      const setDataSpy = jest.spyOn(queryClient, 'setQueryData');
+
+      const { result } = renderHook(() => useUpdateProfile(), { wrapper: wrapper(queryClient) });
+
+      await act(async () => {
+        await result.current.mutateAsync({ username: 'taken' }).catch(() => {});
+      });
+
+      const rollbackCall = setDataSpy.mock.calls.find(
+        ([key, val]) =>
+          Array.isArray(key) &&
+          key[0] === 'current-user-profile' &&
+          (val as { username?: string })?.username === 'original',
+      );
+      expect(rollbackCall).toBeDefined();
+    });
+  });
 });

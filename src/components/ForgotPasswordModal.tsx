@@ -13,7 +13,6 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { logger } from "../utils/logger";
-import CustomInput from "./CustomInput";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 interface ForgotPasswordModalProps {
@@ -21,8 +20,14 @@ interface ForgotPasswordModalProps {
   onClose: () => void;
 }
 
-type ModalState = "form" | "loading" | "sent";
+type ModalState = "confirm" | "loading" | "sent";
 
+// This modal is only ever opened from the authenticated profile screen
+// (Manage Account -> Forgot Password), never from the logged-out login
+// screen — that flow (mode: "forgot" in useAuthFlow.ts) is separate and
+// necessarily asks for an email since there's no session yet there. Here,
+// the account's own session email is used internally to send the reset
+// link but is never rendered anywhere in this UI.
 export default function ForgotPasswordModal({
   visible,
   onClose,
@@ -31,47 +36,45 @@ export default function ForgotPasswordModal({
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
 
-  const [email, setEmail] = useState(session?.user?.email ?? "");
-  const [modalState, setModalState] = useState<ModalState>("form");
-  const [emailError, setEmailError] = useState("");
+  const [modalState, setModalState] = useState<ModalState>("confirm");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  // Reset to a fresh form each time the modal is opened.
+  // Reset to a fresh state each time the modal is opened.
   useEffect(() => {
     if (visible) {
-      setEmail(session?.user?.email ?? "");
-      setModalState("form");
-      setEmailError("");
+      setModalState("confirm");
+      setErrorMessage("");
     }
-  }, [visible, session?.user?.email]);
+  }, [visible]);
 
   const handleSend = async () => {
-    const sanitizedEmail = email.trim().toLowerCase();
-    if (!sanitizedEmail) {
-      setEmailError("Please enter your email address.");
+    const accountEmail = session?.user?.email;
+    if (!accountEmail) {
+      setErrorMessage("Could not find your account email. Please try again later.");
       return;
     }
 
-    setEmailError("");
+    setErrorMessage("");
     setModalState("loading");
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(
-        sanitizedEmail,
+        accountEmail,
         { redirectTo: "https://unitea.app/reset-password" },
       );
 
       if (error) {
         logger.error("[ForgotPasswordModal] resetPasswordForEmail failed", error as Error);
-        setEmailError(error.message ?? "Could not send reset email. Please try again.");
-        setModalState("form");
+        setErrorMessage(error.message ?? "Could not send reset email. Please try again.");
+        setModalState("confirm");
         return;
       }
 
       setModalState("sent");
     } catch (err) {
       logger.error("[ForgotPasswordModal] Unexpected error", err as Error);
-      setEmailError("Could not send reset email. Please try again.");
-      setModalState("form");
+      setErrorMessage("Could not send reset email. Please try again.");
+      setModalState("confirm");
     }
   };
 
@@ -114,8 +117,9 @@ export default function ForgotPasswordModal({
               <Text
                 style={[styles.subtitle, { color: theme.secondaryText }]}
               >
-                We sent a password reset link to {email.trim()}. Tap it to
-                set a new password. The link expires after 1 hour.
+                We sent a password reset link to your registered email
+                address. Tap it to set a new password. The link expires
+                after 1 hour.
               </Text>
               <Pressable
                 style={[styles.primaryButton, { backgroundColor: theme.primary }]}
@@ -132,23 +136,13 @@ export default function ForgotPasswordModal({
               <Text
                 style={[styles.subtitle, { color: theme.secondaryText }]}
               >
-                Enter your email to receive a password reset link.
+                We'll send a password reset link to your account's
+                registered email address.
               </Text>
 
-              <CustomInput
-                label="Email"
-                leftIcon={{ type: "font-awesome", name: "envelope" }}
-                value={email}
-                onChangeText={(t) => {
-                  setEmail(t);
-                  if (emailError) setEmailError("");
-                }}
-                placeholder="name.surname@university.edu"
-                autoCapitalize="none"
-                keyboardType="email-address"
-                errorMessage={emailError}
-                editable={modalState === "form"}
-              />
+              {!!errorMessage && (
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              )}
 
               <Pressable
                 style={[
@@ -224,5 +218,13 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.65,
+  },
+  errorText: {
+    fontSize: moderateScale(13),
+    fontFamily: "Poppins_400Regular",
+    color: "#EF4444",
+    textAlign: "center",
+    marginTop: verticalScale(-8),
+    marginBottom: verticalScale(16),
   },
 });

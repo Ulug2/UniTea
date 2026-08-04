@@ -31,6 +31,7 @@ import { useUpdatePassword } from "../../../features/profile/hooks/useUpdatePass
 import { useDeleteAccount } from "../../../features/profile/hooks/useDeleteAccount";
 import { useAvatarUpload } from "../../../features/profile/hooks/useAvatarUpload";
 import { isPasswordValid } from "../../../utils/passwordValidation";
+import { validateUsername } from "../../../utils/usernameValidation";
 import { moderateScale, scale } from "../../../utils/scaling";
 
 export default function ProfileScreen() {
@@ -109,7 +110,6 @@ export default function ProfileScreen() {
 
   // Get current user data
   const userDisplayName = currentUser?.username || "User";
-  const userEmail = session?.user?.email || "email@example.com";
 
   // Set up settings button handler
   useEffect(() => {
@@ -207,10 +207,15 @@ export default function ProfileScreen() {
     // on cancel or error: keep the modal open so the user can try again
   };
 
-  // Handle username update
+  // Handle username update. Format/length is pre-checked here for a fast,
+  // no-round-trip error message (Phase 7.6.1); the database's
+  // profiles_username_format_check + case-insensitive unique index remain
+  // the actual source of truth (see useUpdateProfile.ts's error mapping
+  // for uniqueness/format failures that reach the server anyway).
   const handleUsernameUpdate = (newUsername: string) => {
-    if (!newUsername.trim()) {
-      Alert.alert("Error", "Username cannot be empty");
+    const validationError = validateUsername(newUsername);
+    if (validationError) {
+      Alert.alert("Invalid username", validationError);
       return;
     }
     updateProfileMutation.mutate({ username: newUsername.trim() });
@@ -287,7 +292,6 @@ export default function ProfileScreen() {
         theme={theme}
         currentUser={currentUser || null}
         userDisplayName={userDisplayName}
-        userEmail={userEmail}
         totalVotes={totalVotes}
         onAvatarPress={(showingBadge) => {
             setViewingBadge(showingBadge);

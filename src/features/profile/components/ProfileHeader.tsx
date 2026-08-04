@@ -13,7 +13,6 @@ type ProfileHeaderProps = {
   theme: Theme;
   currentUser: Profile | null;
   userDisplayName: string;
-  userEmail: string;
   totalVotes: number;
   onAvatarPress: (showingBadge: boolean) => void;
 };
@@ -22,7 +21,6 @@ export function ProfileHeader({
   theme,
   currentUser,
   userDisplayName,
-  userEmail,
   totalVotes,
   onAvatarPress,
 }: ProfileHeaderProps) {
@@ -35,9 +33,6 @@ export function ProfileHeader({
       <View style={styles.userInfo}>
         <Text style={[styles.userName, { color: theme.text }]}>
           {userDisplayName}
-        </Text>
-        <Text style={[styles.userEmail, { color: theme.secondaryText }]}>
-          {userEmail}
         </Text>
         <View style={styles.upvotesContainer}>
           <MaterialCommunityIcons
@@ -76,16 +71,11 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(20),
     fontFamily: "Poppins_600SemiBold",
   },
-  userEmail: {
-    fontSize: moderateScale(15),
-    fontFamily: "Poppins_400Regular",
-    marginTop: verticalScale(2),
-  },
   upvotesContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: moderateScale(4),
-    marginTop: verticalScale(4),
+    marginTop: verticalScale(6),
   },
   upvotesText: {
     fontSize: moderateScale(15),

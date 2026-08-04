@@ -43,3 +43,6 @@ android/app/google-services.json
 /ios
 /android
 db_backups/
+
+# Claude Code local permissions (may contain machine-specific secrets)
+.claude/settings.local.json

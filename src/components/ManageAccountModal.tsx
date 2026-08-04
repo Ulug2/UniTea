@@ -19,6 +19,7 @@ import { useTheme } from "../context/ThemeContext";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
 import PasswordRequirementsList from "./PasswordRequirementsList";
 import { isPasswordValid } from "../utils/passwordValidation";
+import { USERNAME_MAX_LENGTH } from "../constants/validationConstants";
 
 interface ManageAccountModalProps {
   visible: boolean;
@@ -354,7 +355,7 @@ export default function ManageAccountModal({
           onChangeText={setUsername}
           autoCapitalize="none"
           autoCorrect={false}
-          maxLength={50}
+          maxLength={USERNAME_MAX_LENGTH}
         />
 
         <Pressable
