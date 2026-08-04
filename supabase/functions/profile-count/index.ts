@@ -23,17 +23,6 @@ serve(async (req: Request) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Missing authorization header" }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 401,
-        }
-      );
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
@@ -48,50 +37,12 @@ serve(async (req: Request) => {
       );
     }
 
-    // Verify caller identity via anon key + auth header
-    const callerClient = createClient(
-      supabaseUrl,
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      {
-        global: { headers: { Authorization: authHeader } },
-        auth: { autoRefreshToken: false, persistSession: false },
-      }
-    );
-
-    const {
-      data: { user },
-      error: authError,
-    } = await callerClient.auth.getUser();
-
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 401,
-        }
-      );
-    }
-
+    // Public endpoint: only ever returns an aggregate profile count (no PII,
+    // no per-user data) for display on the public landing page, so it does
+    // not require caller authentication.
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-
-    const { data: profile } = await supabaseAdmin
-      .from("profiles")
-      .select("is_admin")
-      .eq("id", user.id)
-      .single();
-
-    if (profile?.is_admin !== true) {
-      return new Response(
-        JSON.stringify({ error: "Forbidden: admin access required" }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 403,
-        }
-      );
-    }
 
     const { count, error } = await supabaseAdmin
       .from("profiles")
