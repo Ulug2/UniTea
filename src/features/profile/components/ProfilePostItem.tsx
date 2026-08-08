@@ -2,11 +2,13 @@ import React, { memo, useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { formatDistanceToNowStrict } from "date-fns";
 import { router } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import type { Database } from "../../../types/database.types";
 import type { Theme } from "../../../context/ThemeContext";
 import { sharePost } from "../../../utils/sharePost";
+import { prefetchLostFoundDetail } from "../../posts/data/lostFoundDetailQuery";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 type Post = Database["public"]["Tables"]["posts"]["Row"];
@@ -24,6 +26,7 @@ const ProfilePostItem = memo(
   ({ item, postScore, commentCount, theme }: ProfilePostItemProps) => {
     const postId = "post_id" in item ? item.post_id : item.id;
     const isLostFound = item.post_type === "lost_found";
+    const queryClient = useQueryClient();
 
     // Keep Lost & Found preview semantics. For feed posts, prefer title when available.
     const displayContent = useMemo(() => {
@@ -64,9 +67,14 @@ const ProfilePostItem = memo(
           styles.postCard,
           { backgroundColor: theme.card, borderBottomColor: theme.border },
         ]}
-        onPress={() =>
-          router.push(isLostFound ? `/lostfoundpost/${postId}` : `/post/${postId}`)
-        }
+        onPress={() => {
+          if (isLostFound) {
+            prefetchLostFoundDetail(queryClient, postId);
+            router.push(`/lostfoundpost/${postId}`);
+          } else {
+            router.push(`/post/${postId}`);
+          }
+        }}
       >
         <View style={styles.postHeader}>
           <Text style={[styles.postLabel, { color: theme.secondaryText }]}>

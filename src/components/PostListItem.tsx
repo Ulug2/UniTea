@@ -31,6 +31,8 @@ import { sharePost } from "../utils/sharePost";
 import type { Theme } from "../context/ThemeContext";
 import ResponsiveImage from "./ResponsiveImage";
 import { useInitiateAnonymousChat } from "../features/chat/hooks/useInitiateAnonymousChat";
+import { useQueryClient } from "@tanstack/react-query";
+import { prefetchPostDetail } from "../features/posts/data/postDetailQuery";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
 // Shared style cache — all PostListItem instances with the same theme object reuse one StyleSheet.
 // This eliminates calling StyleSheet.create N times when the feed has N visible items.
@@ -530,6 +532,7 @@ const PostListItem = React.memo(function PostListItem({
 }: PostListItemProps) {
   const { theme } = useTheme();
   const { session } = useAuth();
+  const queryClient = useQueryClient();
   const fontScale = PixelRatio.getFontScale();
   const actionIconSize = moderateScale(21) * fontScale;
   const smallIconSize = moderateScale(12) * fontScale;
@@ -880,6 +883,7 @@ const PostListItem = React.memo(function PostListItem({
                   e.preventDefault();
                   e.stopPropagation();
                   if (repostedFromPostId) {
+                    prefetchPostDetail(queryClient, repostedFromPostId);
                     router.push(`/post/${repostedFromPostId}`);
                   }
                 }}
@@ -1116,6 +1120,7 @@ const PostListItem = React.memo(function PostListItem({
                   e.stopPropagation();
                   // Navigate to post detail (comment button behavior)
                   if (!disableCommentInteraction && !isDetailedPost) {
+                    prefetchPostDetail(queryClient, postId);
                     router.push(`/post/${postId}`);
                   }
                 }}

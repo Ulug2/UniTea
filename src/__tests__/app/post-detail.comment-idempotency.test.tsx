@@ -121,14 +121,6 @@ jest.mock('../../features/comments/hooks/usePostComments', () => ({
   }),
 }));
 
-jest.mock('../../features/profile/hooks/useProfileById', () => ({
-  useProfileById: () => ({
-    data: { id: 'author-1', username: 'author_user' },
-    isLoading: false,
-    error: null,
-  }),
-}));
-
 jest.mock('../../features/profile/hooks/useMyProfile', () => ({
   useMyProfile: () => ({
     data: { id: 'me', username: 'me', is_admin: false },

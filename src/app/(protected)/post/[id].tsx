@@ -45,7 +45,6 @@ import type { PostsSummaryViewRow } from "../../../types/posts";
 import { usePostComments } from "../../../features/comments/hooks/usePostComments";
 import type { CommentNode } from "../../../features/comments/utils/tree";
 import { useCreateComment } from "../../../features/comments/hooks/useCreateComment";
-import { useProfileById } from "../../../features/profile/hooks/useProfileById";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { useBookmarkToggle } from "../../../features/posts/hooks/useBookmarkToggle";
 import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
@@ -55,7 +54,9 @@ import { useFilterContext } from "../../../context/FilterContext";
 import { CommentsTreeList } from "../../../features/comments/components/CommentsTreeList";
 import { CommentComposer } from "../../../features/comments/components/CommentComposer";
 import { PostHeaderCard } from "../../../features/posts/components/PostHeaderCard";
+import { postDetailQueryOptions } from "../../../features/posts/data/postDetailQuery";
 import { usePoll } from "../../../hooks/usePoll";
+import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { generateUuidV4 } from "../../../utils/uuid";
@@ -295,38 +296,30 @@ export default function PostDetailed() {
   // Fetch blocked users via shared hook
   const { data: blocks = [] } = useBlocks();
 
-  // 1. Fetch Post Details (using view to get repost data)
+  // 1. Fetch Post Details (using view to get repost data). The view already
+  // joins profiles (INNER JOIN), so username/avatar_url/is_verified always
+  // come back on this same row — a separate author-profile fetch is
+  // redundant and was removed (Phase 7.8).
   const {
     data: detailedPost,
     isLoading: isPostLoading,
     error: postError,
   } = useQuery<PostsSummaryViewRow | null>({
-    queryKey: ["post", postId],
+    ...postDetailQueryOptions(postId),
     enabled: Boolean(postId),
-    queryFn: async () => {
-      if (!postId) return null;
-      const { data, error } = await supabase
-        .from("posts_summary_view")
-        .select("*")
-        .eq("post_id", postId)
-        .or("is_banned.is.null,is_banned.eq.false")
-        .limit(1);
-      if (error) throw error;
-      const row = data && data.length > 0 ? data[0] : null;
-      if (!row) return null;
-      return row as PostsSummaryViewRow;
-    },
-    staleTime: 1000 * 60 * 5, // Post stays fresh for 5 minutes
-    gcTime: 1000 * 60 * 30, // Cache for 30 minutes
-    retry: 2,
   });
 
-  // 2. Fetch Post Author
-  const {
-    data: postUser,
-    isLoading: isUserLoading,
-    error: userError,
-  } = useProfileById(detailedPost?.user_id ?? undefined);
+  // Snapshot, once, whether this exact post was already sitting in the React
+  // Query cache when this screen mounted (e.g. prefetched on tap from a list
+  // — see PostListItem's onPress handlers — or revisited within staleTime).
+  // Captured via a lazy initializer so it reflects the state AT MOUNT only,
+  // not on every render once the fetch itself resolves (which would always
+  // read cache-hit-like by the time render happens) — see isMediaReady below.
+  const [wasPostCachedOnMount] = useState(
+    () =>
+      queryClient.getQueryData<PostsSummaryViewRow | null>(["post", postId]) !=
+      null,
+  );
 
   // 2b. Poll readiness (Phase 7.2). PostListItem/Poll.tsx render
   // <Poll postId={repostedFromPostId ?? postId} /> — a repost's poll
@@ -342,6 +335,25 @@ export default function PostDetailed() {
     ? (detailedPost.reposted_from_post_id ?? detailedPost.post_id)
     : undefined;
   const { isLoading: isPollLoading } = usePoll(pollPostId, currentUserId);
+
+  // 2c. Image/avatar reveal gate (Phase 7.8) — mirrors the same
+  // useRevealAfterFirstNImages hook the Home Feed and Lost & Found already
+  // use. The header card below calls reportMediaReady() once its avatar and
+  // all its images have loaded (PostListItem's onImageLoad contract), so the
+  // screen only reveals once nothing in the initial view is still popping
+  // in. minItems is 1 because the header renders as a single PostListItem
+  // instance that reports readiness exactly once (not per-image). When the
+  // post was already cached at mount (prefetched on tap, or revisited this
+  // session), wasPostCachedOnMount skips the wait entirely — its images are
+  // very likely already in expo-image's disk cache, same reasoning as the
+  // feed's hasCachedPosts skip.
+  const { shouldReveal: isMediaReady, onItemReady: reportMediaReady } =
+    useRevealAfterFirstNImages({
+      minItems: 1,
+      timeoutMs: 2500,
+      initialRevealed: wasPostCachedOnMount,
+      resetKey: postId,
+    });
 
   const { data: currentUser } = useMyProfile(currentUserId ?? undefined);
   const isAdmin = currentUser?.is_admin === true;
@@ -427,6 +439,7 @@ export default function PostDetailed() {
   });
 
   const handleDeletePost = () => {
+    if (deletePostMutation.isPending) return;
     setShowMenu(false);
 
     Alert.alert(
@@ -603,22 +616,24 @@ export default function PostDetailed() {
     () => (
       <PostHeaderCard
         post={detailedPost!}
-        postUser={postUser ?? null}
         commentCount={flatComments.length || 0}
         isBookmarked={isBookmarked}
         onToggleBookmark={toggleBookmark}
         onImagePress={setFullscreenUri}
         isAdmin={isAdmin}
+        onImageLoad={reportMediaReady}
+        imagesAssumeCached={wasPostCachedOnMount}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       detailedPost,
-      postUser,
       flatComments.length,
       isBookmarked,
       toggleBookmark,
       isAdmin,
+      reportMediaReady,
+      wasPostCachedOnMount,
     ],
   );
 
@@ -633,7 +648,7 @@ export default function PostDetailed() {
   // loading (nothing to check yet) or while the SAME query Poll.tsx itself
   // needs is genuinely in flight — never an extra fetch, and already
   // resolved instantly whenever this post's poll was already seeded/cached.
-  if (isPostLoading || isUserLoading || isPollLoading) {
+  if (isPostLoading || isPollLoading) {
     return wrapScreen(
       <View style={{ flex: 1, backgroundColor: theme.background }}>
         {screenChrome}
@@ -644,11 +659,9 @@ export default function PostDetailed() {
     );
   }
 
-  if (postError || userError || commentsError) {
+  if (postError || commentsError) {
     if (postError)
       logger.error("Failed to load post", postError as Error, { postId });
-    if (userError)
-      logger.error("Failed to load post user", userError as Error, { postId });
     if (commentsError)
       logger.error("Failed to load comments", commentsError as Error, {
         postId,
@@ -748,7 +761,9 @@ export default function PostDetailed() {
 
   const commentsScreenBody = (
     <View style={{ flex: 1 }}>
-      {(createCommentMutation.isPending || deletingCommentId) && (
+      {(createCommentMutation.isPending ||
+        deletingCommentId ||
+        deletePostMutation.isPending) && (
         <View
           style={[
             StyleSheet.absoluteFill,
@@ -812,14 +827,26 @@ export default function PostDetailed() {
         >
           <View style={[styles.menuContainer, { backgroundColor: theme.card }]}>
             {canDeletePost ? (
-              <Pressable style={styles.menuItem} onPress={handleDeletePost}>
-                <MaterialCommunityIcons
-                  name="delete"
-                  size={menuIconSize}
-                  color="#EF4444"
-                />
+              <Pressable
+                testID="post-detail-delete-item"
+                style={[
+                  styles.menuItem,
+                  deletePostMutation.isPending && styles.menuItemDisabled,
+                ]}
+                onPress={handleDeletePost}
+                disabled={deletePostMutation.isPending}
+              >
+                {deletePostMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#EF4444" />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="delete"
+                    size={menuIconSize}
+                    color="#EF4444"
+                  />
+                )}
                 <Text style={[styles.menuText, { color: "#EF4444" }]}>
-                  Delete Post
+                  {deletePostMutation.isPending ? "Deleting…" : "Delete Post"}
                 </Text>
               </Pressable>
             ) : null}
@@ -946,7 +973,33 @@ export default function PostDetailed() {
       {wrapScreen(
         <View style={{ flex: 1, backgroundColor: theme.background }}>
           {screenChrome}
-          {content}
+          {/* Real content mounts immediately (even while media is still
+              loading) so its avatar/image onLoad events can actually fire —
+              an early-return here instead would mean nothing ever mounts to
+              report readiness, and the screen would always sit at the
+              timeout. Hidden via opacity/pointerEvents until
+              reportMediaReady() (or the hook's own timeout) fires, matching
+              the Home Feed/Lost & Found reveal pattern (Phase 7.8). */}
+          <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, opacity: isMediaReady ? 1 : 0 }}>
+              {content}
+            </View>
+            {/* Sits on top and opaquely covers the same area, so it already
+                intercepts touches to the hidden content below by ordinary
+                view stacking — no pointerEvents needed on the content
+                wrapper itself. */}
+            {!isMediaReady && (
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  styles.container,
+                  { backgroundColor: theme.background },
+                ]}
+              >
+                <ActivityIndicator size="large" color={theme.primary} />
+              </View>
+            )}
+          </View>
         </View>,
       )}
     </ErrorBoundary>
@@ -1072,6 +1125,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: moderateScale(12),
     gap: moderateScale(12),
+  },
+  menuItemDisabled: {
+    opacity: 0.5,
   },
   menuText: {
     fontSize: moderateScale(16),

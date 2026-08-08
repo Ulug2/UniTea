@@ -9,16 +9,18 @@ import {
   ActivityIndicator,
   Alert,
   StyleSheet,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { Ionicons, MaterialCommunityIcons, Entypo } from "@expo/vector-icons";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { useTheme } from "../../../context/ThemeContext";
 import type { Theme } from "../../../context/ThemeContext";
 import { useAuth } from "../../../context/AuthContext";
 import { supabase } from "../../../lib/supabase";
 import SupabaseImage from "../../../components/SupabaseImage";
+import ReportModal from "../../../components/ReportModal";
 import { sharePost } from "../../../utils/sharePost";
 import {
   FullscreenImageModal,
@@ -29,6 +31,11 @@ import ResponsiveImage from "../../../components/ResponsiveImage";
 import EntityAvatar from "../../../components/EntityAvatar";
 import { getAvatarForEntity } from "../../../utils/entityDisplay";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
+import { lostFoundDetailQueryOptions } from "../../../features/posts/data/lostFoundDetailQuery";
+import { useReportPost } from "../../../features/posts/hooks/useReportPost";
+import { useBlockUser } from "../../../features/posts/hooks/useBlockUser";
+import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
+import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -299,6 +306,37 @@ function buildStyles(theme: Theme, topInset: number, bottomInset: number) {
       fontFamily: "Poppins_400Regular",
       color: theme.secondaryText,
     },
+
+    // Three-dot menu (Report / Block / Delete) — mirrors post/[id].tsx's menu styling.
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    menuContainer: {
+      borderRadius: moderateScale(12),
+      padding: moderateScale(8),
+      minWidth: scale(200),
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: verticalScale(2) },
+      shadowOpacity: 0.25,
+      shadowRadius: moderateScale(3.84),
+      elevation: 5,
+    },
+    menuItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: moderateScale(12),
+      gap: moderateScale(12),
+    },
+    menuItemDisabled: {
+      opacity: 0.5,
+    },
+    menuText: {
+      fontSize: moderateScale(16),
+      fontFamily: "Poppins_500Medium",
+    },
   });
 }
 
@@ -414,12 +452,17 @@ export default function LostFoundPostDetailed() {
   const { theme } = useTheme();
   const { session } = useAuth();
   const currentUserId = session?.user?.id ?? null;
+  const queryClient = useQueryClient();
+  const { data: currentUser } = useMyProfile(currentUserId ?? undefined);
+  const isAdmin = currentUser?.is_admin === true;
 
   const navigation = useNavigation();
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const chatInProgress = useRef(false);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
   const [isGalleryInteracting, setIsGalleryInteracting] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const styles = useMemo(
     () => buildStyles(theme, insets.top, insets.bottom),
@@ -441,19 +484,23 @@ export default function LostFoundPostDetailed() {
     isLoading,
     error,
   } = useQuery<PostsSummaryViewRow | null>({
-    queryKey: ["lostfound-detail", postId],
-    queryFn: async () => {
-      if (!postId) return null;
-      const { data, error } = await supabase
-        .from("posts_summary_view")
-        .select("*")
-        .eq("post_id", postId)
-        .maybeSingle();
-      if (error) throw error;
-      return data as PostsSummaryViewRow | null;
-    },
+    ...lostFoundDetailQueryOptions(postId),
     enabled: !!postId,
   });
+
+  // Snapshot, once, whether this exact post was already sitting in the React
+  // Query cache when this screen mounted (e.g. prefetched on tap from the
+  // list — see LostFoundListItem's onPress handlers — or revisited within
+  // staleTime). Captured via a lazy initializer so it reflects the state AT
+  // MOUNT only, not on every render once the fetch itself resolves — same
+  // pattern as Post Detail's wasPostCachedOnMount (Phase 7.8).
+  const [wasPostCachedOnMount] = useState(
+    () =>
+      queryClient.getQueryData<PostsSummaryViewRow | null>([
+        "lostfound-detail",
+        postId,
+      ]) != null,
+  );
 
   const displayImageUrls = normalizeImagePaths(post?.image_url, post?.image_urls);
 
@@ -466,10 +513,15 @@ export default function LostFoundPostDetailed() {
   // avatar / no image on this post), the effects below immediately report
   // that slot ready instead of waiting on it. Bounded by the hook's own
   // 2.5s timeout, same safety net the feed/list already rely on.
+  // wasPostCachedOnMount skips the wait entirely when this exact post was
+  // already warm (prefetched on tap, or revisited this session) — its
+  // media is very likely already in expo-image's disk cache (Phase 2,
+  // mirrors Post Detail's Phase 7.8 cache-skip).
   const { shouldReveal: isMediaReady, onItemReady: reportMediaReady } =
     useRevealAfterFirstNImages({
       minItems: 2,
       timeoutMs: 2500,
+      initialRevealed: wasPostCachedOnMount,
       resetKey: postId,
     });
 
@@ -480,6 +532,75 @@ export default function LostFoundPostDetailed() {
   useEffect(() => {
     if (post && displayImageUrls.length === 0) reportMediaReady();
   }, [post, displayImageUrls.length, reportMediaReady]);
+
+  // ── Menu actions (Report / Block / Delete) ──────────────────────────────────
+  // Reuses the exact same hooks Post Detail and the Lost & Found list screen
+  // already use — no new backend/mutation logic (Phase 2, Task 4). The
+  // client-side isPostOwner/isAdmin checks below only control what's shown;
+  // the server independently re-verifies ownership/admin for delete
+  // (delete-post Edge Function) regardless of what the client sends.
+  const isPostOwner = currentUserId != null && currentUserId === post?.user_id;
+  const canDeletePost = isPostOwner || isAdmin;
+
+  const reportPostMutation = useReportPost({
+    postId,
+    viewerId: currentUserId,
+  });
+
+  const blockUserMutation = useBlockUser(currentUserId);
+
+  const deletePostMutation = useDeletePost(postId, {
+    scope: { type: "lost_found", universityId: post?.university_id },
+    onNavigateBack: navigateBack,
+  });
+
+  const handleReportPost = (reason: string) => {
+    setShowReportModal(false);
+    setShowMenu(false);
+    reportPostMutation.mutate(reason);
+  };
+
+  const handleBlockUser = () => {
+    const authorId = post?.user_id;
+    if (!authorId) return;
+
+    // Lost & Found posts are never anonymous, so block scope is always
+    // profile_only — matches the same, already-established Lost & Found
+    // list-screen pattern.
+    Alert.alert(
+      "Block User",
+      "You will no longer see public posts or receive messages from this user.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: () =>
+            blockUserMutation.mutate(
+              { targetUserId: authorId, scope: "profile_only" },
+              { onSuccess: () => navigateBack() },
+            ),
+        },
+      ],
+    );
+  };
+
+  const handleDeletePost = () => {
+    if (deletePostMutation.isPending) return;
+    setShowMenu(false);
+    Alert.alert(
+      "Delete Post",
+      "Are you sure you want to delete this post? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deletePostMutation.mutate(undefined),
+        },
+      ],
+    );
+  };
 
   // ── Chat handler ─────────────────────────────────────────────────────────────
   const handleContactPress = async () => {
@@ -590,25 +711,12 @@ export default function LostFoundPostDetailed() {
     );
   }
 
-  // Post data is ready, but avatar/image aren't confirmed loaded yet (or
-  // confirmed unnecessary) — same lightweight spinner as the isLoading
-  // case above, just extended slightly (bounded by the 2.5s timeout in
-  // the hook) so the card never appears "done" and then changes.
-  if (!isMediaReady) {
-    return (
-      <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color={theme.primary} />
-      </View>
-    );
-  }
-
   // ── Derived data ─────────────────────────────────────────────────────────────
   // displayImageUrls is computed earlier (before the loading gates above —
   // it feeds the media-readiness effects) using post?.image_url/image_urls;
   // it's identical here now that post is confirmed non-null.
   const isLost = post.category === "lost";
   const isAnonymous = post.is_anonymous ?? false;
-  const isOwnPost = currentUserId === post.user_id;
 
   const categoryPrefix = isLost ? "Lost" : "Found";
   const title = post.title
@@ -637,9 +745,17 @@ export default function LostFoundPostDetailed() {
   const badgeLabel = isLost ? "Lost" : "Found";
 
   // ── JSX ──────────────────────────────────────────────────────────────────────
+  // Real content mounts immediately once post data is ready (never gated
+  // behind an early return), so its avatar/image onLoad callbacks — wired to
+  // reportMediaReady below — can actually fire while hidden. Only the
+  // opacity is toggled, with an opaque spinner overlay on top while
+  // !isMediaReady; the overlay's own stacking naturally blocks touches to
+  // the invisible content beneath it, so no pointerEvents juggling is
+  // needed. Matches Post Detail's Phase 7.8 reveal pattern exactly — see
+  // src/app/(protected)/post/[id].tsx.
   return (
     <View style={styles.container}>
-      {/* ── Header ── */}
+      {/* ── Header — always visible, doesn't depend on media readiness ── */}
       <View style={styles.header}>
         <Pressable hitSlop={moderateScale(12)} onPress={navigateBack}>
           <Ionicons
@@ -649,211 +765,342 @@ export default function LostFoundPostDetailed() {
           />
         </Pressable>
         <Text style={styles.headerTitle}>Item Details</Text>
+        <Pressable
+          hitSlop={moderateScale(12)}
+          onPress={() => setShowMenu(true)}
+        >
+          <Entypo
+            name="dots-three-horizontal"
+            size={moderateScale(20)}
+            color={theme.text}
+          />
+        </Pressable>
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ── Main detail card ── */}
-        <View style={styles.card}>
-          {/* User row + category badge */}
-          <View style={styles.userRow}>
-            <View style={styles.userLeft}>
-              {/* Avatar: image if available, initials otherwise */}
-              {!isAnonymous && post.avatar_url ? (
-                post.avatar_url.startsWith("http") ? (
-                  <Image
-                    source={{ uri: post.avatar_url }}
-                    style={styles.avatarImage}
-                    onLoad={reportMediaReady}
-                  />
-                ) : (
-                  <SupabaseImage
-                    path={post.avatar_url}
-                    bucket="avatars"
-                    style={styles.avatarImage}
-                    onLoad={reportMediaReady}
-                  />
-                )
-              ) : isAnonymous ? (
-                <View style={styles.avatarCircle}>
-                  <Text style={styles.avatarInitial}>{initial}</Text>
-                </View>
-              ) : (
-                <EntityAvatar
-                  descriptor={getAvatarForEntity("student", {
-                    avatarUrl: post.avatar_url,
-                    username: post.username,
-                  })}
-                  style={styles.avatarImage}
-                />
-              )}
-
-              <View style={styles.userDetails}>
-                <Text style={styles.username} numberOfLines={1}>
-                  {displayName}
-                </Text>
-                {timeAgo && (
-                  <View style={styles.timeRow}>
-                    <Ionicons
-                      name="time-outline"
-                      size={moderateScale(12)}
-                      color={theme.secondaryText}
+      <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, opacity: isMediaReady ? 1 : 0 }}>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* ── Main detail card ── */}
+            <View style={styles.card}>
+              {/* User row + category badge */}
+              <View style={styles.userRow}>
+                <View style={styles.userLeft}>
+                  {/* Avatar: image if available, initials otherwise */}
+                  {!isAnonymous && post.avatar_url ? (
+                    post.avatar_url.startsWith("http") ? (
+                      <Image
+                        source={{ uri: post.avatar_url }}
+                        style={styles.avatarImage}
+                        onLoad={reportMediaReady}
+                      />
+                    ) : (
+                      <SupabaseImage
+                        path={post.avatar_url}
+                        bucket="avatars"
+                        style={styles.avatarImage}
+                        onLoad={reportMediaReady}
+                      />
+                    )
+                  ) : isAnonymous ? (
+                    <View style={styles.avatarCircle}>
+                      <Text style={styles.avatarInitial}>{initial}</Text>
+                    </View>
+                  ) : (
+                    <EntityAvatar
+                      descriptor={getAvatarForEntity("student", {
+                        avatarUrl: post.avatar_url,
+                        username: post.username,
+                      })}
+                      style={styles.avatarImage}
                     />
-                    <Text style={styles.time} numberOfLines={1}>
-                      {timeAgo}
+                  )}
+
+                  <View style={styles.userDetails}>
+                    <Text style={styles.username} numberOfLines={1}>
+                      {displayName}
                     </Text>
+                    {timeAgo && (
+                      <View style={styles.timeRow}>
+                        <Ionicons
+                          name="time-outline"
+                          size={moderateScale(12)}
+                          color={theme.secondaryText}
+                        />
+                        <Text style={styles.time} numberOfLines={1}>
+                          {timeAgo}
+                        </Text>
+                      </View>
+                    )}
                   </View>
+                </View>
+
+                {/* Category pill badge */}
+                <View
+                  style={{
+                    backgroundColor: badgeBg,
+                    paddingHorizontal: scale(10),
+                    paddingVertical: verticalScale(4),
+                    borderRadius: moderateScale(8),
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: moderateScale(13),
+                      fontFamily: "Poppins_600SemiBold",
+                      color: badgeColor,
+                    }}
+                  >
+                    {badgeLabel}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Title */}
+              <Text style={styles.title}>{title}</Text>
+
+              {/* Location */}
+              {post.location ? (
+                <View style={styles.metaRow}>
+                  <Ionicons
+                    name="location-outline"
+                    size={moderateScale(16)}
+                    color={theme.secondaryText}
+                  />
+                  <Text style={styles.metaText}>{post.location}</Text>
+                </View>
+              ) : null}
+
+              {/* Date */}
+              {formattedDate ? (
+                <View style={styles.metaRow}>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={moderateScale(16)}
+                    color={theme.secondaryText}
+                  />
+                  <Text style={styles.metaText}>{formattedDate}</Text>
+                </View>
+              ) : null}
+
+              {/* Post image(s) — tap to expand */}
+              {displayImageUrls.length > 0 ? (
+                <View style={styles.imageContainer}>
+                  {displayImageUrls.length === 1 ? (
+                    <LostFoundDetailSingleImage
+                      uri={displayImageUrls[0]}
+                      onPress={() =>
+                        setFullscreenUri(resolvePostImageUri(displayImageUrls[0]))
+                      }
+                      onLoad={reportMediaReady}
+                    />
+                  ) : (
+                    <ScrollView
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      onStartShouldSetResponderCapture={() => true}
+                      // RN typings only expose the event here; returning `true` ensures
+                      // the horizontal gallery captures swipe gestures exclusively.
+                      onMoveShouldSetResponderCapture={() => true}
+                      onResponderGrant={() => setIsGalleryInteracting(true)}
+                      onResponderRelease={() => setIsGalleryInteracting(false)}
+                      onTouchStart={() => setIsGalleryInteracting(true)}
+                      onTouchEnd={() => setIsGalleryInteracting(false)}
+                      onScrollBeginDrag={() => setIsGalleryInteracting(true)}
+                      onMomentumScrollEnd={() => setIsGalleryInteracting(false)}
+                      onScrollEndDrag={() => setIsGalleryInteracting(false)}
+                      contentContainerStyle={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                      }}
+                    >
+                      {displayImageUrls.map((uri, index) => (
+                        <LostFoundDetailGalleryItem
+                          key={`${uri}-${index}`}
+                          uri={uri}
+                          isLast={index === displayImageUrls.length - 1}
+                          onPress={() => setFullscreenUri(resolvePostImageUri(uri))}
+                          onLoad={index === 0 ? reportMediaReady : undefined}
+                        />
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+              ) : null}
+
+              <View style={styles.divider} />
+
+              {/* Description */}
+              <Text style={styles.sectionLabel}>Description</Text>
+              <Text style={styles.descriptionText}>{description}</Text>
+
+              {/* Action row: Chat (others only) + Share (always) */}
+              <View style={styles.actionRow}>
+                {!isPostOwner && !isAnonymous && (
+                  <Pressable
+                    style={[styles.chatButton, isCreatingChat && { opacity: 0.6 }]}
+                    onPress={handleContactPress}
+                    disabled={isCreatingChat}
+                  >
+                    <MaterialCommunityIcons
+                      name="message-outline"
+                      size={moderateScale(20)}
+                      color="#fff"
+                    />
+                    <Text style={styles.chatButtonText}>
+                      {isCreatingChat ? "Opening chat…" : "Chat"}
+                    </Text>
+                  </Pressable>
                 )}
+                <Pressable
+                  style={styles.shareButton}
+                  onPress={() => sharePost(postId, "lost_found")}
+                >
+                  <Ionicons
+                    name="share-outline"
+                    size={moderateScale(20)}
+                    color={theme.text}
+                  />
+                  <Text style={styles.shareButtonText}>Share</Text>
+                </Pressable>
               </View>
             </View>
 
-            {/* Category pill badge */}
-            <View
-              style={{
-                backgroundColor: badgeBg,
-                paddingHorizontal: scale(10),
-                paddingVertical: verticalScale(4),
-                borderRadius: moderateScale(8),
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: moderateScale(13),
-                  fontFamily: "Poppins_600SemiBold",
-                  color: badgeColor,
-                }}
-              >
-                {badgeLabel}
-              </Text>
+            {/* ── Safety reminder card ── */}
+            <View style={styles.safetyCard}>
+              <Text style={styles.safetyTitle}>Safety Reminder</Text>
+              <Text style={styles.safetyText}>{SAFETY_REMINDER}</Text>
             </View>
-          </View>
-
-          {/* Title */}
-          <Text style={styles.title}>{title}</Text>
-
-          {/* Location */}
-          {post.location ? (
-            <View style={styles.metaRow}>
-              <Ionicons
-                name="location-outline"
-                size={moderateScale(16)}
-                color={theme.secondaryText}
-              />
-              <Text style={styles.metaText}>{post.location}</Text>
-            </View>
-          ) : null}
-
-          {/* Date */}
-          {formattedDate ? (
-            <View style={styles.metaRow}>
-              <Ionicons
-                name="calendar-outline"
-                size={moderateScale(16)}
-                color={theme.secondaryText}
-              />
-              <Text style={styles.metaText}>{formattedDate}</Text>
-            </View>
-          ) : null}
-
-          {/* Post image(s) — tap to expand */}
-          {displayImageUrls.length > 0 ? (
-            <View style={styles.imageContainer}>
-              {displayImageUrls.length === 1 ? (
-                <LostFoundDetailSingleImage
-                  uri={displayImageUrls[0]}
-                  onPress={() =>
-                    setFullscreenUri(resolvePostImageUri(displayImageUrls[0]))
-                  }
-                  onLoad={reportMediaReady}
-                />
-              ) : (
-                <ScrollView
-                  horizontal
-                  nestedScrollEnabled
-                  showsHorizontalScrollIndicator={false}
-                  onStartShouldSetResponderCapture={() => true}
-                  // RN typings only expose the event here; returning `true` ensures
-                  // the horizontal gallery captures swipe gestures exclusively.
-                  onMoveShouldSetResponderCapture={() => true}
-                  onResponderGrant={() => setIsGalleryInteracting(true)}
-                  onResponderRelease={() => setIsGalleryInteracting(false)}
-                  onTouchStart={() => setIsGalleryInteracting(true)}
-                  onTouchEnd={() => setIsGalleryInteracting(false)}
-                  onScrollBeginDrag={() => setIsGalleryInteracting(true)}
-                  onMomentumScrollEnd={() => setIsGalleryInteracting(false)}
-                  onScrollEndDrag={() => setIsGalleryInteracting(false)}
-                  contentContainerStyle={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                  }}
-                >
-                  {displayImageUrls.map((uri, index) => (
-                    <LostFoundDetailGalleryItem
-                      key={`${uri}-${index}`}
-                      uri={uri}
-                      isLast={index === displayImageUrls.length - 1}
-                      onPress={() => setFullscreenUri(resolvePostImageUri(uri))}
-                      onLoad={index === 0 ? reportMediaReady : undefined}
-                    />
-                  ))}
-                </ScrollView>
-              )}
-            </View>
-          ) : null}
-
-          <View style={styles.divider} />
-
-          {/* Description */}
-          <Text style={styles.sectionLabel}>Description</Text>
-          <Text style={styles.descriptionText}>{description}</Text>
-
-          {/* Action row: Chat (others only) + Share (always) */}
-          <View style={styles.actionRow}>
-            {!isOwnPost && !isAnonymous && (
-              <Pressable
-                style={[styles.chatButton, isCreatingChat && { opacity: 0.6 }]}
-                onPress={handleContactPress}
-                disabled={isCreatingChat}
-              >
-                <MaterialCommunityIcons
-                  name="message-outline"
-                  size={moderateScale(20)}
-                  color="#fff"
-                />
-                <Text style={styles.chatButtonText}>
-                  {isCreatingChat ? "Opening chat…" : "Chat"}
-                </Text>
-              </Pressable>
-            )}
-            <Pressable
-              style={styles.shareButton}
-              onPress={() => sharePost(postId, "lost_found")}
-            >
-              <Ionicons
-                name="share-outline"
-                size={moderateScale(20)}
-                color={theme.text}
-              />
-              <Text style={styles.shareButtonText}>Share</Text>
-            </Pressable>
-          </View>
+          </ScrollView>
         </View>
-
-        {/* ── Safety reminder card ── */}
-        <View style={styles.safetyCard}>
-          <Text style={styles.safetyTitle}>Safety Reminder</Text>
-          <Text style={styles.safetyText}>{SAFETY_REMINDER}</Text>
-        </View>
-      </ScrollView>
+        {!isMediaReady && (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              styles.centered,
+              { backgroundColor: theme.background },
+            ]}
+          >
+            <ActivityIndicator size="large" color={theme.primary} />
+          </View>
+        )}
+      </View>
 
       <FullscreenImageModal
         visible={Boolean(fullscreenUri)}
         uri={fullscreenUri}
         onClose={() => setFullscreenUri(null)}
       />
+
+      {/* Three-dot menu: Report / Block / Delete — same visual pattern and
+          hooks as Post Detail's own menu (post/[id].tsx). */}
+      <Modal
+        visible={showMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMenu(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowMenu(false)}
+        >
+          <View style={[styles.menuContainer, { backgroundColor: theme.card }]}>
+            {canDeletePost ? (
+              <Pressable
+                testID="lostfound-detail-delete-item"
+                style={[
+                  styles.menuItem,
+                  deletePostMutation.isPending && styles.menuItemDisabled,
+                ]}
+                onPress={handleDeletePost}
+                disabled={deletePostMutation.isPending}
+              >
+                {deletePostMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#EF4444" />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="delete"
+                    size={moderateScale(20)}
+                    color="#EF4444"
+                  />
+                )}
+                <Text style={[styles.menuText, { color: "#EF4444" }]}>
+                  {deletePostMutation.isPending ? "Deleting…" : "Delete Post"}
+                </Text>
+              </Pressable>
+            ) : null}
+            {!isPostOwner ? (
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  setShowReportModal(true);
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="flag"
+                  size={moderateScale(20)}
+                  color={theme.text}
+                />
+                <Text style={[styles.menuText, { color: theme.text }]}>
+                  Report Content
+                </Text>
+              </Pressable>
+            ) : null}
+            {!isPostOwner ? (
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  handleBlockUser();
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="block-helper"
+                  size={moderateScale(20)}
+                  color={theme.text}
+                />
+                <Text style={[styles.menuText, { color: theme.text }]}>
+                  Block User
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </Pressable>
+      </Modal>
+
+      <ReportModal
+        visible={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={handleReportPost}
+        isLoading={reportPostMutation.isPending}
+        reportType="post"
+      />
+
+      {/* Menu closes as soon as Delete is tapped (before the confirmation
+          Alert), so its own disabled/spinner state isn't visible during the
+          actual pending window — this overlay is, mirroring the same
+          pattern already used in post/[id].tsx and lostfound.tsx. */}
+      {deletePostMutation.isPending && (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: "rgba(255, 255, 255, 0.6)",
+              zIndex: 10,
+              justifyContent: "center",
+              alignItems: "center",
+            },
+          ]}
+          pointerEvents="box-only"
+        >
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      )}
     </View>
   );
 }

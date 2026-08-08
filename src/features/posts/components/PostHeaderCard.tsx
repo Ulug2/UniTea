@@ -1,28 +1,29 @@
 import React from "react";
 import PostListItem from "../../../components/PostListItem";
 import type { PostsSummaryViewRow } from "../../../types/posts";
-import type { Database } from "../../../types/database.types";
-
-type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 type PostHeaderCardProps = {
   post: PostsSummaryViewRow;
-  postUser: Profile | null;
   commentCount: number;
   isBookmarked: boolean;
   onToggleBookmark: () => void;
   onImagePress?: (uri: string) => void;
   isAdmin?: boolean;
+  /** Fires once this card's avatar + all its images have loaded — see PostListItem's onImageLoad. */
+  onImageLoad?: () => void;
+  /** Skip the loading-spinner-overlay frame for this card's images — see ResponsiveImage's assumeCached. */
+  imagesAssumeCached?: boolean;
 };
 
 export function PostHeaderCard({
   post,
-  postUser,
   commentCount,
   isBookmarked,
   onToggleBookmark,
   onImagePress,
   isAdmin = false,
+  onImageLoad,
+  imagesAssumeCached,
 }: PostHeaderCardProps) {
   return (
     <PostListItem
@@ -42,13 +43,13 @@ export function PostHeaderCard({
       updatedAt={post.updated_at}
       editedAt={post.edited_at}
       viewCount={post.view_count}
-      username={post.username || postUser?.username || "Unknown"}
-      avatarUrl={post.avatar_url || postUser?.avatar_url || null}
+      username={post.username || "Unknown"}
+      avatarUrl={post.avatar_url || null}
       universityDomain={post.university_domain}
       communityId={post.community_id}
       communityName={post.community_name}
       communityAvatarUrl={post.community_avatar_url}
-      isVerified={post.is_verified || postUser?.is_verified || null}
+      isVerified={post.is_verified || null}
       commentCount={commentCount}
       voteScore={post.vote_score ?? 0}
       userVote={post.user_vote}
@@ -71,6 +72,8 @@ export function PostHeaderCard({
       onImagePress={onImagePress}
       disableCommentInteraction
       isAdmin={isAdmin}
+      onImageLoad={onImageLoad}
+      imagesAssumeCached={imagesAssumeCached}
     />
   );
 }

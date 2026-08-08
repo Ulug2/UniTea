@@ -15,6 +15,7 @@ import { supabase } from "../lib/supabase";
 import { formatDistanceToNowStrict } from "date-fns";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import SupabaseImage from "./SupabaseImage";
 import UserProfileModal from "./UserProfileModal";
 import EntityAvatar from "./EntityAvatar";
@@ -22,6 +23,7 @@ import { getAvatarForEntity } from "../utils/entityDisplay";
 import { useMyProfile } from "../features/profile/hooks/useMyProfile";
 import { sharePost } from "../utils/sharePost";
 import ResponsiveImage from "./ResponsiveImage";
+import { prefetchLostFoundDetail } from "../features/posts/data/lostFoundDetailQuery";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 export type LostFoundPostForMenu = {
@@ -182,6 +184,16 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   const currentUserId = session?.user?.id;
   const { data: currentUser } = useMyProfile(currentUserId);
   const isAdmin = currentUser?.is_admin === true;
+  const queryClient = useQueryClient();
+
+  // Prefetches the exact query the detail screen itself runs, then
+  // navigates — mirrors PostListItem's onPress handlers (Phase 7.8) so
+  // React Query dedupes the prefetch against the detail screen's own
+  // useQuery instead of firing a second request.
+  const navigateToDetail = () => {
+    prefetchLostFoundDetail(queryClient, postId);
+    router.push(`/lostfoundpost/${postId}`);
+  };
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [avatarLoaded, setAvatarLoaded] = useState(false);
@@ -500,7 +512,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   return (
     <View style={styles.card}>
       <Pressable
-        onPress={() => router.push(`/lostfoundpost/${postId}`)}
+        onPress={navigateToDetail}
         onLongPress={() =>
           onLongPress?.({ postId, userId, username: username ?? "Unknown" })
         }
@@ -595,7 +607,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
             <LostFoundSingleImage
               uri={displayImageUrls[0]}
               onLoadImage={() => setImageLoaded(true)}
-              onPress={() => router.push(`/lostfoundpost/${postId}`)}
+              onPress={navigateToDetail}
               assumeCached={imagesAssumeCached}
             />
           ) : (
@@ -612,7 +624,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
                   uri={uri}
                   isLast={index === displayImageUrls.length - 1}
                   onLoadImage={() => setImageLoaded(true)}
-                  onPress={() => router.push(`/lostfoundpost/${postId}`)}
+                  onPress={navigateToDetail}
                   assumeCached={imagesAssumeCached}
                 />
               ))}

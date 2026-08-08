@@ -179,7 +179,7 @@ export default function LostFoundScreen() {
   });
 
   const handleDeletePost = useCallback(() => {
-    if (!selectedPost) return;
+    if (!selectedPost || deletePostMutation.isPending) return;
     setShowMenu(false);
     Alert.alert(
       "Delete Post",
@@ -414,14 +414,26 @@ export default function LostFoundScreen() {
             style={[menuStyles.menuContainer, { backgroundColor: theme.card }]}
           >
             {canDeletePost ? (
-              <Pressable style={menuStyles.menuItem} onPress={handleDeletePost}>
-                <MaterialCommunityIcons
-                  name="delete"
-                  size={moderateScale(20)}
-                  color="#EF4444"
-                />
+              <Pressable
+                testID="lostfound-delete-item"
+                style={[
+                  menuStyles.menuItem,
+                  deletePostMutation.isPending && menuStyles.menuItemDisabled,
+                ]}
+                onPress={handleDeletePost}
+                disabled={deletePostMutation.isPending}
+              >
+                {deletePostMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#EF4444" />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="delete"
+                    size={moderateScale(20)}
+                    color="#EF4444"
+                  />
+                )}
                 <Text style={[menuStyles.menuText, { color: "#EF4444" }]}>
-                  Delete Post
+                  {deletePostMutation.isPending ? "Deleting…" : "Delete Post"}
                 </Text>
               </Pressable>
             ) : null}
@@ -472,6 +484,28 @@ export default function LostFoundScreen() {
         isLoading={reportPostMutation.isPending}
         reportType="post"
       />
+
+      {/* Menu closes as soon as Delete is tapped (before the confirmation
+          Alert), so its own disabled/spinner state isn't visible during the
+          actual pending window — this overlay is, mirroring the same
+          pattern post/[id].tsx already uses for its own delete/comment
+          mutations. */}
+      {deletePostMutation.isPending && (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: "rgba(255, 255, 255, 0.6)",
+              zIndex: 10,
+              justifyContent: "center",
+              alignItems: "center",
+            },
+          ]}
+          pointerEvents="box-only"
+        >
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      )}
 
       {/* Floating Action Button */}
       <Pressable
@@ -554,6 +588,9 @@ const menuStyles = StyleSheet.create({
     alignItems: "center",
     padding: moderateScale(12),
     gap: moderateScale(12),
+  },
+  menuItemDisabled: {
+    opacity: 0.5,
   },
   menuText: {
     fontSize: moderateScale(16),
