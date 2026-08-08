@@ -4,7 +4,7 @@ import {
   saveLostFoundToStorage,
   seedLostFoundCacheFromStorage,
   saveCampusFeedToStorage,
-  seedCampusFeedCacheFromStorage,
+  getCampusFeedPollSeedIds,
   saveCommunityFeedToStorage,
   seedCommunityFeedCacheFromStorage,
   savePollToStorage,
@@ -120,33 +120,50 @@ describe('Campus Feed ("hot" tab) persistence — cold start (Phase 7.1)', () =>
     expect(JSON.parse(rawB as string)).toEqual(makePosts('b'));
   });
 
-  it('seeds the exact live query key ["posts","feed","hot","",universityId,null] used by useFeedPosts', async () => {
+  // Regression test for the "briefly visible stale/deleted posts on cold
+  // start" bug: getCampusFeedPollSeedIds must NEVER populate the live query
+  // key useFeedPosts/index.tsx render from — Campus Feed must always show
+  // its own skeleton on cold start and wait for the real network response,
+  // never a persisted (possibly-stale, possibly-containing-a-deleted-post)
+  // snapshot.
+  it('never writes the persisted snapshot into the live query key ["posts","feed","hot","",universityId,null] — it only resolves post ids for poll seeding', async () => {
     await saveCampusFeedToStorage(UNI_A, [makePosts('a')]);
 
     const queryClient = new QueryClient();
-    await seedCampusFeedCacheFromStorage(queryClient, UNI_A);
+    const returnedIds = await getCampusFeedPollSeedIds(queryClient, UNI_A);
 
-    const seeded = queryClient.getQueryData(['posts', 'feed', 'hot', '', UNI_A, null]);
-    expect(seeded).toEqual({ pages: [makePosts('a')], pageParams: [0] });
+    // The AsyncStorage snapshot is still read (ids are returned)...
+    expect(returnedIds).toEqual(['a-1']);
+    // ...but the live key useFeedPosts renders from must stay completely
+    // untouched, so index.tsx's isPending/!postsData skeleton gate sees no
+    // data and shows the skeleton until the real fetch resolves.
+    expect(
+      queryClient.getQueryData(['posts', 'feed', 'hot', '', UNI_A, null]),
+    ).toBeUndefined();
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
   });
 
-  it('seeded data is immediately stale (updatedAt: 0), so a background refetch fires on mount', async () => {
-    await saveCampusFeedToStorage(UNI_A, [makePosts('a')]);
+  it('never writes the live key even with several stale cached posts', async () => {
+    const staleposts = [
+      { post_id: 'stale-1', content: 'deleted since' },
+      { post_id: 'stale-2', content: 'also deleted since' },
+      { post_id: 'stale-3', content: 'edited since' },
+    ] as any[];
+    await saveCampusFeedToStorage(UNI_A, [staleposts]);
 
     const queryClient = new QueryClient();
-    await seedCampusFeedCacheFromStorage(queryClient, UNI_A);
+    await getCampusFeedPollSeedIds(queryClient, UNI_A);
 
-    const state = queryClient
-      .getQueryCache()
-      .find({ queryKey: ['posts', 'feed', 'hot', '', UNI_A, null] });
-    expect(state?.state.dataUpdatedAt).toBe(0);
+    expect(
+      queryClient.getQueryData(['posts', 'feed', 'hot', '', UNI_A, null]),
+    ).toBeUndefined();
   });
 
   it('does not seed anything when universityId is not yet known', async () => {
     await saveCampusFeedToStorage(UNI_A, [makePosts('a')]);
 
     const queryClient = new QueryClient();
-    await seedCampusFeedCacheFromStorage(queryClient, undefined);
+    await getCampusFeedPollSeedIds(queryClient, undefined);
 
     expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
   });
@@ -155,7 +172,7 @@ describe('Campus Feed ("hot" tab) persistence — cold start (Phase 7.1)', () =>
     await saveCampusFeedToStorage(UNI_A, [makePosts('a')]);
 
     const queryClient = new QueryClient();
-    await seedCampusFeedCacheFromStorage(queryClient, UNI_B);
+    await getCampusFeedPollSeedIds(queryClient, UNI_B);
 
     expect(
       queryClient.getQueryData(['posts', 'feed', 'hot', '', UNI_B, null]),
@@ -170,7 +187,7 @@ describe('Campus Feed ("hot" tab) persistence — cold start (Phase 7.1)', () =>
     const fresh = { pages: [makePosts('fresh')], pageParams: [0] };
     queryClient.setQueryData(['posts', 'feed', 'hot', '', UNI_A, null], fresh);
 
-    await seedCampusFeedCacheFromStorage(queryClient, UNI_A);
+    await getCampusFeedPollSeedIds(queryClient, UNI_A);
 
     expect(
       queryClient.getQueryData(['posts', 'feed', 'hot', '', UNI_A, null]),
@@ -191,7 +208,7 @@ describe('Campus Feed ("hot" tab) persistence — cold start (Phase 7.1)', () =>
     await saveCampusFeedToStorage(UNI_A, [posts]);
 
     const queryClient = new QueryClient();
-    const returnedIds = await seedCampusFeedCacheFromStorage(queryClient, UNI_A);
+    const returnedIds = await getCampusFeedPollSeedIds(queryClient, UNI_A);
 
     expect(returnedIds).toEqual(['a-1', 'a-2']);
   });
@@ -204,7 +221,7 @@ describe('Campus Feed ("hot" tab) persistence — cold start (Phase 7.1)', () =>
     });
     await saveCampusFeedToStorage(UNI_A, [makePosts('stale')]);
 
-    const returnedIds = await seedCampusFeedCacheFromStorage(queryClient, UNI_A);
+    const returnedIds = await getCampusFeedPollSeedIds(queryClient, UNI_A);
 
     expect(returnedIds).toEqual(['fresh-1']);
   });
@@ -222,7 +239,7 @@ describe('Campus Feed ("hot" tab) persistence — cold start (Phase 7.1)', () =>
     await saveCampusFeedToStorage(UNI_A, [posts]);
 
     const queryClient = new QueryClient();
-    const returnedIds = await seedCampusFeedCacheFromStorage(queryClient, UNI_A);
+    const returnedIds = await getCampusFeedPollSeedIds(queryClient, UNI_A);
 
     expect(returnedIds).toEqual(expect.arrayContaining(['repost-1', 'original-1', 'plain-1']));
     expect(returnedIds).toHaveLength(3);
@@ -235,14 +252,14 @@ describe('Campus Feed ("hot" tab) persistence — cold start (Phase 7.1)', () =>
       pageParams: [0],
     });
 
-    const returnedIds = await seedCampusFeedCacheFromStorage(queryClient, UNI_A);
+    const returnedIds = await getCampusFeedPollSeedIds(queryClient, UNI_A);
 
     expect(returnedIds).toEqual(expect.arrayContaining(['repost-2', 'original-2']));
   });
 
   it('returns an empty array when there is nothing to seed', async () => {
     const queryClient = new QueryClient();
-    const returnedIds = await seedCampusFeedCacheFromStorage(queryClient, UNI_A);
+    const returnedIds = await getCampusFeedPollSeedIds(queryClient, UNI_A);
     expect(returnedIds).toEqual([]);
   });
 });

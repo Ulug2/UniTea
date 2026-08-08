@@ -124,14 +124,22 @@ export async function saveLostFoundToStorage(
 //      than guaranteeing data lands before mount, unlike a synchronous
 //      AsyncStorage seed read before <Slot/> renders.
 //
-// Net effect: the default feed tab always showed a full skeleton on cold
-// start, even for a returning user with recently-seen posts. This restores
-// Campus Feed persistence, scoped to the "hot" filter only (the default tab
-// — "new"/"top" and community feeds are unaffected, matching the smallest
-// fix for the actual reported symptom). Same pattern as Lost & Found above:
-// versioned per-university key, first page only, updatedAt:0 on seed so the
-// screen mounts with data (no skeleton) and silently refetches in the
-// background.
+// Net effect (Phase 7.1): the default feed tab always showed a full skeleton
+// on cold start, even for a returning user with recently-seen posts. This
+// restored Campus Feed persistence, scoped to the "hot" filter only.
+//
+// Phase [cache-flash fix]: that restored seed directly populated the LIVE
+// query key useFeedPosts/index.tsx render from, with updatedAt:0 — meaning
+// the (possibly stale, possibly containing since-deleted/edited/re-ranked
+// posts) snapshot rendered instantly and fully visible on every cold start,
+// before the background refetch it triggered could correct it. Product
+// decision: users must never see a post that no longer exists, even
+// briefly, so the raw snapshot is no longer written into that live key at
+// all — see getCampusFeedPollSeedIds below, which still reads it, but only
+// to return post ids for poll pre-warming (Phase 7.2), never to populate
+// anything the feed list itself renders from. The write side below is
+// unchanged — still worth keeping for that purpose, and in case a bounded,
+// max-age-gated reintroduction of visible seeding is wanted later.
 // ---------------------------------------------------------------------------
 
 export async function saveCampusFeedToStorage(
@@ -163,15 +171,21 @@ function collectPollPostIds(posts: PostSummary[]): string[] {
   return Array.from(ids);
 }
 
-// Must match useFeedPosts' live key exactly: feedKeys.list("hot", "", universityId, null)
-// => ["posts", "feed", "hot", "", universityId, null].
+// Deliberately does NOT write to useFeedPosts' live key
+// (["posts","feed","hot","",universityId,null]) — see the header comment
+// above. Campus Feed must always show its own skeleton on cold start until
+// the real network response arrives, never a persisted snapshot that could
+// contain a since-deleted/edited/re-ranked post.
 //
-// Returns the seeded (or already-cached) page's post ids (including, for
-// reposts, the original post's id — see collectPollPostIds above) —
-// _layout.tsx uses this to also seed any of those posts' poll data (see
-// seedPollCachesForPosts below), since posts_summary_view carries no
-// has-a-poll flag to check ahead of time.
-export async function seedCampusFeedCacheFromStorage(
+// Still reads the same source (live cache first if this session already has
+// it, else the AsyncStorage snapshot) purely to return post ids so
+// _layout.tsx can pre-warm their poll vote counts (seedPollCachesForPosts
+// below) — a poll only ever renders inside a post row the FRESH feed query
+// independently confirmed still exists, so pre-warming its vote count from
+// a slightly-stale snapshot is the same self-correcting, updatedAt:0
+// staleness every other seed in this file already relies on, not a case of
+// showing content that doesn't exist.
+export async function getCampusFeedPollSeedIds(
   queryClient: QueryClient,
   universityId: string | null | undefined,
 ): Promise<string[]> {
@@ -187,11 +201,6 @@ export async function seedCampusFeedCacheFromStorage(
     if (!raw) return [];
     const posts: PostSummary[] = JSON.parse(raw);
     if (!posts.length) return [];
-    const data: InfiniteData<PostSummary[]> = {
-      pages: [posts],
-      pageParams: [0],
-    };
-    queryClient.setQueryData(key, data, { updatedAt: 0 });
     return collectPollPostIds(posts);
   } catch {
     return [];
@@ -241,8 +250,12 @@ export async function saveCommunityFeedToStorage(
 // feedKeys.list("hot", "", universityId, communityId)
 // => ["posts", "feed", "hot", "", universityId, communityId].
 //
-// Returns the seeded (or already-cached) page's post ids, same reason as
-// seedCampusFeedCacheFromStorage — so its posts' polls can be seeded too.
+// Returns the seeded (or already-cached) page's post ids, same reason
+// getCampusFeedPollSeedIds does — so its posts' polls can be seeded too.
+// Unlike Campus Feed, this one still legitimately seeds the live query key
+// below — Community Feed wasn't part of the cold-start-flash fix (out of
+// scope by explicit product decision; it carries the same tradeoff Campus
+// Feed used to).
 export async function seedCommunityFeedCacheFromStorage(
   queryClient: QueryClient,
   universityId: string | null | undefined,
@@ -457,8 +470,10 @@ export async function seedChatMessagesCacheFromStorage(
 // the screen will simply load normally from the network, same as any first
 // visit.
 //
-// Campus Feed's "hot" tab is now persisted too — see
-// saveCampusFeedToStorage/seedCampusFeedCacheFromStorage above (Phase 7.1).
+// Campus Feed's "hot" tab is persisted too, but only for poll pre-seeding —
+// see saveCampusFeedToStorage/getCampusFeedPollSeedIds above (Phase 7.1;
+// no longer populates the live feed-list key, see that section's header
+// comment for why).
 // The single most-recently-viewed community's "hot" feed is persisted the
 // same way — see saveCommunityFeedToStorage/seedCommunityFeedCacheFromStorage
 // above (Phase 7.1 follow-up). Every other joined community not seeded this

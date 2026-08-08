@@ -38,7 +38,7 @@ import { logger } from "../utils/logger";
 import ErrorBoundary from "../components/ErrorBoundary";
 import {
   seedLostFoundCacheFromStorage,
-  seedCampusFeedCacheFromStorage,
+  getCampusFeedPollSeedIds,
   seedCommunityFeedCacheFromStorage,
   seedPollCachesForPosts,
   seedChatCacheFromStorage,
@@ -232,9 +232,13 @@ function RootLayoutContent() {
         //    without waiting on the network profile fetch below. On a brand-new
         //    login with no prior cached profile it's undefined and the seed is a
         //    no-op, same as any first visit.
+        //    Exception: getCampusFeedPollSeedIds does NOT populate useFeedPosts'
+        //    live cache (see feedPersistence.ts) — Campus Feed always shows its
+        //    own skeleton on cold start and waits for the real network response,
+        //    so a since-deleted/edited/re-ranked post can never flash on screen.
         const [, campusFeedPostIds, communityFeedPostIds] = await Promise.all([
           seedLostFoundCacheFromStorage(queryClient, cachedProfile?.university_id),
-          seedCampusFeedCacheFromStorage(queryClient, cachedProfile?.university_id),
+          getCampusFeedPollSeedIds(queryClient, cachedProfile?.university_id),
           seedCommunityFeedCacheFromStorage(queryClient, cachedProfile?.university_id),
           seedChatCacheFromStorage(queryClient, session.user.id),
           seedChatMessagesCacheFromStorage(queryClient, session.user.id),
