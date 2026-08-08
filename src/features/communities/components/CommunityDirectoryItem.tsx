@@ -13,6 +13,8 @@ type CommunityDirectoryItemProps = {
   isBusy: boolean;
   onToggleMembership: (community: CommunityDirectoryEntry, isMember: boolean) => void;
   onPress?: (community: CommunityDirectoryEntry) => void;
+  /** Fires once this row's avatar has loaded — wired into the Discover screen's reveal gate. */
+  onImageLoad?: () => void;
 };
 
 function formatMemberCount(count: number): string {
@@ -25,6 +27,7 @@ function CommunityDirectoryItem({
   isBusy,
   onToggleMembership,
   onPress,
+  onImageLoad,
 }: CommunityDirectoryItemProps) {
   const { theme } = useTheme();
 
@@ -42,6 +45,7 @@ function CommunityDirectoryItem({
             path={community.avatar_url}
             bucket="post-images"
             style={styles.avatarImage}
+            onLoad={onImageLoad}
           />
         ) : (
           <EntityAvatar
@@ -50,6 +54,7 @@ function CommunityDirectoryItem({
               communityName: community.name,
             })}
             style={styles.avatarImage}
+            onLoad={onImageLoad}
           />
         )}
       </View>

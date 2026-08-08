@@ -20,6 +20,7 @@ import SupabaseImage from "../../../../components/SupabaseImage";
 import { uploadImage } from "../../../../utils/supabaseImages";
 import { useImagePipeline } from "../../../../hooks/useImagePipeline";
 import { useCommunity } from "../../../../features/communities/hooks/useCommunity";
+import { useMyProfile } from "../../../../features/profile/hooks/useMyProfile";
 import {
   useUpdateCommunity,
   useDeleteCommunity,
@@ -44,6 +45,8 @@ export default function ManageCommunityScreen() {
   const communityId = typeof id === "string" ? id : id?.[0];
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
+  const { data: currentUser } = useMyProfile(currentUserId);
+  const isAdmin = currentUser?.is_admin === true;
 
   const { data: community, isPending } = useCommunity(communityId);
   const updateCommunity = useUpdateCommunity();
@@ -68,10 +71,15 @@ export default function ManageCommunityScreen() {
   });
 
   const isOwner = !!community && community.created_by === currentUserId;
+  // Admins get the same manage/delete access as the owner — the underlying
+  // RLS policies (Update/Delete own communities) already allow
+  // get_my_is_admin(); this just surfaces that in the UI (Phase 1, Task 3).
+  const canManage = isOwner || isAdmin;
   const canSave =
     name.trim().length >= COMMUNITY_NAME_MIN_LENGTH &&
     name.trim().length <= COMMUNITY_NAME_MAX_LENGTH &&
-    !isSaving;
+    !isSaving &&
+    !deleteCommunity.isPending;
 
   const pickAvatar = async () => {
     const selected = await pickAndPrepareImages();
@@ -128,7 +136,7 @@ export default function ManageCommunityScreen() {
   };
 
   const handleDelete = () => {
-    if (!communityId) return;
+    if (!communityId || deleteCommunity.isPending) return;
     Alert.alert(
       "Delete community?",
       "This permanently deletes the community and all of its posts. This cannot be undone.",
@@ -162,7 +170,7 @@ export default function ManageCommunityScreen() {
     );
   }
 
-  if (!community || !isOwner) {
+  if (!community || !canManage) {
     return (
       <SafeAreaView
         style={[styles.container, { backgroundColor: theme.background }]}
@@ -321,16 +329,27 @@ export default function ManageCommunityScreen() {
 
         <Pressable
           onPress={handleDelete}
-          style={[styles.deleteButton, { borderColor: theme.error }]}
+          disabled={deleteCommunity.isPending || isSaving}
+          style={[
+            styles.deleteButton,
+            { borderColor: theme.error },
+            (deleteCommunity.isPending || isSaving) && styles.disabledButton,
+          ]}
         >
-          <Ionicons
-            name="trash-outline"
-            size={moderateScale(18)}
-            color={theme.error}
-          />
-          <Text style={[styles.deleteButtonText, { color: theme.error }]}>
-            Delete Community
-          </Text>
+          {deleteCommunity.isPending ? (
+            <ActivityIndicator size="small" color={theme.error} />
+          ) : (
+            <>
+              <Ionicons
+                name="trash-outline"
+                size={moderateScale(18)}
+                color={theme.error}
+              />
+              <Text style={[styles.deleteButtonText, { color: theme.error }]}>
+                Delete Community
+              </Text>
+            </>
+          )}
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -453,5 +472,8 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: moderateScale(15),
     fontFamily: "Poppins_600SemiBold",
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });

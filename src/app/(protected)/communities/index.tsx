@@ -21,7 +21,13 @@ import {
   useLeaveCommunity,
 } from "../../../features/communities/hooks/useCommunityMembership";
 import CommunityDirectoryItem from "../../../features/communities/components/CommunityDirectoryItem";
+import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import type { CommunityDirectoryEntry } from "../../../features/communities/types";
+
+// Roughly one phone screen's worth of rows — matches Task 5's "first ~8-9
+// communities" target. Only these get wired to the reveal gate; rows
+// further down render/load normally without holding up the reveal.
+const REVEAL_GATE_ROW_COUNT = 9;
 
 export default function CommunityDirectoryScreen() {
   const { theme } = useTheme();
@@ -51,10 +57,25 @@ export default function CommunityDirectoryScreen() {
     isRefetching,
   } = useUniversityCommunities(search);
 
-  const { joinedIds } = useMyCommunities();
+  const { joinedIds, isPending: isMyCommunitiesPending } = useMyCommunities();
   const joinMutation = useJoinCommunity();
   const leaveMutation = useLeaveCommunity();
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Skip the reveal-wait when both the directory AND the membership state
+  // are already warm (prefetched on Discover tap, or a same-session
+  // revisit) — same "nothing to wait for" reasoning as Lost & Found's list
+  // screen, extended to also require membership so Join/Leave never flips
+  // after the row is already visible (mirrors Chat List's own two-source
+  // coordination: chatSummaries + chat-users). No resetKey needed: unlike
+  // the Home Feed's community-switcher, this screen has no equivalent
+  // "switch to a different cached list" case.
+  const hasCachedCommunities = communities.length > 0 && !isMyCommunitiesPending;
+  const { shouldReveal, onItemReady } = useRevealAfterFirstNImages({
+    minItems: 3,
+    timeoutMs: 2500,
+    initialRevealed: hasCachedCommunities,
+  });
 
   const handleToggleMembership = useCallback(
     async (community: CommunityDirectoryEntry, isMember: boolean) => {
@@ -81,15 +102,16 @@ export default function CommunityDirectoryScreen() {
   const keyExtractor = useCallback((item: CommunityDirectoryEntry) => item.id, []);
 
   const renderItem = useCallback(
-    ({ item }: { item: CommunityDirectoryEntry }) => (
+    ({ item, index }: { item: CommunityDirectoryEntry; index: number }) => (
       <CommunityDirectoryItem
         community={item}
         isMember={joinedIds.has(item.id)}
         isBusy={busyId === item.id}
         onToggleMembership={handleToggleMembership}
+        onImageLoad={index < REVEAL_GATE_ROW_COUNT ? onItemReady : undefined}
       />
     ),
-    [joinedIds, busyId, handleToggleMembership],
+    [joinedIds, busyId, handleToggleMembership, onItemReady],
   );
 
   return (
@@ -146,36 +168,60 @@ export default function CommunityDirectoryScreen() {
           </Pressable>
         </View>
       ) : (
-        <FlatList
-          data={communities}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: insets.bottom + verticalScale(24) },
-          ]}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
-          onRefresh={refetch}
-          refreshing={isRefetching}
-          removeClippedSubviews
-          ListFooterComponent={
-            isFetchingNextPage ? (
-              <View style={styles.footer}>
-                <ActivityIndicator size="small" color={theme.primary} />
+        <View style={{ flex: 1 }}>
+          <View
+            style={{
+              flex: 1,
+              opacity: shouldReveal ? 1 : 0,
+              pointerEvents: shouldReveal ? "auto" : "none",
+            }}
+          >
+            <FlatList
+              data={communities}
+              keyExtractor={keyExtractor}
+              renderItem={renderItem}
+              initialNumToRender={REVEAL_GATE_ROW_COUNT}
+              contentContainerStyle={[
+                styles.listContent,
+                { paddingBottom: insets.bottom + verticalScale(24) },
+              ]}
+              onEndReached={handleLoadMore}
+              onEndReachedThreshold={0.5}
+              onRefresh={refetch}
+              refreshing={isRefetching}
+              removeClippedSubviews
+              ListFooterComponent={
+                isFetchingNextPage ? (
+                  <View style={styles.footer}>
+                    <ActivityIndicator size="small" color={theme.primary} />
+                  </View>
+                ) : null
+              }
+              ListEmptyComponent={
+                <View style={styles.centered}>
+                  <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
+                    {search
+                      ? "No communities match your search."
+                      : "No communities yet. Be the first to create one!"}
+                  </Text>
+                </View>
+              }
+            />
+          </View>
+          {!shouldReveal && (
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: theme.background },
+              ]}
+              pointerEvents="none"
+            >
+              <View style={styles.centered}>
+                <ActivityIndicator size="large" color={theme.primary} />
               </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            <View style={styles.centered}>
-              <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
-                {search
-                  ? "No communities match your search."
-                  : "No communities yet. Be the first to create one!"}
-              </Text>
             </View>
-          }
-        />
+          )}
+        </View>
       )}
 
       <Pressable

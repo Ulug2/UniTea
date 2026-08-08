@@ -33,7 +33,11 @@ import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { useFeedPosts } from "../../../hooks/useFeedPosts";
 import CommunityFilterBar from "../../../features/communities/components/CommunityFilterBar";
-import { useMyCommunities } from "../../../features/communities/hooks/useMyCommunities";
+import {
+  useMyCommunities,
+  prefetchMyCommunities,
+} from "../../../features/communities/hooks/useMyCommunities";
+import { prefetchUniversityCommunitiesFirstPage } from "../../../features/communities/hooks/useUniversityCommunities";
 import MatchmakingBanner from "../../../features/matchmaking/components/MatchmakingBanner";
 import { logActivity } from "../../../utils/activityLogger";
 import { saveCampusFeedToStorage, saveCommunityFeedToStorage } from "../../../utils/feedPersistence";
@@ -595,6 +599,7 @@ export default function FeedScreen() {
 
   const { data: feedScreenUser } = useMyProfile(currentUserId);
   const feedScreenUniversityId = feedScreenUser?.university_id;
+  const isAdmin = feedScreenUser?.is_admin === true;
 
   // Log engaged_session after 10s of continuous feed view
   useEffect(() => {
@@ -673,6 +678,10 @@ export default function FeedScreen() {
   );
   const isCommunityOwner =
     !!activeCommunity && activeCommunity.created_by === currentUserId;
+  // Admins get the same manage/delete access as the owner — matches the
+  // existing communities RLS policies (Update/Delete own communities
+  // already allow get_my_is_admin()), just surfaced in the UI (Phase 1).
+  const canManageActiveCommunity = isCommunityOwner || isAdmin;
 
   // If the active community is left or deleted, fall back to the Campus Feed so
   // the user is never stuck on an empty/orphaned feed.
@@ -720,13 +729,25 @@ export default function FeedScreen() {
     [mountedFeedKeys],
   );
 
+  // Prefetch the first screenful of the community directory + the current
+  // user's membership state (for correct Join/Leave on first paint) the
+  // moment Discover is tapped, before navigating — mirrors PostListItem's
+  // prefetch-on-tap pattern (Phase 7.8). React Query dedupes both against
+  // the Discover screen's own useUniversityCommunities/useMyCommunities
+  // calls, and each prefetch is itself a no-op if already fresh.
+  const handleDiscoverPress = useCallback(() => {
+    prefetchUniversityCommunitiesFirstPage(queryClient, feedScreenUniversityId);
+    prefetchMyCommunities(queryClient, currentUserId);
+    router.push("/communities");
+  }, [queryClient, feedScreenUniversityId, currentUserId]);
+
   return (
     <>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <CommunityFilterBar
           activeCommunityId={activeCommunityId}
           onSelect={setActiveCommunityId}
-          onDiscover={() => router.push("/communities")}
+          onDiscover={handleDiscoverPress}
         />
         <Animated.View
           style={{
@@ -764,7 +785,7 @@ export default function FeedScreen() {
             );
           })}
         </View>
-        {isCommunityOwner && activeCommunityId && (
+        {canManageActiveCommunity && activeCommunityId && (
           <Pressable
             onPress={() =>
               router.push(`/communities/${activeCommunityId}/manage`)

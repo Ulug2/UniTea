@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, type QueryClient } from "@tanstack/react-query";
 import { useMyProfile } from "../../profile/hooks/useMyProfile";
 import { communitiesTable } from "../data/client";
 import { communityKeys } from "../data/queryKeys";
@@ -19,24 +19,21 @@ function mapCommunityRow(row: CommunityQueryRow): CommunityDirectoryEntry {
 }
 
 /**
- * All communities in the current user's university (RLS scopes the rows),
- * paginated so a popular university never loads an unbounded list.
- *
- * `search` filters server-side by name. Results stay bounded per page.
+ * Single source of truth for the community directory's infinite query —
+ * shared so the Discover entry point can prefetch exactly the first page
+ * the directory screen itself will render (see CommunityFilterBar's
+ * onDiscover handler in src/app/(protected)/(tabs)/index.tsx), the same
+ * pattern postDetailQuery.ts established for Post Detail (Phase 7.8).
  */
-export function useUniversityCommunities(search: string = "") {
-  const {
-    data: profile,
-    isPending: isProfilePending,
-    isFetched: isProfileFetched,
-  } = useMyProfile();
-  const universityId = profile?.university_id;
-
+export function universityCommunitiesQueryOptions(
+  universityId: string | undefined,
+  search: string = "",
+) {
   const normalizedSearch = search.trim().replace(/[%*]/g, "");
 
-  const query = useInfiniteQuery({
+  return {
     queryKey: [...communityKeys.directory(universityId), normalizedSearch],
-    queryFn: async ({ pageParam = 0 }) => {
+    queryFn: async ({ pageParam = 0 }: { pageParam?: number }) => {
       if (!universityId) return [];
 
       let q = communitiesTable()
@@ -73,7 +70,45 @@ export function useUniversityCommunities(search: string = "") {
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 30,
     retry: 2,
-  });
+  };
+}
+
+/**
+ * Fire-and-forget network head-start for the Discover screen, called the
+ * moment the user taps "Discover" (see CommunityFilterBar's onDiscover in
+ * index.tsx). prefetchInfiniteQuery only ever fetches the first page
+ * (pageParam defaults to initialPageParam), matching "only the first
+ * visible screenful, not hundreds of communities." Uses the exact same
+ * queryKey/queryFn as the screen's own useInfiniteQuery, so React Query
+ * dedupes it — a no-op if already fresh, a real request otherwise.
+ */
+export function prefetchUniversityCommunitiesFirstPage(
+  queryClient: QueryClient,
+  universityId: string | undefined,
+): void {
+  if (!universityId) return;
+  void queryClient.prefetchInfiniteQuery(
+    universityCommunitiesQueryOptions(universityId, ""),
+  );
+}
+
+/**
+ * All communities in the current user's university (RLS scopes the rows),
+ * paginated so a popular university never loads an unbounded list.
+ *
+ * `search` filters server-side by name. Results stay bounded per page.
+ */
+export function useUniversityCommunities(search: string = "") {
+  const {
+    data: profile,
+    isPending: isProfilePending,
+    isFetched: isProfileFetched,
+  } = useMyProfile();
+  const universityId = profile?.university_id;
+
+  const query = useInfiniteQuery(
+    universityCommunitiesQueryOptions(universityId, search),
+  );
 
   const communities = (query.data?.pages ?? []).flat();
 
