@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { useTheme } from '../../../context/ThemeContext';
 import { moderateScale, scale, verticalScale } from '../../../utils/scaling';
 import { useAuth } from '../../../context/AuthContext';
+import { useEventConfig } from '../hooks/useEventConfig';
 import { useMyMatch } from '../hooks/useMyMatch';
 import { useRecordMatchView } from '../hooks/useRecordMatchView';
 import { useMatchWindowStatus } from '../hooks/useMatchWindowStatus';
@@ -34,10 +35,16 @@ function formatCountdown(ms: number): string {
 
 export default function MatchRevealModal({ visible, onClose }: Props) {
   const { theme } = useTheme();
-  const { session } = useAuth();
+  const { session, cachedProfile } = useAuth();
   const userId = session?.user?.id;
 
   const { data: match, isLoading: matchLoading } = useMyMatch(userId);
+  // Distinguishes "matching hasn't run yet" from "it ran and you weren't
+  // paired" — get_my_match() returns null for both, so without the event
+  // phase an unmatched user would be stuck seeing "still calculating"
+  // forever even after results are out.
+  const { data: phase } = useEventConfig(cachedProfile?.university_id ?? undefined);
+  const isRevealedWithNoMatch = !matchLoading && !match && phase === 'revealed';
   const recordView = useRecordMatchView(userId);
   const windowStatus = useMatchWindowStatus(userId);
   const initiateChat = useInitiateMatchChat();
@@ -97,7 +104,7 @@ export default function MatchRevealModal({ visible, onClose }: Props) {
             <ActivityIndicator color={theme.primary} size="large" style={styles.loader} />
           )}
 
-          {!matchLoading && !match && (
+          {!matchLoading && !match && !isRevealedWithNoMatch && (
             <View style={styles.centerContent}>
               <Text style={styles.expiredEmoji}>⏳</Text>
               <Text style={[styles.noMatchTitle, { color: theme.text }]}>
@@ -105,6 +112,21 @@ export default function MatchRevealModal({ visible, onClose }: Props) {
               </Text>
               <Text style={[styles.noMatchSub, { color: theme.secondaryText }]}>
                 Results are being processed. Check back in a few minutes.
+              </Text>
+            </View>
+          )}
+
+          {isRevealedWithNoMatch && (
+            <View style={styles.centerContent}>
+              <Text style={styles.expiredEmoji}>💛</Text>
+              <Text style={[styles.noMatchTitle, { color: theme.text }]}>
+                No Match This Round
+              </Text>
+              <Text style={[styles.noMatchSub, { color: theme.secondaryText }]}>
+                We had an odd number of people join this time, so a few folks
+                couldn't be paired up — it just happened to be you. It's
+                nothing about you at all! Thanks for taking part, and we hope
+                to match you next time.
               </Text>
             </View>
           )}
