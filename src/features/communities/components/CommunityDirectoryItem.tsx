@@ -5,6 +5,7 @@ import SupabaseImage from "../../../components/SupabaseImage";
 import EntityAvatar from "../../../components/EntityAvatar";
 import { getAvatarForEntity } from "../../../utils/entityDisplay";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
+import { formatMemberCount } from "../utils";
 import type { CommunityDirectoryEntry } from "../types";
 
 type CommunityDirectoryItemProps = {
@@ -16,10 +17,6 @@ type CommunityDirectoryItemProps = {
   /** Fires once this row's avatar has loaded — wired into the Discover screen's reveal gate. */
   onImageLoad?: () => void;
 };
-
-function formatMemberCount(count: number): string {
-  return count === 1 ? "1 member" : `${count} members`;
-}
 
 function CommunityDirectoryItem({
   community,

@@ -99,7 +99,7 @@ export default function AppLayout() {
   }
 
   return (
-    <FilterProvider>
+    <FilterProvider userId={session?.user?.id}>
       <Stack
         screenOptions={{
           animation: "fade",
@@ -182,6 +182,20 @@ export default function AppLayout() {
             animation: "slide_from_right",
             gestureEnabled: true,
             fullScreenGestureEnabled: true,
+          }}
+        />
+        <Stack.Screen
+          name="communities/[id]/index"
+          options={{
+            headerShown: false,
+            animation: "slide_from_right",
+            gestureEnabled: true,
+            fullScreenGestureEnabled: false,
+            // Same edge-only swipe zone as Chat Detail (chat/[id] above) —
+            // this screen scrolls a post list, so a full-screen swipe
+            // gesture would conflict with horizontal image swipes/list
+            // interaction the same way it would in chat.
+            gestureResponseDistance: { start: scale(15) },
           }}
         />
         <Stack.Screen

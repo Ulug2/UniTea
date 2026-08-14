@@ -19,6 +19,7 @@ import { Feather, FontAwesome, Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import PostListItem from "../../../components/PostListItem";
 import PostListSkeleton from "../../../components/PostListSkeleton";
+import CommunityFilterBarSkeleton from "../../../components/CommunityFilterBarSkeleton";
 import CustomInput from "../../../components/CustomInput";
 import { useTheme } from "../../../context/ThemeContext";
 import { supabase } from "../../../lib/supabase";
@@ -38,6 +39,7 @@ import {
   prefetchMyCommunities,
 } from "../../../features/communities/hooks/useMyCommunities";
 import { prefetchUniversityCommunitiesFirstPage } from "../../../features/communities/hooks/useUniversityCommunities";
+import { prefetchCommunityDetail } from "../../../features/communities/data/communityDetailQuery";
 import MatchmakingBanner from "../../../features/matchmaking/components/MatchmakingBanner";
 import { logActivity } from "../../../utils/activityLogger";
 import { saveCampusFeedToStorage, saveCommunityFeedToStorage } from "../../../utils/feedPersistence";
@@ -695,6 +697,26 @@ export default function FeedScreen() {
     }
   }, [activeCommunityId, joinedIds, myCommunitiesPending]);
 
+  // Cold-start prefetch: warm the per-community detail cache (avatar, name,
+  // description — communityDetailQueryOptions, the exact query Community
+  // View's own useCommunity() reads) for the first few joined communities,
+  // so opening one from the pill bar or Discover doesn't cold-fetch. Capped
+  // at 4 — this is a head start for whichever communities are already
+  // visible/likely to be tapped next, not a full-list warm (that's
+  // useMyCommunities' own job, already running unconditionally via the call
+  // above). Guarded to fire once per mount: prefetchQuery is itself a
+  // harmless no-op once fresh, but the guard avoids re-issuing it every time
+  // `communities` reference changes (e.g. after a join/leave).
+  const hasPrefetchedCommunityDetailsRef = useRef(false);
+  useEffect(() => {
+    if (hasPrefetchedCommunityDetailsRef.current) return;
+    if (myCommunitiesPending || communities.length === 0) return;
+    hasPrefetchedCommunityDetailsRef.current = true;
+    for (const community of communities.slice(0, 4)) {
+      prefetchCommunityDetail(queryClient, community.id);
+    }
+  }, [communities, myCommunitiesPending, queryClient]);
+
   useEffect(() => {
     let isMounted = true;
     let debounce: ReturnType<typeof setTimeout> | undefined;
@@ -744,11 +766,28 @@ export default function FeedScreen() {
   return (
     <>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <CommunityFilterBar
-          activeCommunityId={activeCommunityId}
-          onSelect={setActiveCommunityId}
-          onDiscover={handleDiscoverPress}
-        />
+        {/* A skeleton bar in place of the real one (rather than the old
+            opacity:0 invisible-hold) until useMyCommunities resolves — pills
+            popping in after the feed has already appeared was exactly the
+            "partially loaded community UI" this gate exists to avoid, and an
+            invisible-but-space-holding bar during that same window read as
+            a blank gap rather than a loading cue. myCommunitiesPending is
+            only ever true on a genuine cold start (the same window as the
+            feed's own isPending && !postsData skeleton); a warm cache
+            (revisit, or already resolved by the time this mounts) never
+            triggers it, so this reuses React Query's own isPending rather
+            than adding a new loading/caching mechanism. */}
+        {myCommunitiesPending ? (
+          <CommunityFilterBarSkeleton />
+        ) : (
+          <View testID="community-filter-bar-wrapper">
+            <CommunityFilterBar
+              activeCommunityId={activeCommunityId}
+              onSelect={setActiveCommunityId}
+              onDiscover={handleDiscoverPress}
+            />
+          </View>
+        )}
         <Animated.View
           style={{
             maxHeight: bannerAnim.interpolate({

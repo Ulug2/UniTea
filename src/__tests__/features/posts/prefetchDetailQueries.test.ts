@@ -29,6 +29,10 @@ import {
   myCommunitiesQueryOptions,
   prefetchMyCommunities,
 } from '../../../features/communities/hooks/useMyCommunities';
+import {
+  communityDetailQueryOptions,
+  prefetchCommunityDetail,
+} from '../../../features/communities/data/communityDetailQuery';
 
 function makeClient() {
   return new QueryClient({
@@ -111,6 +115,26 @@ describe('prefetchMyCommunities', () => {
     const queryClient = makeClient();
     const spy = jest.spyOn(queryClient, 'prefetchQuery').mockResolvedValue(undefined);
     prefetchMyCommunities(queryClient, undefined);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('prefetchCommunityDetail', () => {
+  it('prefetches under the exact same queryKey the Community View screen (useCommunity) uses', () => {
+    const queryClient = makeClient();
+    const spy = jest.spyOn(queryClient, 'prefetchQuery').mockResolvedValue(undefined);
+    prefetchCommunityDetail(queryClient, 'community-1');
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0].queryKey).toEqual(
+      communityDetailQueryOptions('community-1').queryKey,
+    );
+    expect(spy.mock.calls[0][0].queryKey).toEqual(['communities', 'detail', 'community-1']);
+  });
+
+  it('is a no-op when communityId is missing', () => {
+    const queryClient = makeClient();
+    const spy = jest.spyOn(queryClient, 'prefetchQuery').mockResolvedValue(undefined);
+    prefetchCommunityDetail(queryClient, undefined);
     expect(spy).not.toHaveBeenCalled();
   });
 });

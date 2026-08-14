@@ -1,22 +1,12 @@
 import { useInfiniteQuery, type QueryClient } from "@tanstack/react-query";
+import { useAuth } from "../../../context/AuthContext";
 import { useMyProfile } from "../../profile/hooks/useMyProfile";
 import { communitiesTable } from "../data/client";
 import { communityKeys } from "../data/queryKeys";
-import type { Community, CommunityDirectoryEntry } from "../types";
+import { mapCommunityRow, type CommunityQueryRow } from "../data/mapCommunityRow";
+import type { CommunityDirectoryEntry } from "../types";
 
 const COMMUNITIES_PER_PAGE = 20;
-
-type CommunityQueryRow = Community & {
-  community_members: { count: number }[];
-};
-
-function mapCommunityRow(row: CommunityQueryRow): CommunityDirectoryEntry {
-  const { community_members, ...community } = row;
-  return {
-    ...community,
-    member_count: community_members?.[0]?.count ?? 0,
-  };
-}
 
 /**
  * Single source of truth for the community directory's infinite query —
@@ -99,11 +89,12 @@ export function prefetchUniversityCommunitiesFirstPage(
  * `search` filters server-side by name. Results stay bounded per page.
  */
 export function useUniversityCommunities(search: string = "") {
+  const { session } = useAuth();
   const {
     data: profile,
     isPending: isProfilePending,
     isFetched: isProfileFetched,
-  } = useMyProfile();
+  } = useMyProfile(session?.user?.id);
   const universityId = profile?.university_id;
 
   const query = useInfiniteQuery(

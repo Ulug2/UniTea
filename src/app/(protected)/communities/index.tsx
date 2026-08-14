@@ -4,6 +4,7 @@ import {
   FlatList,
   PixelRatio,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -11,7 +12,9 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { FontAwesome, Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import CustomInput from "../../../components/CustomInput";
+import CommunityListSkeleton from "../../../components/CommunityListSkeleton";
 import { useTheme } from "../../../context/ThemeContext";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { useUniversityCommunities } from "../../../features/communities/hooks/useUniversityCommunities";
@@ -22,6 +25,7 @@ import {
 } from "../../../features/communities/hooks/useCommunityMembership";
 import CommunityDirectoryItem from "../../../features/communities/components/CommunityDirectoryItem";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
+import { prefetchCommunityDetail } from "../../../features/communities/data/communityDetailQuery";
 import type { CommunityDirectoryEntry } from "../../../features/communities/types";
 
 // Roughly one phone screen's worth of rows — matches Task 5's "first ~8-9
@@ -34,6 +38,7 @@ export default function CommunityDirectoryScreen() {
   const insets = useSafeAreaInsets();
   const fontScale = PixelRatio.getFontScale();
   const fabIconSize = moderateScale(28) * fontScale;
+  const queryClient = useQueryClient();
 
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -101,6 +106,18 @@ export default function CommunityDirectoryScreen() {
 
   const keyExtractor = useCallback((item: CommunityDirectoryEntry) => item.id, []);
 
+  // Prefetches the exact query the Community View screen itself runs, then
+  // navigates — mirrors PostListItem's/LostFoundListItem's prefetch-on-tap
+  // pattern (Phase 7.8 / Phase 2) so React Query dedupes the prefetch
+  // against the destination screen's own useCommunity() call.
+  const handleOpenCommunity = useCallback(
+    (community: CommunityDirectoryEntry) => {
+      prefetchCommunityDetail(queryClient, community.id);
+      router.push(`/communities/${community.id}`);
+    },
+    [queryClient],
+  );
+
   const renderItem = useCallback(
     ({ item, index }: { item: CommunityDirectoryEntry; index: number }) => (
       <CommunityDirectoryItem
@@ -108,10 +125,11 @@ export default function CommunityDirectoryScreen() {
         isMember={joinedIds.has(item.id)}
         isBusy={busyId === item.id}
         onToggleMembership={handleToggleMembership}
+        onPress={handleOpenCommunity}
         onImageLoad={index < REVEAL_GATE_ROW_COUNT ? onItemReady : undefined}
       />
     ),
-    [joinedIds, busyId, handleToggleMembership, onItemReady],
+    [joinedIds, busyId, handleToggleMembership, handleOpenCommunity, onItemReady],
   );
 
   return (
@@ -147,9 +165,12 @@ export default function CommunityDirectoryScreen() {
       </View>
 
       {isInitialLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={theme.primary} />
-        </View>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
+        >
+          <CommunityListSkeleton />
+        </ScrollView>
       ) : isProfileFetched && !universityId ? (
         <View style={styles.centered}>
           <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
@@ -216,9 +237,12 @@ export default function CommunityDirectoryScreen() {
               ]}
               pointerEvents="none"
             >
-              <View style={styles.centered}>
-                <ActivityIndicator size="large" color={theme.primary} />
-              </View>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.listContent}
+              >
+                <CommunityListSkeleton />
+              </ScrollView>
             </View>
           )}
         </View>

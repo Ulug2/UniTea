@@ -18,13 +18,21 @@ import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 const screenWidth = Dimensions.get("window").width;
 
+type ReportType = "post" | "comment" | "community";
+
 interface ReportModalProps {
   visible: boolean;
   onClose: () => void;
   onSubmit: (reason: string) => void;
   isLoading?: boolean;
-  reportType: "post" | "comment";
+  reportType: ReportType;
 }
+
+const REPORT_TYPE_LABELS: Record<ReportType, { title: string; noun: string }> = {
+  post: { title: "Report Post", noun: "post" },
+  comment: { title: "Report Comment", noun: "comment" },
+  community: { title: "Report Community", noun: "community" },
+};
 
 export default function ReportModal({
   visible,
@@ -37,6 +45,7 @@ export default function ReportModal({
   const keyboardAppearance =
     Platform.OS === "ios" ? (isDark ? "dark" : "light") : undefined;
   const [reason, setReason] = useState("");
+  const { title, noun } = REPORT_TYPE_LABELS[reportType];
 
   const handleSubmit = () => {
     if (reason.trim()) {
@@ -76,7 +85,7 @@ export default function ReportModal({
                   color={theme.primary}
                 />
                 <Text style={[styles.title, { color: theme.text }]}>
-                  Report {reportType === "post" ? "Post" : "Comment"}
+                  {title}
                 </Text>
                 <Pressable onPress={handleClose} style={styles.closeButton}>
                   <MaterialCommunityIcons
@@ -91,7 +100,7 @@ export default function ReportModal({
               <Text
                 style={[styles.description, { color: theme.secondaryText }]}
               >
-                What's wrong with this {reportType}?
+                What's wrong with this {noun}?
               </Text>
 
               {/* Text Input */}

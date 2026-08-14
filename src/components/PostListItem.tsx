@@ -33,6 +33,7 @@ import ResponsiveImage from "./ResponsiveImage";
 import { useInitiateAnonymousChat } from "../features/chat/hooks/useInitiateAnonymousChat";
 import { useQueryClient } from "@tanstack/react-query";
 import { prefetchPostDetail } from "../features/posts/data/postDetailQuery";
+import { prefetchCommunityDetail } from "../features/communities/data/communityDetailQuery";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
 // Shared style cache — all PostListItem instances with the same theme object reuse one StyleSheet.
 // This eliminates calling StyleSheet.create N times when the feed has N visible items.
@@ -285,6 +286,15 @@ type PostListItemProps = {
    * Defaults to false when not provided (e.g. single-item detail views).
    */
   isAdmin?: boolean;
+  /**
+   * Set by Community View (communities/[id]/index.tsx) for every post it
+   * renders — every post there necessarily belongs to that same community
+   * (useFeedPosts is scoped by communityId), so tapping the community
+   * avatar/name would just push a duplicate of the screen already showing.
+   * Suppresses that navigation only; everything else about the identity
+   * row (its label, its non-anonymous/profile-press behavior) is unchanged.
+   */
+  disableCommunityNavigation?: boolean;
 };
 
 function normalizeImagePaths(
@@ -529,6 +539,7 @@ const PostListItem = React.memo(function PostListItem({
   onImagePress,
   isAdmin = false,
   imagesAssumeCached = false,
+  disableCommunityNavigation = false,
 }: PostListItemProps) {
   const { theme } = useTheme();
   const { session } = useAuth();
@@ -755,6 +766,19 @@ const PostListItem = React.memo(function PostListItem({
 
   const postCreatedAt = createdAt ? new Date(createdAt) : new Date();
 
+  // The header avatar/name shows the COMMUNITY's identity (not the author's)
+  // whenever the post is anonymous within a community — see
+  // resolveAnonymousEntityKind in entityDisplay.ts. That's the only case
+  // this identity is navigable to Community View; everything else keeps its
+  // existing profile-press (or inert) behavior unchanged. Suppressed when
+  // disableCommunityNavigation is set — Community View passes this for
+  // every post it renders, since navigating would just push a duplicate of
+  // the screen already showing (see the prop's own doc comment above).
+  const isCommunityIdentity =
+    authorDisplay.entityKind === "community" &&
+    !!communityId &&
+    !disableCommunityNavigation;
+
   return (
     <>
       <Link href={`/post/${postId}`} asChild style={styles.link}>
@@ -766,11 +790,21 @@ const PostListItem = React.memo(function PostListItem({
             <Pressable
               style={styles.userInfo}
               onPress={(e) => {
+                if (isCommunityIdentity) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  prefetchCommunityDetail(queryClient, communityId!);
+                  router.push(`/communities/${communityId}`);
+                  return;
+                }
                 if (!isAnonymous && userId) {
                   handleProfilePress(e, userId, false);
                 }
               }}
-              disabled={isAnonymous || !userId || userId === currentUserId}
+              disabled={
+                !isCommunityIdentity &&
+                (isAnonymous || !userId || userId === currentUserId)
+              }
             >
               <EntityAvatar
                 descriptor={authorDisplay.avatar}
