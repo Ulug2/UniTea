@@ -43,7 +43,20 @@ type Report = {
 type AdminLog = {
   id: string;
   admin_id: string;
-  action: "ban" | "unban" | "delete_post";
+  // Every value any of the Edge Functions / this dashboard actually inserts
+  // into admin_action_logs.action. Widen this (and ACTION_LABELS/
+  // ACTION_COLORS below) whenever a new action is logged elsewhere — the
+  // fallbacks at the render sites keep an unrecognized value from crashing
+  // the page, but they're a safety net, not a substitute for a real label.
+  action:
+    | "ban"
+    | "unban"
+    | "delete_post"
+    | "delete_comment"
+    | "update_report_status"
+    | "run_matchmaking"
+    | "reset_matchmaking"
+    | "purge_matchmaking_demographics";
   target_user_id: string | null;
   target_post_id: string | null;
   metadata: Record<string, unknown>;
@@ -54,6 +67,11 @@ const ACTION_LABELS: Record<AdminLog["action"], string> = {
   ban: "Ban",
   unban: "Unban",
   delete_post: "Delete Post",
+  delete_comment: "Delete Comment",
+  update_report_status: "Update Report Status",
+  run_matchmaking: "Run Matchmaking",
+  reset_matchmaking: "Reset Matchmaking",
+  purge_matchmaking_demographics: "Purge Matchmaking Demographics",
 };
 
 const ACTION_COLORS: Record<AdminLog["action"], { bg: string; color: string }> =
@@ -61,7 +79,23 @@ const ACTION_COLORS: Record<AdminLog["action"], { bg: string; color: string }> =
     ban: { bg: "#ffebee", color: "#c62828" },
     unban: { bg: "#e8f5e9", color: "#2e7d32" },
     delete_post: { bg: "#fff3e0", color: "#e65100" },
+    delete_comment: { bg: "#fff3e0", color: "#e65100" },
+    update_report_status: { bg: "#ede7f6", color: "#4527a0" },
+    run_matchmaking: { bg: "#e3f2fd", color: "#1565c0" },
+    reset_matchmaking: { bg: "#fce4ec", color: "#ad1457" },
+    purge_matchmaking_demographics: { bg: "#eceff1", color: "#37474f" },
   };
+
+// Safety net for a value that's genuinely outside AdminLog["action"] (a raw
+// DB row can always contain something the frontend type doesn't know about
+// yet) — this is exactly the gap that crashed the Audit Log render before.
+const FALLBACK_ACTION_COLOR = { bg: "#eeeeee", color: "#424242" };
+function getActionColor(action: string): { bg: string; color: string } {
+  return (ACTION_COLORS as Record<string, { bg: string; color: string }>)[action] ?? FALLBACK_ACTION_COLOR;
+}
+function getActionLabel(action: string): string {
+  return (ACTION_LABELS as Record<string, string>)[action] ?? action;
+}
 
 function getReportTargetLabel(r: Report): string {
   if (r.post_id) return `Post ${r.post_id.slice(0, 8)}…`;
@@ -136,13 +170,20 @@ export default function DashboardPage() {
     summary: { university_id: string; primary: number; wingman: number; unmatched: number }[];
   } | null>(null);
   const [resetLoading, setResetLoading] = useState(false);
+  const [signOutLoading, setSignOutLoading] = useState(false);
 
   const closeStatusMenu = () => {
     setStatusMenuId(null);
     setStatusMenuAnchor(null);
   };
 
-  const supabase = createClient();
+  // Stable reference — recreating the client on every render spins up a new
+  // GoTrueClient per render, all competing for the same localStorage-backed
+  // auth lock (same storageKey). That contention is what made Sign Out hang
+  // silently (supabase.auth.signOut() awaiting a lock that never freed) and
+  // could race the session's refresh-token rotation on reload. Mirrors
+  // ActivityStats.tsx's existing useMemo'd client for the same reason.
+  const supabase = useMemo(() => createClient(), []);
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
   const filteredLogs = useMemo(() => {
@@ -423,9 +464,20 @@ export default function DashboardPage() {
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.replace("/login");
-    router.refresh();
+    setSignOutLoading(true);
+    setMessage(null);
+    try {
+      await supabase.auth.signOut();
+      router.replace("/login");
+      router.refresh();
+    } catch (e) {
+      setMessage({
+        type: "err",
+        text: e instanceof Error ? e.message : "Failed to sign out",
+      });
+    } finally {
+      setSignOutLoading(false);
+    }
   };
 
   const REPORT_STATUSES = [
@@ -509,15 +561,17 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={handleSignOut}
+          disabled={signOutLoading}
           style={{
             padding: "10px 16px",
             background: "#333",
             color: "#fff",
             border: "none",
             borderRadius: 6,
+            opacity: signOutLoading ? 0.6 : 1,
           }}
         >
-          Sign out
+          {signOutLoading ? "Signing out…" : "Sign out"}
         </button>
       </div>
     );
@@ -539,15 +593,17 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={handleSignOut}
+          disabled={signOutLoading}
           style={{
             padding: "8px 16px",
             background: "#666",
             color: "#fff",
             border: "none",
             borderRadius: 6,
+            opacity: signOutLoading ? 0.6 : 1,
           }}
         >
-          Sign out
+          {signOutLoading ? "Signing out…" : "Sign out"}
         </button>
       </div>
 
@@ -1084,7 +1140,7 @@ export default function DashboardPage() {
                     const targetProfile = log.target_user_id
                       ? profiles.find((p) => p.id === log.target_user_id)
                       : null;
-                    const { bg, color } = ACTION_COLORS[log.action];
+                    const { bg, color } = getActionColor(log.action);
 
                     let detail = "";
                     if (log.action === "ban") {
@@ -1098,6 +1154,23 @@ export default function DashboardPage() {
                       detail = `Duration: ${durLabel}`;
                     } else if (log.action === "delete_post" && log.target_post_id) {
                       detail = `Post ${log.target_post_id.slice(0, 8)}…`;
+                    } else if (log.action === "delete_comment" && log.metadata.comment_id) {
+                      detail = `Comment ${String(log.metadata.comment_id).slice(0, 8)}…`;
+                    } else if (log.action === "update_report_status") {
+                      const reportId = log.metadata.report_id as string | undefined;
+                      const newStatus = log.metadata.new_status as string | undefined;
+                      detail = [
+                        reportId ? `Report ${reportId.slice(0, 8)}…` : null,
+                        newStatus ? `→ ${newStatus}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" ");
+                    } else if (log.action === "run_matchmaking") {
+                      const matched = log.metadata.matched as number | undefined;
+                      detail = matched !== undefined ? `Matched: ${matched}` : "";
+                    } else if (log.action === "purge_matchmaking_demographics") {
+                      const purged = log.metadata.purged as number | undefined;
+                      detail = purged !== undefined ? `Purged: ${purged}` : "";
                     }
 
                     return (
@@ -1107,7 +1180,7 @@ export default function DashboardPage() {
                         </td>
                         <td style={{ padding: "11px 14px" }}>
                           <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 600, background: bg, color }}>
-                            {ACTION_LABELS[log.action]}
+                            {getActionLabel(log.action)}
                           </span>
                         </td>
                         <td style={{ padding: "11px 14px", fontSize: 13 }}>
