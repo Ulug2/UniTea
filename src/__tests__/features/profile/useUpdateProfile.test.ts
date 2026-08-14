@@ -136,6 +136,18 @@ describe('useUpdateProfile', () => {
       expect(keys).toContain('user-posts');
     });
 
+    it('invalidates posts and user-posts when avatar_url is cleared to null (delete-avatar case)', async () => {
+      buildChain({ data: null, error: null });
+      const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+      const { result } = renderHook(() => useUpdateProfile(), { wrapper: wrapper(queryClient) });
+      await act(async () => { await result.current.mutateAsync({ avatar_url: null }); });
+
+      const keys = invalidateSpy.mock.calls.map((c) => (c[0] as { queryKey: unknown[] }).queryKey[0]);
+      expect(keys).toContain('posts');
+      expect(keys).toContain('user-posts');
+    });
+
     it('does not show an error alert on success', async () => {
       buildChain({ data: null, error: null });
 

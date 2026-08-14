@@ -2,7 +2,6 @@ import type { ImageSourcePropType } from "react-native";
 import type { FC } from "react";
 import type { SvgProps } from "react-native-svg";
 import {
-  AVATAR_FALLBACK_BG,
   COMMUNITY_FALLBACK_ICON,
   STUDENT_AVATAR_ICON,
 } from "../constants/avatars";
@@ -23,7 +22,6 @@ export type AvatarDescriptor =
   | {
       kind: "svg";
       Icon: FC<SvgProps>;
-      backgroundColor: string;
     };
 
 export type PostAuthorContext = {
@@ -56,7 +54,6 @@ function studentSvgAvatar(): AvatarDescriptor {
   return {
     kind: "svg",
     Icon: STUDENT_AVATAR_ICON,
-    backgroundColor: AVATAR_FALLBACK_BG,
   };
 }
 
@@ -64,7 +61,6 @@ function communitySvgAvatar(): AvatarDescriptor {
   return {
     kind: "svg",
     Icon: COMMUNITY_FALLBACK_ICON,
-    backgroundColor: AVATAR_FALLBACK_BG,
   };
 }
 

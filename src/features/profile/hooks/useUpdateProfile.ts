@@ -9,7 +9,7 @@ type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 export type UpdateProfileInput = {
   username?: string;
-  avatar_url?: string;
+  avatar_url?: string | null;
 };
 
 export function useUpdateProfile() {
@@ -69,10 +69,11 @@ export function useUpdateProfile() {
     },
     onSuccess: (_data, updates) => {
       queryClient.invalidateQueries({ queryKey: ["current-user-profile", session?.user?.id] });
-      // Only invalidate heavy feed / post-list queries when the avatar changes.
-      // Username-only changes do not need to bust the feed cache and would otherwise
-      // cause scroll-position jumps on the profile posts list on iOS.
-      if (updates.avatar_url) {
+      // Only invalidate heavy feed / post-list queries when the avatar changes
+      // (set OR cleared — "avatar_url" in updates covers both). Username-only
+      // changes do not need to bust the feed cache and would otherwise cause
+      // scroll-position jumps on the profile posts list on iOS.
+      if ("avatar_url" in updates) {
         queryClient.invalidateQueries({ queryKey: ["posts"] });
         queryClient.invalidateQueries({ queryKey: ["user-posts"] });
       }

@@ -1,5 +1,5 @@
-jest.mock("../../../assets/svg/student-thin-svgrepo-com.svg", () => "StudentIcon");
-jest.mock("../../../assets/svg/people-svgrepo-com.svg", () => "PeopleIcon");
+jest.mock("../../../assets/svg/default-avatar.svg", () => "StudentIcon");
+jest.mock("../../../assets/svg/default-community-avatar.svg", () => "PeopleIcon");
 jest.mock("../../config/universityBranding", () => ({
   getUniversityBranding: (domain: string | null | undefined) => {
     if (domain === "nu.edu.kz") {
@@ -111,7 +111,7 @@ describe("entityDisplay", () => {
 
       expect(result.avatar.kind).toBe("svg");
       if (result.avatar.kind === "svg") {
-        expect(result.avatar.backgroundColor).toBe("#2FC9C1");
+        expect(result.avatar.Icon).toBe("PeopleIcon");
       }
     });
 

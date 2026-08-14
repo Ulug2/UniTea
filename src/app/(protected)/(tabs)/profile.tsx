@@ -30,6 +30,7 @@ import { useUpdateProfile } from "../../../features/profile/hooks/useUpdateProfi
 import { useUpdatePassword } from "../../../features/profile/hooks/useUpdatePassword";
 import { useDeleteAccount } from "../../../features/profile/hooks/useDeleteAccount";
 import { useAvatarUpload } from "../../../features/profile/hooks/useAvatarUpload";
+import { useAvatarRemoval } from "../../../features/profile/hooks/useAvatarRemoval";
 import { isPasswordValid } from "../../../utils/passwordValidation";
 import { validateUsername } from "../../../utils/usernameValidation";
 import { moderateScale, scale } from "../../../utils/scaling";
@@ -162,6 +163,7 @@ export default function ProfileScreen() {
   const updatePasswordMutation = useUpdatePassword();
   const { startAvatarUpload, isUploading: isUpdatingAvatar } =
     useAvatarUpload();
+  const { removeAvatar, isRemoving: isRemovingAvatar } = useAvatarRemoval();
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -205,6 +207,28 @@ export default function ProfileScreen() {
       setManageAccountVisible(false);
     }
     // on cancel or error: keep the modal open so the user can try again
+  };
+
+  const handleRemoveAvatar = async () => {
+    const result = await removeAvatar(currentUser?.avatar_url ?? null);
+    if (result.status === "success") {
+      setManageAccountVisible(false);
+    }
+  };
+
+  // "Change Avatar" opens straight into the picker when there's nothing to
+  // remove yet; once a custom avatar exists, it offers Update/Remove instead
+  // of a separate always-visible "Remove Avatar" row.
+  const handleAvatarPress = () => {
+    if (!currentUser?.avatar_url) {
+      void handleAvatarUpdate();
+      return;
+    }
+    Alert.alert("Avatar", undefined, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Remove Avatar", style: "destructive", onPress: () => void handleRemoveAvatar() },
+      { text: "Update Avatar", onPress: () => void handleAvatarUpdate() },
+    ]);
   };
 
   // Handle username update. Format/length is pre-checked here for a fast,
@@ -352,7 +376,7 @@ export default function ProfileScreen() {
         onLogout={signOut}
         onDeleteAccount={handleDeleteAccount}
         onUnblockAll={handleUnblockAll}
-        onUpdateAvatar={handleAvatarUpdate}
+        onUpdateAvatar={handleAvatarPress}
         onUpdateUsername={handleUsernameUpdate}
         onUpdatePassword={handlePasswordUpdate}
         onForgotPassword={handleForgotPasswordFromProfile}
@@ -362,6 +386,7 @@ export default function ProfileScreen() {
         isUnblocking={unblockAllMutation.isPending}
         isUpdating={
           isUpdatingAvatar ||
+          isRemovingAvatar ||
           updateProfileMutation.isPending ||
           updatePasswordMutation.isPending
         }

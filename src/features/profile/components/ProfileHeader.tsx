@@ -26,10 +26,6 @@ export function ProfileHeader({
 }: ProfileHeaderProps) {
   return (
     <View style={[styles.userCard, { backgroundColor: theme.card }]}>
-      <FlippableAvatar
-        currentUser={currentUser}
-        onAvatarPress={onAvatarPress}
-      />
       <View style={styles.userInfo}>
         <Text style={[styles.userName, { color: theme.text }]}>
           {userDisplayName}
@@ -51,6 +47,10 @@ export function ProfileHeader({
         </View>
         {currentUser?.is_founding_member === true && <FoundingBadge />}
       </View>
+      <FlippableAvatar
+        currentUser={currentUser}
+        onAvatarPress={onAvatarPress}
+      />
     </View>
   );
 }
@@ -62,6 +62,7 @@ const styles = StyleSheet.create({
     margin: moderateScale(16),
     borderRadius: moderateScale(16),
     alignItems: "center",
+    justifyContent: "space-between",
     gap: moderateScale(16),
   },
   userInfo: {
