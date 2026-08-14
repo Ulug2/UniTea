@@ -381,7 +381,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
       backgroundColor: theme.card,
       borderBottomWidth: 0.5,
       borderBottomColor: theme.border,
-      gap: moderateScale(8),
+      gap: moderateScale(14),
     },
     header: {
       flexDirection: "row",
