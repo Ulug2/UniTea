@@ -72,10 +72,13 @@ serve(async (req: Request) => {
     );
 
     // Admin check via service role — bypasses RLS so the result is always
-    // the true DB value regardless of any RLS policy on profiles.
+    // the true DB value regardless of any RLS policy on profiles. Also
+    // loads the caller's own university_id here — this function uses
+    // service-role access throughout, so RLS cannot be the authorization
+    // boundary; university scoping must be enforced explicitly below.
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("is_admin")
+      .select("is_admin, university_id")
       .eq("id", user.id)
       .single();
 
@@ -112,16 +115,39 @@ serve(async (req: Request) => {
       );
     }
 
-    // Prevent admin lock-out: no admin may ban another admin account.
     const { data: targetProfile } = await supabaseAdmin
       .from("profiles")
-      .select("is_admin")
+      .select("is_admin, university_id")
       .eq("id", target_user_id)
       .single();
 
-    if (targetProfile?.is_admin === true) {
+    if (!targetProfile) {
+      return new Response(
+        JSON.stringify({ error: "User not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Prevent admin lock-out: no admin may ban another admin account.
+    if (targetProfile.is_admin === true) {
       return new Response(
         JSON.stringify({ error: "Cannot ban another admin account" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // University isolation: is_admin === true is necessary but not
+    // sufficient — an admin may only ban users belonging to their own
+    // university. Never trust a client-supplied university; both sides
+    // of this comparison come from the caller's and target's own DB
+    // profile rows, loaded above via service role.
+    if (
+      !profile.university_id ||
+      !targetProfile.university_id ||
+      profile.university_id !== targetProfile.university_id
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden: admins can only ban users from their own university" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

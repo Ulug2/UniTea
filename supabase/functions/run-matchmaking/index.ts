@@ -228,14 +228,30 @@ serve(async (req: Request) => {
     const { data: isAdmin, error: adminCheckError } = await callerClient.rpc("get_my_is_admin");
     if (adminCheckError || !isAdmin) throw new Error("Admin access required");
 
-    // 2. Fetch all profiles (service role bypasses RLS)
+    // 2. Resolve the caller's own university — this function uses service-role
+    // access throughout, so RLS cannot be the authorization boundary; the
+    // caller's university must be looked up server-side (never trust a
+    // client-supplied university_id) and every downstream operation scoped
+    // to it. Fail closed if it can't be resolved.
     const adminClient = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    const { data: callerProfile } = await adminClient
+      .from("profiles")
+      .select("university_id")
+      .eq("id", user.id)
+      .single();
+
+    const callerUniversityId = callerProfile?.university_id;
+    if (!callerUniversityId) throw new Error("Forbidden: caller has no resolvable university");
+
+    // 3. Fetch only this university's profiles (service role bypasses RLS,
+    // so the filter must be explicit here rather than relying on RLS).
     const { data: profiles, error: profilesError } = await adminClient
       .from("launch_event_profiles")
-      .select("user_id, university_id, gender, answers");
+      .select("user_id, university_id, gender, answers")
+      .eq("university_id", callerUniversityId);
 
     if (profilesError) throw profilesError;
     if (!profiles || profiles.length === 0) {
@@ -244,53 +260,42 @@ serve(async (req: Request) => {
       });
     }
 
-    // 3. Group by university
-    const byUniversity = new Map<string, typeof profiles>();
-    for (const p of profiles) {
-      const list = byUniversity.get(p.university_id) ?? [];
-      list.push(p);
-      byUniversity.set(p.university_id, list);
-    }
-
     const allMatches: (MatchResult & { university_id: string })[] = [];
-    const summary: { university_id: string; primary: number; wingman: number; unmatched: number }[] = [];
 
-    for (const [universityId, uProfiles] of byUniversity) {
-      const males   = uProfiles.filter((p) => p.gender === "male")  .map((p) => ({ user_id: p.user_id, answers: p.answers as Record<string, number> }));
-      const females = uProfiles.filter((p) => p.gender === "female").map((p) => ({ user_id: p.user_id, answers: p.answers as Record<string, number> }));
-      const others  = uProfiles.filter((p) => p.gender === "other") .map((p) => ({ user_id: p.user_id, answers: p.answers as Record<string, number> }));
+    const males   = profiles.filter((p) => p.gender === "male")  .map((p) => ({ user_id: p.user_id, answers: p.answers as Record<string, number> }));
+    const females = profiles.filter((p) => p.gender === "female").map((p) => ({ user_id: p.user_id, answers: p.answers as Record<string, number> }));
+    const others  = profiles.filter((p) => p.gender === "other") .map((p) => ({ user_id: p.user_id, answers: p.answers as Record<string, number> }));
 
-      // Primary: male × female
-      const primary = matchPool(males, females, "primary");
-      primary.matches.forEach((m) => allMatches.push({ ...m, university_id: universityId }));
+    // Primary: male × female
+    const primary = matchPool(males, females, "primary");
+    primary.matches.forEach((m) => allMatches.push({ ...m, university_id: callerUniversityId }));
 
-      // Overflow: collect unmatched from primary + all 'other' gender users
-      const overflow = [
-        ...primary.unmatchedA,
-        ...primary.unmatchedB,
-        ...others,
-      ];
+    // Overflow: collect unmatched from primary + all 'other' gender users
+    const overflow = [
+      ...primary.unmatchedA,
+      ...primary.unmatchedB,
+      ...others,
+    ];
 
-      let wingmanCount = 0;
-      // Run wingman matching within the overflow pool in pairs of 2
-      if (overflow.length >= 2) {
-        const half = Math.floor(overflow.length / 2);
-        const wingmanResult = matchPool(
-          overflow.slice(0, half),
-          overflow.slice(half),
-          "wingman",
-        );
-        wingmanResult.matches.forEach((m) => allMatches.push({ ...m, university_id: universityId }));
-        wingmanCount = wingmanResult.matches.length;
-      }
-
-      summary.push({
-        university_id: universityId,
-        primary: primary.matches.length,
-        wingman: wingmanCount,
-        unmatched: overflow.length - wingmanCount * 2,
-      });
+    let wingmanCount = 0;
+    // Run wingman matching within the overflow pool in pairs of 2
+    if (overflow.length >= 2) {
+      const half = Math.floor(overflow.length / 2);
+      const wingmanResult = matchPool(
+        overflow.slice(0, half),
+        overflow.slice(half),
+        "wingman",
+      );
+      wingmanResult.matches.forEach((m) => allMatches.push({ ...m, university_id: callerUniversityId }));
+      wingmanCount = wingmanResult.matches.length;
     }
+
+    const summary = [{
+      university_id: callerUniversityId,
+      primary: primary.matches.length,
+      wingman: wingmanCount,
+      unmatched: overflow.length - wingmanCount * 2,
+    }];
 
     // 4. Write matches (upsert so re-runs are idempotent on the unique constraints)
     if (allMatches.length > 0) {
@@ -299,6 +304,16 @@ serve(async (req: Request) => {
         .upsert(allMatches, { onConflict: "user_a_id" });
       if (insertError) throw insertError;
     }
+
+    // Audit log
+    const { error: logError } = await adminClient
+      .from("admin_action_logs")
+      .insert({
+        admin_id: user.id,
+        action: "run_matchmaking",
+        metadata: { university_id: callerUniversityId, matched: allMatches.length, summary },
+      });
+    if (logError) console.error("run-matchmaking: failed to insert audit log:", logError);
 
     return new Response(
       JSON.stringify({ matched: allMatches.length, summary }),

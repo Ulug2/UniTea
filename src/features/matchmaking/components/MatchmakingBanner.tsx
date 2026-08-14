@@ -29,10 +29,10 @@ export default function MatchmakingBanner({
   onVisibilityResolved,
 }: MatchmakingBannerProps = {}) {
   const { theme } = useTheme();
-  const { session } = useAuth();
+  const { session, cachedProfile } = useAuth();
   const userId = session?.user?.id;
 
-  const { data: phase } = useEventConfig();
+  const { data: phase } = useEventConfig(cachedProfile?.university_id ?? undefined);
   const { data: submission } = useMySubmission(userId);
   const windowStatus = useMatchWindowStatus(userId);
 

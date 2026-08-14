@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Session } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 import { logActivity } from "../utils/activityLogger";
 import { logger } from "../utils/logger";
@@ -48,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<Error | null>(null);
   const [cachedProfile, setCachedProfile] = useState<CachedProfile | null>(null);
   const isInitialized = useRef(false);
+  const queryClient = useQueryClient();
 
   const persistProfile = useCallback(async (profile: CachedProfile) => {
     setCachedProfile(profile);
@@ -77,7 +79,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // non-fatal
     }
-  }, []);
+    // Most query keys are already scoped by userId/universityId (so a
+    // different account simply misses cache and refetches), but a few are
+    // not (e.g. matchmaking config was, until Phase 8) and per-key auditing
+    // every future query for this is unsustainable — clear the whole cache
+    // on sign-out instead, same pattern already used by useDeleteAccount.ts.
+    queryClient.clear();
+  }, [queryClient]);
 
   useEffect(() => {
     let isMounted = true;
@@ -166,6 +174,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setCachedProfile(null);
           logger.clearUser();
           AsyncStorage.removeItem(PROFILE_CACHE_KEY).catch(() => {});
+          // Covers sign-out paths that don't go through this file's own
+          // signOut() (e.g. a refresh-token failure during session init) —
+          // see signOut() above for why the whole cache is cleared here.
+          queryClient.clear();
           break;
 
         case "INITIAL_SESSION":

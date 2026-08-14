@@ -23,11 +23,21 @@ type Report = {
   reporter_id: string;
   post_id: string | null;
   comment_id: string | null;
+  community_id: string | null;
   reason: string;
   status: string | null;
   created_at: string | null;
   resolved_at: string | null;
   reviewed_by: string | null;
+  // Embedded via the reports_community_id_fkey relationship. Supabase's
+  // untyped query builder infers embeds as arrays regardless of the FK's
+  // actual many-to-one cardinality (no generated Database types in this
+  // dashboard to tell it otherwise) — PostgREST itself only ever returns
+  // at most one row here. Empty both when no community was reported and
+  // when the reported community was since deleted (community_id is
+  // ON DELETE SET NULL) — the two cases render identically, since neither
+  // has a target left to show.
+  communities: { name: string }[] | null;
 };
 
 type AdminLog = {
@@ -52,6 +62,13 @@ const ACTION_COLORS: Record<AdminLog["action"], { bg: string; color: string }> =
     unban: { bg: "#e8f5e9", color: "#2e7d32" },
     delete_post: { bg: "#fff3e0", color: "#e65100" },
   };
+
+function getReportTargetLabel(r: Report): string {
+  if (r.post_id) return `Post ${r.post_id.slice(0, 8)}…`;
+  if (r.comment_id) return `Comment ${r.comment_id.slice(0, 8)}…`;
+  if (r.community_id) return `Community: ${r.communities?.[0]?.name ?? "deleted"}`;
+  return "—";
+}
 
 const BAN_DURATIONS = [
   { label: "10 Days", value: "10_days" },
@@ -105,8 +122,12 @@ export default function DashboardPage() {
   } | null>(null);
   const [statusLoading, setStatusLoading] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [adminUniversityId, setAdminUniversityId] = useState<string | null>(null);
+  const [adminUniversityName, setAdminUniversityName] = useState<string | null>(null);
 
-  // Matchmaking state
+  // Matchmaking state — all matchmaking actions below operate on
+  // adminUniversityId only (resolved server-side from the admin's own
+  // profile); there is no way for this UI to target another university.
   const [eventPhase, setEventPhase] = useState<EventPhase | null>(null);
   const [phaseLoading, setPhaseLoading] = useState<EventPhase | null>(null);
   const [matchmakingRunning, setMatchmakingRunning] = useState(false);
@@ -159,7 +180,7 @@ export default function DashboardPage() {
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("is_admin")
+        .select("is_admin, university_id")
         .eq("id", session.user.id)
         .single();
 
@@ -178,7 +199,9 @@ export default function DashboardPage() {
         return;
       }
 
-      const [profRes, repRes, logRes, phaseRes] = await Promise.all([
+      setAdminUniversityId(profile.university_id ?? null);
+
+      const [profRes, repRes, logRes, phaseRes, uniRes] = await Promise.all([
         supabase
           .from("profiles")
           .select(
@@ -188,7 +211,7 @@ export default function DashboardPage() {
         supabase
           .from("reports")
           .select(
-            "id, reporter_id, post_id, comment_id, reason, status, created_at, resolved_at, reviewed_by",
+            "id, reporter_id, post_id, comment_id, community_id, reason, status, created_at, resolved_at, reviewed_by, communities(name)",
           )
           .order("created_at", { ascending: false }),
         supabase
@@ -198,7 +221,19 @@ export default function DashboardPage() {
           )
           .order("created_at", { ascending: false })
           .limit(500),
-        (supabase as any).from("launch_event_config").select("phase").eq("id", 1).maybeSingle(),
+        // launch_event_config is now one row per university (Phase 4) — this
+        // fetches only the admin's own university's phase, both via this
+        // explicit filter and independently via RLS.
+        profile.university_id
+          ? (supabase as any)
+              .from("launch_event_config")
+              .select("phase")
+              .eq("university_id", profile.university_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        profile.university_id
+          ? supabase.from("universities").select("name").eq("id", profile.university_id).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
 
       if (cancelled) return;
@@ -217,6 +252,9 @@ export default function DashboardPage() {
       }
       if (!phaseRes.error && phaseRes.data) {
         setEventPhase(phaseRes.data.phase as EventPhase);
+      }
+      if (!uniRes.error && uniRes.data) {
+        setAdminUniversityName((uniRes.data as { name: string }).name);
       }
       setLoading(false);
     })();
@@ -249,13 +287,17 @@ export default function DashboardPage() {
   };
 
   const handleSetPhase = async (phase: EventPhase) => {
+    if (!adminUniversityId) {
+      setMessage({ type: "err", text: "Could not resolve your university." });
+      return;
+    }
     setPhaseLoading(phase);
     setMessage(null);
     try {
       const { error } = await (supabase as any)
         .from("launch_event_config")
         .update({ phase })
-        .eq("id", 1);
+        .eq("university_id", adminUniversityId);
       if (error) throw new Error(error.message);
       setEventPhase(phase);
       setMatchmakingResult(null);
@@ -288,7 +330,7 @@ export default function DashboardPage() {
 
   const handleResetMatchmaking = async () => {
     const confirmed = window.confirm(
-      "⚠️ RESET MATCHMAKING?\n\nThis will permanently delete:\n• All match pairs\n• All submitted profiles\n• All message windows\n• Phase → Inactive\n\nThis cannot be undone. Proceed?",
+      `⚠️ RESET MATCHMAKING FOR ${adminUniversityName ?? "YOUR UNIVERSITY"}?\n\nThis will permanently delete, for ${adminUniversityName ?? "your university"} only:\n• All match pairs\n• All submitted profiles\n• All message windows\n• Phase → Inactive\n\nOther universities are unaffected. This cannot be undone. Proceed?`,
     );
     if (!confirmed) return;
     setResetLoading(true);
@@ -440,6 +482,18 @@ export default function DashboardPage() {
             : r,
         ),
       );
+      if (currentUserId) {
+        const { error: logError } = await supabase
+          .from("admin_action_logs")
+          .insert({
+            admin_id: currentUserId,
+            action: "update_report_status",
+            metadata: { report_id: reportId, new_status: newStatus },
+          });
+        if (logError) {
+          console.error("Failed to insert audit log:", logError.message);
+        }
+      }
     }
     setStatusLoading(null);
   };
@@ -516,7 +570,12 @@ export default function DashboardPage() {
 
       {/* ── Matchmaking ── */}
       <section style={{ marginBottom: 32 }}>
-        <h2 style={{ marginBottom: 16, fontSize: 18 }}>Launch Week Matchmaking</h2>
+        <h2 style={{ marginBottom: 16, fontSize: 18 }}>
+          Launch Week Matchmaking
+          <span style={{ marginLeft: 10, fontSize: 13, fontWeight: 500, color: "#888" }}>
+            — {adminUniversityName ?? "your university"} only
+          </span>
+        </h2>
         <div
           style={{
             background: "#fff",
@@ -588,8 +647,9 @@ export default function DashboardPage() {
               Run Matching Algorithm
             </p>
             <p style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>
-              Set phase to <strong>Locked</strong> first, then run. Writes match pairs to the
-              database. Safe to re-run — existing matches are not duplicated.
+              Set phase to <strong>Locked</strong> first, then run. Writes match pairs for{" "}
+              <strong>{adminUniversityName ?? "your university"} only</strong> — other
+              universities are unaffected. Safe to re-run — existing matches are not duplicated.
             </p>
             <button
               type="button"
@@ -639,8 +699,10 @@ export default function DashboardPage() {
               ⚠️ Reset Event
             </p>
             <p style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>
-              Deletes all profiles, match pairs, and message windows. Resets phase to{" "}
-              <strong>Inactive</strong>. Use for yearly resets or clearing test data.
+              Deletes all profiles, match pairs, and message windows for{" "}
+              <strong>{adminUniversityName ?? "your university"} only</strong>. Resets that
+              university's phase to <strong>Inactive</strong>. Other universities are
+              unaffected. Use for yearly resets or clearing test data.
             </p>
             <button
               type="button"
@@ -815,7 +877,7 @@ export default function DashboardPage() {
                 <tr style={{ borderBottom: "1px solid #eee", textAlign: "left" }}>
                   <th style={{ padding: 12 }}>Reason</th>
                   <th style={{ padding: 12 }}>Status</th>
-                  <th style={{ padding: 12 }}>Post / Comment</th>
+                  <th style={{ padding: 12 }}>Target</th>
                   <th style={{ padding: 12 }}>Created</th>
                 </tr>
               </thead>
@@ -926,11 +988,7 @@ export default function DashboardPage() {
                         </div>
                       </td>
                       <td style={{ padding: 12, fontSize: 12 }}>
-                        {r.post_id
-                          ? `Post ${r.post_id.slice(0, 8)}…`
-                          : r.comment_id
-                            ? `Comment ${r.comment_id.slice(0, 8)}…`
-                            : "—"}
+                        {getReportTargetLabel(r)}
                       </td>
                       <td style={{ padding: 12, fontSize: 12 }}>
                         {r.created_at ? new Date(r.created_at).toLocaleString() : "—"}

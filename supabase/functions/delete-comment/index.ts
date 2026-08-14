@@ -73,15 +73,18 @@ serve(async (req: Request) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
+    // Loads the caller's own university_id here too — this function uses
+    // service-role access throughout, so RLS cannot be the authorization
+    // boundary; university scoping must be enforced explicitly below.
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("is_admin")
+      .select("is_admin, university_id")
       .eq("id", user.id)
       .single();
 
     const { data: comment } = await supabaseAdmin
       .from("comments")
-      .select("user_id")
+      .select("user_id, post_id")
       .eq("id", comment_id)
       .single();
 
@@ -101,6 +104,32 @@ serve(async (req: Request) => {
       );
     }
 
+    // University isolation: is_admin === true is necessary but not
+    // sufficient for the admin path — an admin may only delete comments
+    // whose parent post belongs to their own university. Does not apply to
+    // the owner path above. Comments have no university_id of their own,
+    // so it's resolved via comment.post_id -> posts.university_id. If the
+    // parent post can't be resolved, fail closed (deny) rather than
+    // falling back to unrestricted admin access.
+    if (!isOwner && isAdmin) {
+      const { data: parentPost } = await supabaseAdmin
+        .from("posts")
+        .select("university_id")
+        .eq("id", comment.post_id)
+        .single();
+
+      if (
+        !profile?.university_id ||
+        !parentPost?.university_id ||
+        profile.university_id !== parentPost.university_id
+      ) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden: admins can only delete comments from posts in their own university" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     const { error: deleteError } = await supabaseAdmin
       .from("comments")
       .delete()
@@ -112,6 +141,21 @@ serve(async (req: Request) => {
         JSON.stringify({ error: deleteError.message }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Audit log (only log admin-initiated removals, not owner self-deletes —
+    // same convention as delete-post).
+    if (isAdmin && !isOwner) {
+      const { error: logError } = await supabaseAdmin
+        .from("admin_action_logs")
+        .insert({
+          admin_id: user.id,
+          action: "delete_comment",
+          target_user_id: comment.user_id,
+          target_post_id: comment.post_id,
+          metadata: { comment_id },
+        });
+      if (logError) console.error("delete-comment: failed to insert audit log:", logError);
     }
 
     return new Response(

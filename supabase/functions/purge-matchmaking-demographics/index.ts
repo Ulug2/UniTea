@@ -41,10 +41,28 @@ serve(async (req: Request) => {
     const { data: isAdmin, error: adminCheckError } = await callerClient.rpc("get_my_is_admin");
     if (adminCheckError || !isAdmin) throw new Error("Admin access required");
 
-    // 2. Confirm the event is in 'revealed' phase before purging
+    // 2. Resolve the caller's own university — this function uses
+    // service-role access throughout, so RLS cannot be the authorization
+    // boundary; every read/write below must be scoped explicitly. Never
+    // trust a client-supplied university. Fail closed if unresolvable.
+    const adminClient = createClient(supabaseUrl, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data: callerProfile } = await adminClient
+      .from("profiles")
+      .select("university_id")
+      .eq("id", user.id)
+      .single();
+
+    const callerUniversityId = callerProfile?.university_id;
+    if (!callerUniversityId) throw new Error("Forbidden: caller has no resolvable university");
+
+    // 3. Confirm this university's event is in 'revealed' phase before purging
     const { data: config, error: configError } = await callerClient
       .from("launch_event_config")
       .select("phase")
+      .eq("university_id", callerUniversityId)
       .single();
 
     if (configError) throw configError;
@@ -54,11 +72,8 @@ serve(async (req: Request) => {
       );
     }
 
-    // 3. Purge using service role (bypasses RLS UPDATE restriction for regular users)
-    const adminClient = createClient(supabaseUrl, serviceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
+    // 4. Purge only this university's rows (service role bypasses RLS, so
+    // the university filter must be explicit here).
     const { data: purged, error: purgeError } = await adminClient
       .from("launch_event_profiles")
       .update({
@@ -66,12 +81,23 @@ serve(async (req: Request) => {
         major: "[removed]",
         demographics_purged_at: new Date().toISOString(),
       })
+      .eq("university_id", callerUniversityId)
       .is("demographics_purged_at", null) // only rows not already purged
       .select("id");
 
     if (purgeError) throw purgeError;
 
     const count = purged?.length ?? 0;
+
+    // Audit log
+    const { error: logError } = await adminClient
+      .from("admin_action_logs")
+      .insert({
+        admin_id: user.id,
+        action: "purge_matchmaking_demographics",
+        metadata: { university_id: callerUniversityId, purged: count },
+      });
+    if (logError) console.error("purge-matchmaking-demographics: failed to insert audit log:", logError);
 
     return new Response(
       JSON.stringify({ purged: count, message: `${count} profile(s) purged.` }),

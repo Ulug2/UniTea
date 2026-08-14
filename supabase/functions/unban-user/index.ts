@@ -63,10 +63,14 @@ serve(async (req: Request) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Admin check via service role — bypasses RLS so the result is the true DB value.
+    // Admin check via service role — bypasses RLS so the result is the true
+    // DB value. Also loads the caller's own university_id — this function
+    // uses service-role access throughout, so RLS cannot be the
+    // authorization boundary; university scoping must be enforced
+    // explicitly below.
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("is_admin")
+      .select("is_admin, university_id")
       .eq("id", user.id)
       .single();
 
@@ -84,6 +88,35 @@ serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ error: "user_id is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { data: targetProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("university_id")
+      .eq("id", target_user_id)
+      .single();
+
+    if (!targetProfile) {
+      return new Response(
+        JSON.stringify({ error: "User not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // University isolation: is_admin === true is necessary but not
+    // sufficient — an admin may only unban users belonging to their own
+    // university. Never trust a client-supplied university; both sides of
+    // this comparison come from the caller's and target's own DB profile
+    // rows, loaded above via service role.
+    if (
+      !profile.university_id ||
+      !targetProfile.university_id ||
+      profile.university_id !== targetProfile.university_id
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden: admins can only unban users from their own university" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

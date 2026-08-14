@@ -61,27 +61,78 @@ serve(async (req: Request) => {
   // Use service role for the actual deletions (bypasses RLS)
   const admin = createClient(supabaseUrl, serviceRoleKey);
 
-  try {
-    // Delete in FK-safe order: windows → matches → profiles, then reset config
-    const [windowsRes, matchesRes, profilesRes] = await Promise.all([
-      admin.from("launch_event_message_windows").delete().neq("user_id", "00000000-0000-0000-0000-000000000000"),
-      admin.from("launch_event_matches").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
-      admin.from("launch_event_profiles").delete().neq("user_id", "00000000-0000-0000-0000-000000000000"),
-    ]);
+  // University isolation: this function uses service-role access throughout,
+  // so RLS cannot be the authorization boundary — the caller's own
+  // university must be resolved server-side and every delete scoped to it.
+  // Never trust a client-supplied university. Fail closed if unresolvable.
+  const { data: callerProfile } = await admin
+    .from("profiles")
+    .select("university_id")
+    .eq("id", user.id)
+    .single();
 
-    if (windowsRes.error) throw new Error(`Windows delete failed: ${windowsRes.error.message}`);
-    if (matchesRes.error) throw new Error(`Matches delete failed: ${matchesRes.error.message}`);
-    if (profilesRes.error) throw new Error(`Profiles delete failed: ${profilesRes.error.message}`);
+  const callerUniversityId = callerProfile?.university_id;
+  if (!callerUniversityId) {
+    return new Response(
+      JSON.stringify({ error: "Forbidden: caller has no resolvable university" }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  try {
+    // launch_event_message_windows has no university_id of its own, so its
+    // rows are resolved through the profiles that belong to this university.
+    const { data: universityProfiles, error: universityProfilesError } = await admin
+      .from("launch_event_profiles")
+      .select("user_id")
+      .eq("university_id", callerUniversityId);
+
+    if (universityProfilesError) {
+      throw new Error(`Profile lookup failed: ${universityProfilesError.message}`);
+    }
+
+    const universityUserIds = (universityProfiles ?? []).map((p) => p.user_id);
+
+    // Delete in FK-safe order: windows → matches → profiles, then reset config
+    if (universityUserIds.length > 0) {
+      const { error: windowsError } = await admin
+        .from("launch_event_message_windows")
+        .delete()
+        .in("user_id", universityUserIds);
+      if (windowsError) throw new Error(`Windows delete failed: ${windowsError.message}`);
+    }
+
+    const { error: matchesError } = await admin
+      .from("launch_event_matches")
+      .delete()
+      .eq("university_id", callerUniversityId);
+    if (matchesError) throw new Error(`Matches delete failed: ${matchesError.message}`);
+
+    const { error: profilesError } = await admin
+      .from("launch_event_profiles")
+      .delete()
+      .eq("university_id", callerUniversityId);
+    if (profilesError) throw new Error(`Profiles delete failed: ${profilesError.message}`);
 
     const { error: phaseError } = await admin
       .from("launch_event_config")
       .update({ phase: "inactive" })
-      .eq("id", 1);
+      .eq("university_id", callerUniversityId);
 
     if (phaseError) throw new Error(`Phase reset failed: ${phaseError.message}`);
 
+    // Audit log
+    const { error: logError } = await admin
+      .from("admin_action_logs")
+      .insert({
+        admin_id: user.id,
+        action: "reset_matchmaking",
+        metadata: { university_id: callerUniversityId },
+      });
+    if (logError) console.error("reset-matchmaking: failed to insert audit log:", logError);
+
     return new Response(
-      JSON.stringify({ ok: true, message: "Matchmaking data cleared and phase reset to inactive." }),
+      JSON.stringify({ ok: true, message: "Matchmaking data cleared and phase reset to inactive for your university." }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {

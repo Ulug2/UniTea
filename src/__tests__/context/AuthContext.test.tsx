@@ -28,6 +28,7 @@ jest.mock("../../utils/logger", () => ({
 
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "../../context/AuthContext";
 
 // ── access the supabase mock ───────────────────────────────────────────────────
@@ -44,8 +45,15 @@ function extractAuthStateCallback() {
 }
 
 // ── wrapper ───────────────────────────────────────────────────────────────────
+// AuthProvider now calls useQueryClient() (Phase 8 — clears the cache on
+// sign-out), so it must be rendered under a QueryClientProvider.
+const queryClient = new QueryClient();
 const wrapper = ({ children }: { children: React.ReactNode }) =>
-  React.createElement(AuthProvider, null, children);
+  React.createElement(
+    QueryClientProvider,
+    { client: queryClient },
+    React.createElement(AuthProvider, null, children),
+  );
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -234,6 +242,33 @@ describe("AuthContext — signOut", () => {
     });
 
     expect(result.current.session).toBeNull();
+  });
+
+  it("clears the React Query cache on signOut() (Phase 8 — prevents stale authenticated data surviving account switch)", async () => {
+    const clearSpy = jest.spyOn(queryClient, "clear");
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.signOut();
+    });
+
+    expect(clearSpy).toHaveBeenCalledTimes(1);
+    clearSpy.mockRestore();
+  });
+
+  it("clears the React Query cache on a SIGNED_OUT auth event too (e.g. refresh-token failure, not just explicit signOut())", async () => {
+    const clearSpy = jest.spyOn(queryClient, "clear");
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const fireEvent = extractAuthStateCallback();
+    act(() => {
+      fireEvent("SIGNED_OUT", null);
+    });
+
+    expect(clearSpy).toHaveBeenCalledTimes(1);
+    clearSpy.mockRestore();
   });
 });
 

@@ -73,15 +73,18 @@ serve(async (req: Request) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
+    // Loads the caller's own university_id here too — this function uses
+    // service-role access throughout, so RLS cannot be the authorization
+    // boundary; university scoping must be enforced explicitly below.
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("is_admin")
+      .select("is_admin, university_id")
       .eq("id", user.id)
       .single();
 
     const { data: post } = await supabaseAdmin
       .from("posts")
-      .select("user_id, image_url, image_urls")
+      .select("user_id, university_id, image_url, image_urls")
       .eq("id", post_id)
       .single();
 
@@ -99,6 +102,25 @@ serve(async (req: Request) => {
         JSON.stringify({ error: "Forbidden: only the post author or an admin can delete this post" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // University isolation: is_admin === true is necessary but not
+    // sufficient for the admin path — an admin may only delete posts
+    // belonging to their own university. Does not apply to the owner path
+    // above (a user deleting their own post is unaffected regardless of
+    // admin status or university). Never trust a client-supplied
+    // university; both sides come from the caller's and post's own DB rows.
+    if (!isOwner && isAdmin) {
+      if (
+        !profile?.university_id ||
+        !post.university_id ||
+        profile.university_id !== post.university_id
+      ) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden: admins can only delete posts from their own university" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     const { error: deleteError } = await supabaseAdmin
