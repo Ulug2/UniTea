@@ -172,7 +172,15 @@ describe('routeFromNotification', () => {
 
       await routeFromNotification(notification, 'me');
 
-      expect(mockRouterPush).toHaveBeenCalledWith('/post/post-1');
+      expect(mockRouterPush).toHaveBeenCalledWith('/post/post-1?fromDeeplink=1');
+    });
+
+    it('marks the comment_reply destination as external entry too (Phase 3.1C)', async () => {
+      const notification = buildNotification({ type: 'comment_reply', relatedPostId: 'post-2' });
+
+      await routeFromNotification(notification, 'me');
+
+      expect(mockRouterPush).toHaveBeenCalledWith('/post/post-2?fromDeeplink=1');
     });
 
     it('falls back to the feed root and logs a warning when relatedPostId is missing', async () => {

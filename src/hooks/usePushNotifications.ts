@@ -205,9 +205,13 @@ export async function routeFromNotification(
   }
 
   // Upvote and comment notifications should open post details directly.
+  // fromDeeplink=1 reuses the same external-entry signal +native-intent.ts
+  // sets for deep links / shared links (Phase 3.1C) — Post Detail can't
+  // trust the back stack for a notification-opened post, so it derives its
+  // own return destination from the post's community_id instead.
   if (type === "upvote" || type === "comment_reply") {
     if (relatedPostId) {
-      router.push(`/post/${relatedPostId}`);
+      router.push(`/post/${relatedPostId}?fromDeeplink=1`);
       return;
     }
 

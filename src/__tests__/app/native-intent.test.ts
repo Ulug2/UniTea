@@ -19,10 +19,23 @@
  * per branch rather than assuming one scheme's behavior generalizes.
  */
 import { redirectSystemPath } from '../../app/+native-intent';
+import { getPostShareUrl } from '../../utils/sharePost';
 
 const initial = true;
 
 describe('redirectSystemPath', () => {
+  describe('shared post links (Phase 3.1C)', () => {
+    // sharePost.ts's URL format is untouched by Phase 3.1C — this proves the
+    // full chain (share URL -> deep link rewrite) still ends up marked as
+    // external entry, which is what lets Post Detail derive a community-
+    // aware (or Campus Feed) fallback instead of trusting the back stack.
+    it('a shared post URL (getPostShareUrl) is rewritten to include fromDeeplink=1', () => {
+      const shareUrl = getPostShareUrl('shared-post-1');
+      const result = redirectSystemPath({ path: shareUrl, initial });
+      expect(result).toBe('/post/shared-post-1?fromDeeplink=1');
+    });
+  });
+
   describe('post links', () => {
     it('routes a regular post link to /post/:id with fromDeeplink=1 (custom scheme)', () => {
       const result = redirectSystemPath({ path: 'myunitea://post/abc123', initial });

@@ -150,15 +150,40 @@ export default function PostDetailed() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const isExiting = useRef(false);
 
-  // Safe back navigation: falls back to the feed when there is no back stack
-  // (cold-start deep link where the tabs screen was never pushed).
+  // Community id mirror for navigateBack (Phase 3.1C). navigateBack is
+  // defined here, before the post query below resolves, so it can't close
+  // over `detailedPost` directly without being redefined (and therefore
+  // redefining closeScreen/the BackHandler listener) on every post-data
+  // change. Written to synchronously during render (not in an effect) since
+  // it's only ever read inside the navigateBack event handler, never during
+  // render — the standard "stable callback wants the latest value" pattern.
+  const communityIdRef = useRef<string | null>(null);
+
+  // Safe back navigation.
+  //
+  // Organic in-app navigation (Community View → Post Detail, Campus Feed →
+  // Post Detail, etc.) always prefers router.back() so the user returns to
+  // the exact screen they came from.
+  //
+  // External entry (push notification, shared link, deep link — all share
+  // the existing `fromDeeplink` signal, see +native-intent.ts and
+  // usePushNotifications.ts) cannot trust the back stack: Expo Router can
+  // synthesize a stack under a deep-linked screen, so router.canGoBack()
+  // may report true even though there's no meaningful previous screen. For
+  // external entry, derive the destination from the post itself instead —
+  // its own community, or the Campus Feed if it isn't a community post.
   const navigateBack = useCallback(() => {
-    if (router.canGoBack()) {
+    if (!isFromDeeplink && router.canGoBack()) {
       router.back();
+      return;
+    }
+    const communityId = communityIdRef.current;
+    if (communityId) {
+      router.replace(`/communities/${communityId}`);
     } else {
       router.replace("/(protected)/(tabs)");
     }
-  }, []);
+  }, [isFromDeeplink]);
 
   const closeScreen = useCallback(() => {
     if (Platform.OS !== "android") {
@@ -308,6 +333,11 @@ export default function PostDetailed() {
     ...postDetailQueryOptions(postId),
     enabled: Boolean(postId),
   });
+
+  // Keep navigateBack's community fallback current — see communityIdRef's
+  // declaration above for why this is a ref write during render rather than
+  // a useEffect.
+  communityIdRef.current = detailedPost?.community_id ?? null;
 
   // Snapshot, once, whether this exact post was already sitting in the React
   // Query cache when this screen mounted (e.g. prefetched on tap from a list
@@ -677,11 +707,12 @@ export default function PostDetailed() {
               : "Failed to load content."}
           </Text>
           <Pressable
+            testID="post-detail-back-to-feed"
             style={[
               styles.backToFeedButton,
               { backgroundColor: theme.primary },
             ]}
-            onPress={() => router.replace("/(protected)/(tabs)")}
+            onPress={closeScreen}
           >
             <Text style={styles.backToFeedButtonText}>Back to feed</Text>
           </Pressable>
@@ -699,11 +730,12 @@ export default function PostDetailed() {
             {isFromDeeplink ? "This post isn't available." : "Post Not Found!"}
           </Text>
           <Pressable
+            testID="post-detail-back-to-feed"
             style={[
               styles.backToFeedButton,
               { backgroundColor: theme.primary },
             ]}
-            onPress={() => router.replace("/(protected)/(tabs)")}
+            onPress={closeScreen}
           >
             <Text style={styles.backToFeedButtonText}>Back to feed</Text>
           </Pressable>
@@ -728,11 +760,12 @@ export default function PostDetailed() {
             {isFromDeeplink ? "This post isn't available." : "Post Not Found!"}
           </Text>
           <Pressable
+            testID="post-detail-back-to-feed"
             style={[
               styles.backToFeedButton,
               { backgroundColor: theme.primary },
             ]}
-            onPress={() => router.replace("/(protected)/(tabs)")}
+            onPress={closeScreen}
           >
             <Text style={styles.backToFeedButtonText}>Back to feed</Text>
           </Pressable>
