@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase";
@@ -13,11 +13,15 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [focused, setFocused] = useState<"email" | "password" | null>(null);
 
+  // Stable reference — recreating the client on every render/submit spins up
+  // a new GoTrueClient competing for the same localStorage-backed auth lock.
+  // Mirrors dashboard/page.tsx's useMemo'd client for the same reason.
+  const supabase = useMemo(() => createClient(), []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const supabase = createClient();
     const { error: err } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (err) {
