@@ -578,6 +578,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
             flexDirection: "column",
             alignItems: "flex-start",
             gap: moderateScale(8),
+            marginTop: verticalScale(10),
             marginBottom: verticalScale(4),
           }}
         >
