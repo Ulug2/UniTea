@@ -28,10 +28,15 @@ type SupabaseImageProps = {
 } & Omit<ComponentProps<typeof Image>, "source" | "onLoad" | "onError">;
 
 // Buckets confirmed as public — URL can be constructed synchronously, no HEAD check needed.
-const PUBLIC_BUCKETS = new Set(["avatars", "post-images", "chat-images"]);
+const PUBLIC_BUCKETS = new Set(["avatars", "post-images"]);
 
-// Cache for bucket public/private status (persists across component mounts)
-const bucketCache = new Map<string, boolean>();
+// Cache for bucket public/private status (persists across component mounts).
+// chat-images is seeded as known-private so the very first image in a cold
+// app session skips the "unknown bucket" HEAD-check round trip below and
+// goes straight to createSignedUrl — its privacy is a fixed migration-level
+// fact here, not something that needs runtime detection like the fallback
+// path below still does for any future/uninstrumented bucket.
+const bucketCache = new Map<string, boolean>([["chat-images", false]]);
 
 // Cache for signed URLs with expiry tracking
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();

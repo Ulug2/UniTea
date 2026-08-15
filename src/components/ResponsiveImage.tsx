@@ -64,6 +64,15 @@ function resolveAspectUri(
   const shouldUseUri = sourceKind === "uri" || (sourceKind === "auto" && isUri(source));
   if (shouldUseUri) return source;
   if (!SUPABASE_URL) return null;
+  // chat-images is a private bucket — there is no public URL to measure
+  // with here (unlike SupabaseImage's own render path, this hook only
+  // wants pixel dimensions and isn't worth resolving a signed URL for).
+  // Only reached when the caller has no knownAspectRatio (legacy chat
+  // messages predating the stored image_aspect_ratio column); useImageAspectRatio(null)
+  // falls back to its DEFAULT_ASPECT_RATIO synchronously, same graceful
+  // outcome as today's network measurement failing, just without the
+  // doomed request.
+  if (bucket === "chat-images") return null;
   return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${source}`;
 }
 
