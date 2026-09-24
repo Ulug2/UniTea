@@ -38,6 +38,9 @@ AS $$
   FROM unnest(p_paths) AS p(path);
 $$;
 
+REVOKE ALL ON FUNCTION public.chat_image_paths_in_chat_folder(uuid, text[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.chat_image_paths_in_chat_folder(uuid, text[]) TO authenticated, service_role;
+
 ALTER TABLE public.chat_messages
   ADD CONSTRAINT chat_messages_image_urls_valid CHECK (
     image_urls IS NULL
@@ -100,7 +103,12 @@ WHERE auth.uid() IN (c.participant_1_id, c.participant_2_id)
            AND (NOT c.is_anonymous OR b.related_chat_id = c.id))
   );
 
-REVOKE ALL ON public.chat_messages_view FROM PUBLIC;
+-- Live ACL (verified 2026-09-24) still carried explicit full privileges
+-- for anon and authenticated from the project's default-privileges rule;
+-- earlier migrations only revoked PUBLIC. The view is read-only (joins) and
+-- returns nothing without auth.uid(), so this was inert, but the intended
+-- grant is SELECT for authenticated only. The app only ever SELECTs it.
+REVOKE ALL ON public.chat_messages_view FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.chat_messages_view TO authenticated;
 
 -- Recreated from 20260728000000_unify_chat_message_deletion_rpc.sql
