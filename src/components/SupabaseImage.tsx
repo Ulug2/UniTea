@@ -3,6 +3,11 @@ import { ActivityIndicator, View } from "react-native";
 import { Image } from "expo-image";
 import { supabase } from "../lib/supabase";
 import { getPublicStorageUrl } from "../utils/publicStorageUrl";
+import {
+  getCachedSignedUrl,
+  getSignedStorageUrl,
+  storageImageCacheKey,
+} from "../utils/signedStorageUrl";
 import React from "react";
 
 type SupabaseImageProps = {
@@ -38,9 +43,6 @@ const PUBLIC_BUCKETS = new Set(["avatars", "post-images"]);
 // path below still does for any future/uninstrumented bucket.
 const bucketCache = new Map<string, boolean>([["chat-images", false]]);
 
-// Cache for signed URLs with expiry tracking
-const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
-
 /**
  * PRODUCTION-READY: Uses public/signed URLs with expo-image's disk caching
  * NO MEMORY LEAKS - Images are cached to disk, not loaded as Base64 strings
@@ -61,7 +63,9 @@ function SupabaseImage({
   ...imageProps
 }: SupabaseImageProps) {
   const isKnownPublic = PUBLIC_BUCKETS.has(bucket);
-  const cacheKey = `${bucket}:${path}:${version ?? ""}`;
+  // Set only when the URL is a signed URL — keys expo-image's cache by object
+  // path instead of the per-request token in the URL.
+  const [imageCacheKey, setImageCacheKey] = useState<string | undefined>(undefined);
 
   // Lazy initialisers run synchronously before the first paint.
   // For known-public buckets the URL is available immediately — isLoading stays
@@ -97,19 +101,25 @@ function SupabaseImage({
       const url = getPublicStorageUrl(bucket, path, version);
       bucketCache.set(bucket, true);
       if (isMountedRef.current) {
+        setImageCacheKey(undefined);
         setImageUrl(url);
         setIsLoading(false);
       }
       return;
     }
 
-    // Check if we have a cached signed URL that's still valid
-    const cachedSigned = signedUrlCache.get(cacheKey);
-    if (cachedSigned && cachedSigned.expiresAt > Date.now() + 60_000) {
-      if (isMountedRef.current) {
-        setImageUrl(cachedSigned.url);
-        setIsLoading(false);
-      }
+    let isCancelled = false;
+    const applySignedUrl = (url: string) => {
+      if (isCancelled || !isMountedRef.current) return;
+      setImageCacheKey(storageImageCacheKey(bucket, path));
+      setImageUrl(url);
+      setIsLoading(false);
+    };
+
+    const cachedSigned =
+      bucketCache.get(bucket) === false ? getCachedSignedUrl(bucket, path) : null;
+    if (cachedSigned) {
+      applySignedUrl(cachedSigned);
       return;
     }
 
@@ -152,35 +162,11 @@ function SupabaseImage({
           return;
         }
 
-        // Bucket is private — use signed URL
-        const cached = signedUrlCache.get(cacheKey);
-        if (cached && cached.expiresAt > Date.now()) {
-          if (isMountedRef.current) {
-            setImageUrl(cached.url);
-            setIsLoading(false);
-          }
-          return;
-        }
-
-        // Generate new signed URL (valid for 1 hour)
-        const { data: signedData, error } = await supabase.storage
-          .from(bucket)
-          .createSignedUrl(path, 3600);
-
-        if (error) throw error;
-
-        signedUrlCache.set(cacheKey, {
-          url: signedData.signedUrl,
-          expiresAt: Date.now() + 3_300_000, // 55 minutes
-        });
-
-        if (isMountedRef.current) {
-          setImageUrl(signedData.signedUrl);
-          setIsLoading(false);
-        }
+        // Bucket is private — use a signed URL
+        applySignedUrl(await getSignedStorageUrl(bucket, path));
       } catch (error) {
         console.error("[SupabaseImage] Error loading image:", error);
-        if (isMountedRef.current) {
+        if (!isCancelled && isMountedRef.current) {
           setImageUrl(null);
           setIsLoading(false);
         }
@@ -188,11 +174,17 @@ function SupabaseImage({
     };
 
     getImageUrl();
-  }, [path, bucket, cacheKey, isKnownPublic, version]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [path, bucket, isKnownPublic, version]);
 
   // Memoize the image source to prevent unnecessary re-renders
   // MUST be called before any early returns (Rules of Hooks)
-  const imageSource = useMemo(() => ({ uri: imageUrl || undefined }), [imageUrl]);
+  const imageSource = useMemo(
+    () => ({ uri: imageUrl || undefined, cacheKey: imageCacheKey }),
+    [imageUrl, imageCacheKey],
+  );
 
   // When resolution finishes with no URL: if a path was actually given, that's
   // a real failure (e.g. signed URL fetch threw) — report it as an error

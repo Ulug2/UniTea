@@ -1,5 +1,13 @@
-import React from "react";
-import { Modal, View, Pressable, Dimensions, StyleSheet } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Modal,
+  View,
+  Pressable,
+  Dimensions,
+  StyleSheet,
+  Text,
+} from "react-native";
 import { Image } from "expo-image";
 import { AntDesign } from "@expo/vector-icons";
 import { PinchToZoom } from "./PinchToZoom";
@@ -33,6 +41,27 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
   },
+  centerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  errorText: {
+    color: "#fff",
+    fontSize: moderateScale(15),
+    marginBottom: verticalScale(12),
+  },
+  retryButton: {
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(20),
+    borderRadius: moderateScale(18),
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+  },
+  retryText: {
+    color: "#fff",
+    fontSize: moderateScale(15),
+    fontWeight: "600",
+  },
   closeButton: {
     position: "absolute",
     top: verticalScale(52),
@@ -51,6 +80,14 @@ type FullscreenImageModalProps = {
   visible: boolean;
   /** Fully-resolved https:// URI. Pass null to hide. */
   uri: string | null;
+  /** Stable expo-image cache key (e.g. for signed URLs whose token changes). */
+  cacheKey?: string;
+  /** The URI is still being resolved (e.g. signing) — shows a spinner. */
+  isResolving?: boolean;
+  /** Resolving the URI failed — shows the error state. */
+  resolveFailed?: boolean;
+  /** Called on "Retry" in addition to reloading the image. */
+  onRetry?: () => void;
   onClose: () => void;
 };
 
@@ -62,8 +99,26 @@ type FullscreenImageModalProps = {
 export function FullscreenImageModal({
   visible,
   uri,
+  cacheKey,
+  isResolving = false,
+  resolveFailed = false,
+  onRetry,
   onClose,
 }: FullscreenImageModalProps) {
+  const [hasLoadError, setHasLoadError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    setHasLoadError(false);
+  }, [uri]);
+
+  const showError = resolveFailed || hasLoadError;
+  const handleRetry = () => {
+    setHasLoadError(false);
+    setAttempt((n) => n + 1);
+    onRetry?.();
+  };
+
   return (
     <Modal
       visible={visible}
@@ -73,16 +128,32 @@ export function FullscreenImageModal({
     >
       <View style={styles.root}>
         <Pressable style={styles.overlay} onPress={onClose}>
-          {uri != null && (
+          {/* Behind the image: visible until the image draws over it, so an
+              already-cached image never flashes a spinner. */}
+          {!showError && (uri != null || isResolving) && (
+            <View style={styles.centerOverlay} pointerEvents="none">
+              <ActivityIndicator size="large" color="#fff" />
+            </View>
+          )}
+          {showError && (
+            <View style={styles.centerOverlay}>
+              <Text style={styles.errorText}>Couldn't load image</Text>
+              <Pressable style={styles.retryButton} onPress={handleRetry}>
+                <Text style={styles.retryText}>Retry</Text>
+              </Pressable>
+            </View>
+          )}
+          {uri != null && !showError && (
             // Keyed on uri so a new image always mounts a fresh PinchToZoom
             // instance — no leftover zoom/translate state from the last image.
-            <PinchToZoom key={uri} style={styles.imageWrapOuter}>
+            <PinchToZoom key={`${uri}#${attempt}`} style={styles.imageWrapOuter}>
               <View style={styles.imageWrapInner}>
                 <Image
-                  source={{ uri }}
+                  source={{ uri, cacheKey }}
                   style={styles.image}
                   contentFit="contain"
                   cachePolicy="disk"
+                  onError={() => setHasLoadError(true)}
                 />
               </View>
             </PinchToZoom>

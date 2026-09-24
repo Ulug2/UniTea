@@ -1,7 +1,6 @@
 import * as ImagePicker from "expo-image-picker";
-import * as ImageManipulator from "expo-image-manipulator";
 import { Alert } from "react-native";
-import { IMAGE_COMPRESS_QUALITY, IMAGE_MAX_WIDTH, IMAGE_SAVE_FORMAT } from "../config/images";
+import { compressImageForUpload } from "../utils/imageCompression";
 import { logger } from "../utils/logger";
 import { mapWithConcurrency } from "../utils/asyncConcurrency";
 
@@ -28,19 +27,6 @@ export function useImagePipeline(options: ImagePipelineOptions = {}) {
     selectionLimit = 10,
   } = options;
 
-  const prepareImage = async (uri: string): Promise<string> => {
-    const manipResult = await ImageManipulator.manipulateAsync(
-      uri,
-      [{ resize: { width: IMAGE_MAX_WIDTH } }],
-      {
-        compress: IMAGE_COMPRESS_QUALITY,
-        format: ImageManipulator.SaveFormat[IMAGE_SAVE_FORMAT as "WEBP"],
-      }
-    );
-
-    return manipResult.uri;
-  };
-
   const pickAndPrepareImages = async (): Promise<PreparedImage[]> => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -66,7 +52,7 @@ export function useImagePipeline(options: ImagePipelineOptions = {}) {
         validAssets,
         IMAGE_PROCESSING_CONCURRENCY,
         async (asset) => {
-          const preparedUri = await prepareImage(asset.uri);
+          const preparedUri = await compressImageForUpload(asset.uri);
           const aspectRatio =
             asset.width && asset.height && asset.height > 0
               ? asset.width / asset.height

@@ -1,16 +1,19 @@
 import { Alert } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { logger } from "../../../utils/logger";
+import {
+  COMPRESSED_IMAGE_MIME_TYPE,
+  compressImageForUpload,
+} from "../../../utils/imageCompression";
 
 /**
- * Pick an image from the library for chat without cropping or preprocessing.
- * Returns the local URI, the picker's own type metadata (mimeType/fileName —
- * the most reliable signal for what type of file this actually is, since
- * chat skips the image-manipulation pass every other upload path uses),
- * and the image's aspect ratio (width / height), read synchronously from the
- * picker result — no Image.getSize round trip needed. aspectRatio is null if
- * the picker didn't report dimensions (rare, but happens on some Android
- * providers); callers fall back to measuring later.
+ * Pick an image from the library for chat (no cropping) and compress it with
+ * the shared upload pipeline (max 1080px wide, WebP). Returns the local URI,
+ * its type metadata for uploadImage(), and the aspect ratio (width / height)
+ * from the picker result — resizing preserves it, so no Image.getSize round
+ * trip is needed. aspectRatio is null if the picker didn't report dimensions
+ * (rare, some Android providers); callers fall back to measuring later.
+ * If compression fails, the original image is sent rather than failing.
  */
 export async function pickChatImage(): Promise<
   {
@@ -43,12 +46,25 @@ export async function pickChatImage(): Promise<
         ? asset.width / asset.height
         : null;
 
-    return {
-      localUri: asset.uri,
-      mimeType: asset.mimeType ?? null,
-      fileName: asset.fileName ?? null,
-      aspectRatio,
-    };
+    try {
+      const compressedUri = await compressImageForUpload(asset.uri, asset.width);
+      return {
+        localUri: compressedUri,
+        mimeType: COMPRESSED_IMAGE_MIME_TYPE,
+        fileName: null,
+        aspectRatio,
+      };
+    } catch (compressError) {
+      logger.warn("Chat image compression failed; sending original", {
+        message: compressError instanceof Error ? compressError.message : String(compressError),
+      });
+      return {
+        localUri: asset.uri,
+        mimeType: asset.mimeType ?? null,
+        fileName: asset.fileName ?? null,
+        aspectRatio,
+      };
+    }
   } catch (error) {
     logger.error("Error picking chat image", error as Error);
     Alert.alert("Error", "Failed to pick image. Please try again.");
