@@ -3,6 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const EXPO_PUSH_API_URL = "https://exp.host/--/api/v2/push/send";
 const MAX_MESSAGE_LENGTH = 80; // Truncate chat message body to 80 characters
+// A push is only useful while it's fresh. Anything older stays in the in-app
+// notifications list but is never pushed, so a backlog (e.g. a user who had no
+// push token, or a failed Expo ticket) can't surface as an old alert later.
+const MAX_PUSH_AGE_MS = 60 * 60 * 1000;
 
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
@@ -85,6 +89,7 @@ serve(async (req) => {
       .select("*")
       .eq("is_read", false)
       .or("push_sent.eq.false,push_sent.is.null")
+      .gte("created_at", new Date(Date.now() - MAX_PUSH_AGE_MS).toISOString())
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -231,6 +236,10 @@ serve(async (req) => {
     // loops, with all payloads in a single request.
 
     const batchQueue: BatchEntry[] = [];
+    // Notifications for users who can't or don't want a push (no token,
+    // setting off, unresolvable sender). Marked handled so they aren't
+    // re-selected on every future invocation.
+    const skippedIds: string[] = [];
 
     // Chat notifications
     // Note: related_user_id is NULL for anonymous chats — the notify_chat_message
@@ -240,7 +249,10 @@ serve(async (req) => {
     for (const [userId, chatNotifications] of chatNotificationsByUser) {
       try {
         const settings = chatSettingsByUserId.get(userId);
-        if (!settings?.push_token || settings.notify_chats !== true) continue;
+        if (!settings?.push_token || settings.notify_chats !== true) {
+          skippedIds.push(...chatNotifications.map((n) => n.id));
+          continue;
+        }
 
         const latestChat = chatNotifications[0];
         const senderId = latestChat.related_user_id as string | null;
@@ -248,7 +260,10 @@ serve(async (req) => {
 
         // For anonymous chats, related_user_id is null; we still have related_chat_id.
         // For non-anonymous chats, both should be present.
-        if (!senderId && !relatedChatId) continue;
+        if (!senderId && !relatedChatId) {
+          skippedIds.push(...chatNotifications.map((n) => n.id));
+          continue;
+        }
 
         const notificationIds = chatNotifications.map((n) => n.id);
 
@@ -319,7 +334,10 @@ serve(async (req) => {
     for (const [userId, voteNotifications] of voteNotificationsByUser) {
       try {
         const settings = voteSettingsByUserId.get(userId);
-        if (!settings?.push_token || settings.notify_upvotes !== true) continue;
+        if (!settings?.push_token || settings.notify_upvotes !== true) {
+          skippedIds.push(...voteNotifications.map((n) => n.id));
+          continue;
+        }
 
         const notificationIds = voteNotifications.map((n) => n.id);
 
@@ -370,7 +388,10 @@ serve(async (req) => {
     for (const [userId, commentNotifications] of commentNotificationsByUser) {
       try {
         const settings = commentSettingsByUserId.get(userId);
-        if (!settings?.push_token) continue;
+        if (!settings?.push_token) {
+          skippedIds.push(...commentNotifications.map((n) => n.id));
+          continue;
+        }
 
         const notificationIds = commentNotifications.map((n) => n.id);
 
@@ -418,6 +439,15 @@ serve(async (req) => {
     }
 
     // ── Single Expo batch send ────────────────────────────────────────────────
+    if (skippedIds.length > 0) {
+      const { error: skipError } = await supabase
+        .from("notifications")
+        .update({ push_sent: true })
+        .in("id", skippedIds)
+        .or("push_sent.is.null,push_sent.eq.false");
+      if (skipError) console.error("mark skipped as handled failed:", skipError);
+    }
+
     if (batchQueue.length > 0) {
       const pushResponse = await fetch(EXPO_PUSH_API_URL, {
         method: "POST",
