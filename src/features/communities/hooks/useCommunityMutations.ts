@@ -102,10 +102,7 @@ export function useUpdateCommunity() {
       const name = normalizeCommunityName(input.name);
       const description = normalizeCommunityDescription(input.description);
 
-      // `updated_at` isn't reflected in the generated Database types yet
-      // (see types.ts) — cast per project convention rather than
-      // regenerating types from the live schema.
-      const { data, error } = await (communitiesTable() as any)
+      const { data, error } = await communitiesTable()
         .update({
           name,
           description,

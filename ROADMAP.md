@@ -36,7 +36,8 @@ _Last updated: 2026-09-24_
 - [ ] **Optimistic commenting.** Show a new comment immediately, before the server confirms it.
 - [~] **Chat: up to 3 images per message, shown like posts.** Single image keeps the whole-photo
   bubble, 2–3 show as the post preview strip; old app builds show only the first image until they
-  update. Branch `feat/chat-multi-image` — migration `20260925000000` not applied yet.
+  update. Branch `feat/chat-multi-image` — migration `20260925000000` applied to production
+  2026-09-24 (verified live); awaiting on-device check before merge.
 - [~] **Swipeable images.** Swipe between pictures in full screen — chat and posts share one viewer.
   Branch `feat/chat-multi-image` (feed, post detail, communities, Lost & Found, create-post, chat).
 
@@ -56,6 +57,12 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
   react-navigation (3 files), `expo/fetch` becomes global `fetch`, iOS minimum 16.4.
 - [ ] **Faster vote retries.** Taps during an in-flight vote are ignored for the whole save
   (network + 100 ms delay + refetches in `useVote`'s `onSettled`).
+
+- [ ] **Security advisor clean-up (pre-existing).** Several `SECURITY DEFINER` RPCs are still
+  executable by `anon` (e.g. `set_chat_message_deletion`, `is_chat_participant`,
+  `can_read_chat_message_directly`, `generate_random_username`); all check `auth.uid()` inside, so
+  not exploitable today, but EXECUTE should be revoked from `anon`. Also 2 functions without a fixed
+  `search_path` (`assign_founding_member`, `is_valid_username`).
 
 ## ✅ Done
 

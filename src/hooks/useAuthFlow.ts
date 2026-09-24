@@ -98,7 +98,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
   const isAllowedDomain = useCallback(async (sanitizedEmail: string): Promise<boolean> => {
     const domain = sanitizedEmail.split("@")[1];
     if (!domain) return false;
-    const { data, error } = await (supabase as any).rpc("is_supported_university_domain", {
+    const { data, error } = await supabase.rpc("is_supported_university_domain", {
       p_domain: domain,
     });
     if (error) {

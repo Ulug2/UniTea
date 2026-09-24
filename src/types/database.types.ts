@@ -10,37 +10,40 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
       admin_action_logs: {
         Row: {
           action: string
-          admin_id: string
+          admin_id: string | null
           created_at: string
           id: string
           metadata: Json
           target_post_id: string | null
           target_user_id: string | null
+          university_id: string
         }
         Insert: {
           action: string
-          admin_id: string
+          admin_id?: string | null
           created_at?: string
           id?: string
           metadata?: Json
           target_post_id?: string | null
           target_user_id?: string | null
+          university_id: string
         }
         Update: {
           action?: string
-          admin_id?: string
+          admin_id?: string | null
           created_at?: string
           id?: string
           metadata?: Json
           target_post_id?: string | null
           target_user_id?: string | null
+          university_id?: string
         }
         Relationships: [
           {
@@ -57,6 +60,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "admin_action_logs_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: false
+            referencedRelation: "universities"
+            referencedColumns: ["id"]
+          },
         ]
       }
       blocks: {
@@ -66,6 +76,7 @@ export type Database = {
           blocker_id: string
           created_at: string | null
           id: string
+          related_chat_id: string | null
         }
         Insert: {
           block_scope?: string
@@ -73,6 +84,7 @@ export type Database = {
           blocker_id: string
           created_at?: string | null
           id?: string
+          related_chat_id?: string | null
         }
         Update: {
           block_scope?: string
@@ -80,8 +92,31 @@ export type Database = {
           blocker_id?: string
           created_at?: string | null
           id?: string
+          related_chat_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "blocks_related_chat_id_fkey"
+            columns: ["related_chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blocks_related_chat_id_fkey"
+            columns: ["related_chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blocks_related_chat_id_fkey"
+            columns: ["related_chat_id"]
+            isOneToOne: false
+            referencedRelation: "user_chats_summary"
+            referencedColumns: ["chat_id"]
+          },
+        ]
       }
       bookmarks: {
         Row: {
@@ -136,6 +171,7 @@ export type Database = {
           id: string
           image_aspect_ratio: number | null
           image_url: string | null
+          image_urls: string[] | null
           is_read: boolean | null
           reply_to_id: string | null
           user_id: string
@@ -149,6 +185,7 @@ export type Database = {
           id?: string
           image_aspect_ratio?: number | null
           image_url?: string | null
+          image_urls?: string[] | null
           is_read?: boolean | null
           reply_to_id?: string | null
           user_id: string
@@ -162,6 +199,7 @@ export type Database = {
           id?: string
           image_aspect_ratio?: number | null
           image_url?: string | null
+          image_urls?: string[] | null
           is_read?: boolean | null
           reply_to_id?: string | null
           user_id?: string
@@ -178,6 +216,13 @@ export type Database = {
             foreignKeyName: "chat_messages_chat_id_fkey"
             columns: ["chat_id"]
             isOneToOne: false
+            referencedRelation: "chats_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
             referencedRelation: "user_chats_summary"
             referencedColumns: ["chat_id"]
           },
@@ -186,6 +231,13 @@ export type Database = {
             columns: ["reply_to_id"]
             isOneToOne: false
             referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages_view"
             referencedColumns: ["id"]
           },
         ]
@@ -329,6 +381,7 @@ export type Database = {
           id: string
           name: string
           university_id: string
+          updated_at: string
         }
         Insert: {
           avatar_url?: string | null
@@ -338,6 +391,7 @@ export type Database = {
           id?: string
           name: string
           university_id: string
+          updated_at?: string
         }
         Update: {
           avatar_url?: string | null
@@ -347,6 +401,7 @@ export type Database = {
           id?: string
           name?: string
           university_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -447,18 +502,26 @@ export type Database = {
       }
       launch_event_config: {
         Row: {
-          id: number
           phase: string
+          university_id: string
         }
         Insert: {
-          id?: number
           phase: string
+          university_id: string
         }
         Update: {
-          id?: number
           phase?: string
+          university_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "launch_event_config_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: true
+            referencedRelation: "universities"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       launch_event_matches: {
         Row: {
@@ -678,6 +741,13 @@ export type Database = {
             foreignKeyName: "notifications_related_chat_id_fkey"
             columns: ["related_chat_id"]
             isOneToOne: false
+            referencedRelation: "chats_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_related_chat_id_fkey"
+            columns: ["related_chat_id"]
+            isOneToOne: false
             referencedRelation: "user_chats_summary"
             referencedColumns: ["chat_id"]
           },
@@ -819,21 +889,21 @@ export type Database = {
           {
             foreignKeyName: "polls_post_id_fkey"
             columns: ["post_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "posts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "polls_post_id_fkey"
             columns: ["post_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "posts_summary_view"
             referencedColumns: ["original_post_id"]
           },
           {
             foreignKeyName: "polls_post_id_fkey"
             columns: ["post_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "posts_summary_view"
             referencedColumns: ["post_id"]
           },
@@ -1110,6 +1180,7 @@ export type Database = {
       reports: {
         Row: {
           comment_id: string | null
+          community_id: string | null
           created_at: string | null
           id: string
           post_id: string | null
@@ -1121,6 +1192,7 @@ export type Database = {
         }
         Insert: {
           comment_id?: string | null
+          community_id?: string | null
           created_at?: string | null
           id?: string
           post_id?: string | null
@@ -1132,6 +1204,7 @@ export type Database = {
         }
         Update: {
           comment_id?: string | null
+          community_id?: string | null
           created_at?: string | null
           id?: string
           post_id?: string | null
@@ -1154,6 +1227,13 @@ export type Database = {
             columns: ["comment_id"]
             isOneToOne: false
             referencedRelation: "comments_with_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
             referencedColumns: ["id"]
           },
           {
@@ -1304,6 +1384,115 @@ export type Database = {
       }
     }
     Views: {
+      chat_messages_view: {
+        Row: {
+          chat_id: string | null
+          content: string | null
+          created_at: string | null
+          deleted_by_receiver: boolean | null
+          deleted_by_sender: boolean | null
+          id: string | null
+          image_aspect_ratio: number | null
+          image_url: string | null
+          image_urls: string[] | null
+          is_read: boolean | null
+          reply_message: Json | null
+          reply_to_id: string | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "user_chats_summary"
+            referencedColumns: ["chat_id"]
+          },
+          {
+            foreignKeyName: "chat_messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages_view"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chats_view: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          initiator_id: string | null
+          is_anonymous: boolean | null
+          last_message_at: string | null
+          participant_1_id: string | null
+          participant_2_id: string | null
+          post_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string | null
+          initiator_id?: never
+          is_anonymous?: boolean | null
+          last_message_at?: string | null
+          participant_1_id?: never
+          participant_2_id?: never
+          post_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string | null
+          initiator_id?: never
+          is_anonymous?: boolean | null
+          last_message_at?: string | null
+          participant_1_id?: never
+          participant_2_id?: never
+          post_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chats_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chats_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts_summary_view"
+            referencedColumns: ["original_post_id"]
+          },
+          {
+            foreignKeyName: "chats_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts_summary_view"
+            referencedColumns: ["post_id"]
+          },
+        ]
+      }
       comments_with_details: {
         Row: {
           avatar_url: string | null
@@ -1465,15 +1654,15 @@ export type Database = {
         Insert: {
           chat_id?: string | null
           created_at?: string | null
-          initiator_id?: string | null
+          initiator_id?: never
           is_anonymous?: boolean | null
           last_message_at?: string | null
           last_message_content_p1?: never
           last_message_content_p2?: never
           last_message_has_image_p1?: never
           last_message_has_image_p2?: never
-          participant_1_id?: string | null
-          participant_2_id?: string | null
+          participant_1_id?: never
+          participant_2_id?: never
           post_id?: string | null
           unread_count_p1?: never
           unread_count_p2?: never
@@ -1481,15 +1670,15 @@ export type Database = {
         Update: {
           chat_id?: string | null
           created_at?: string | null
-          initiator_id?: string | null
+          initiator_id?: never
           is_anonymous?: boolean | null
           last_message_at?: string | null
           last_message_content_p1?: never
           last_message_content_p2?: never
           last_message_has_image_p1?: never
           last_message_has_image_p2?: never
-          participant_1_id?: string | null
-          participant_2_id?: string | null
+          participant_1_id?: never
+          participant_2_id?: never
           post_id?: string | null
           unread_count_p1?: never
           unread_count_p2?: never
@@ -1520,6 +1709,15 @@ export type Database = {
       }
     }
     Functions: {
+      block_chat_partner: { Args: { p_chat_id: string }; Returns: undefined }
+      can_read_chat_message_directly: {
+        Args: { p_chat_id: string }
+        Returns: boolean
+      }
+      chat_image_paths_in_chat_folder: {
+        Args: { p_chat_id: string; p_paths: string[] }
+        Returns: boolean
+      }
       check_message_rate_limit: {
         Args: {
           p_chat_id: string
@@ -1547,7 +1745,9 @@ export type Database = {
         Returns: number
       }
       count_today_dau: { Args: { p_since: string }; Returns: number }
+      delete_anonymous_chat: { Args: { p_chat_id: string }; Returns: undefined }
       delete_user_account: { Args: never; Returns: undefined }
+      generate_random_username: { Args: never; Returns: string }
       get_analytics_summary: {
         Args: never
         Returns: {
@@ -1598,9 +1798,43 @@ export type Database = {
       get_my_is_admin: { Args: never; Returns: boolean }
       get_my_match: { Args: never; Returns: Json }
       get_my_university_id: { Args: never; Returns: string }
+      get_report_target_university_id: {
+        Args: {
+          p_comment_id: string
+          p_community_id: string
+          p_post_id: string
+        }
+        Returns: string
+      }
+      get_report_university_id: {
+        Args: { p_report_id: string }
+        Returns: string
+      }
       get_repost_count: { Args: { post_id: string }; Returns: number }
       initiate_anonymous_chat: { Args: { p_post_id: string }; Returns: string }
+      is_anonymous_chat_post_blocked: {
+        Args: { p_post_author_id: string; p_post_id: string }
+        Returns: boolean
+      }
+      is_anonymous_chat_relationship_blocked: {
+        Args: { p_chat_id: string; p_user_a: string; p_user_b: string }
+        Returns: boolean
+      }
+      is_chat_participant: { Args: { p_chat_id: string }; Returns: boolean }
+      is_supported_university_domain: {
+        Args: { p_domain: string }
+        Returns: boolean
+      }
+      is_valid_username: { Args: { p_username: string }; Returns: boolean }
+      mark_anonymous_chat_read: {
+        Args: { p_chat_id: string }
+        Returns: undefined
+      }
       reset_matchmaking_event: { Args: never; Returns: Json }
+      set_chat_message_deletion: {
+        Args: { p_action: string; p_message_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
@@ -1619,12 +1853,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1648,11 +1882,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1673,11 +1907,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1698,11 +1932,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1715,11 +1949,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

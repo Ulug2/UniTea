@@ -51,8 +51,6 @@ export type ReplyingToState = {
 
 export type ChatMessageVM = ChatMessageRow & {
   image_url?: string | null;
-  /** Not yet in the generated DB types (20260925000000_chat_messages_multi_image.sql). */
-  image_urls?: string[] | null;
   sendStatus?: "sending" | "failed";
   _clientPayload?: {
     messageText: string;

@@ -235,7 +235,7 @@ export function useChatSendMessage(
           content: messageText?.trim() ?? "",
           ...imageColumns,
           reply_to_id: replyToId ?? null,
-        } as any);
+        });
 
         // A unique-violation on `id` means this exact logical send already
         // committed on a prior attempt whose response never reached the
@@ -273,7 +273,7 @@ export function useChatSendMessage(
             content: messageText?.trim() ?? "",
             ...imageColumns,
             reply_to_id: replyToId ?? null,
-          } as any)
+          })
           .select(REPLY_SELECT)
           .single();
 
