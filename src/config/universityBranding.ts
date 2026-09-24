@@ -14,7 +14,7 @@ export const UNIVERSITY_BRANDING: Record<string, UniversityBranding> = {
     displayName: "Nazarbayev",
     avatar: NU_AVATAR,
   },
-  "stu.sdu.edu.kz": {
+  "sdu.edu.kz": {
     displayName: "Suleiman Demirel",
     avatar: SDU_AVATAR,
   },

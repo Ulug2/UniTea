@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "react-native";
 import { supabase } from "../lib/supabase";
 import { logger } from "../utils/logger";
@@ -82,23 +82,6 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     return mode === "login" ? "Sign in" : "Create your account";
   }, [mode]);
 
-  const allowedDomainsRef = useRef<string[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    supabase
-      .from("universities")
-      .select("domain")
-      .then(({ data }) => {
-        if (!cancelled && data) {
-          allowedDomainsRef.current = data.map((u) => u.domain);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const helper = useMemo(() => {
     if (mode === "forgot") return "Enter your email to receive a reset link.";
     return mode === "login"
@@ -110,11 +93,19 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     return value.trim().toLowerCase();
   }, []);
 
-  const isAllowedDomain = useCallback((sanitizedEmail: string): boolean => {
+  // The DB trigger on auth.users is authoritative; this pre-check only gives
+  // a clear message. Fails open on RPC errors so an outage never blocks signup.
+  const isAllowedDomain = useCallback(async (sanitizedEmail: string): Promise<boolean> => {
     const domain = sanitizedEmail.split("@")[1];
     if (!domain) return false;
-    if (allowedDomainsRef.current.length === 0) return true;
-    return allowedDomainsRef.current.includes(domain);
+    const { data, error } = await (supabase as any).rpc("is_supported_university_domain", {
+      p_domain: domain,
+    });
+    if (error) {
+      logger.warn("is_supported_university_domain failed", { message: error.message });
+      return true;
+    }
+    return data === true;
   }, []);
 
   const logAuthEvent = useCallback(
@@ -212,7 +203,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       }
 
       if (normalized.kind === "unknown") {
-        logAuthEvent("unknown_error", { message: normalized.rawMessage });
+        logger.error("Unrecognized auth error", err, { message: normalized.rawMessage });
       }
 
       return { message: normalized.message, kind: normalized.kind };
@@ -446,10 +437,6 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       setEmailError("Please enter your email address.");
       return;
     }
-    if (!isAllowedDomain(sanitizedEmail)) {
-      setEmailError("This university is not supported yet.");
-      return;
-    }
     if (!password) {
       setPasswordError("Please enter your password.");
       return;
@@ -471,6 +458,11 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     logAuthEvent("signup_started", { email: sanitizedEmail });
 
     try {
+      if (!(await isAllowedDomain(sanitizedEmail))) {
+        setEmailError("This university is not supported yet.");
+        return;
+      }
+
       await splash.run(async () => {
         const registrationStatus = await getEmailRegistrationStatus(sanitizedEmail);
 

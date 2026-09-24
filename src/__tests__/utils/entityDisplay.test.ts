@@ -5,7 +5,7 @@ jest.mock("../../config/universityBranding", () => ({
     if (domain === "nu.edu.kz") {
       return { displayName: "Nazarbayev", avatar: 1 };
     }
-    if (domain === "stu.sdu.edu.kz") {
+    if (domain === "sdu.edu.kz") {
       return { displayName: "Suleiman Demirel", avatar: 2 };
     }
     return null;
@@ -41,7 +41,7 @@ describe("entityDisplay", () => {
       const result = resolvePostAuthorDisplay(
         buildPostAuthorContext({
           isAnonymous: true,
-          universityDomain: "stu.sdu.edu.kz",
+          universityDomain: "sdu.edu.kz",
           userId: "user-1",
           currentUserId: "user-2",
         }),

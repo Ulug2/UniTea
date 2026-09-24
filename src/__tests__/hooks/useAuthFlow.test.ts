@@ -21,11 +21,7 @@ jest.mock('../../lib/supabase', () => ({
       resend: jest.fn(),
     },
     functions: { invoke: jest.fn() },
-    from: jest.fn().mockReturnValue({
-      select: jest.fn().mockResolvedValue({
-        data: [{ domain: 'nu.edu.kz' }, { domain: 'stu.sdu.edu.kz' }],
-      }),
-    }),
+    rpc: jest.fn(),
   },
 }));
 jest.mock('../../utils/logger', () => ({
@@ -51,6 +47,7 @@ const mockSignUp = supabase.auth.signUp as jest.Mock;
 const mockResetPw = supabase.auth.resetPasswordForEmail as jest.Mock;
 const mockResend = supabase.auth.resend as jest.Mock;
 const mockFunctionsInvoke = supabase.functions.invoke as jest.Mock;
+const mockRpc = supabase.rpc as jest.Mock;
 
 // ----- constants ----------------------------------------------------------
 const CONFIG = { timeoutMs: 5000, rateLimitCooldownMs: 30000, emailRequestCooldownSeconds: 60 };
@@ -80,6 +77,8 @@ describe('useAuthFlow', () => {
 
     mockSplashRun = jest.fn().mockImplementation(async (fn: () => unknown) => fn());
     mockUseSplashDuring.mockReturnValue({ run: mockSplashRun });
+
+    mockRpc.mockResolvedValue({ data: true, error: null });
 
     // Default: normalizeAuthError returns a generic unknown result
     mockNormalizeAuthError.mockImplementation((err: unknown) => ({
@@ -328,6 +327,41 @@ describe('useAuthFlow', () => {
       await act(async () => { await result.current.signUpWithEmail(); });
 
       expect(result.current.passwordError).toBe('Please meet all password requirements.');
+    });
+
+    it('rejects an unsupported domain before calling signUp', async () => {
+      mockRpc.mockResolvedValue({ data: false, error: null });
+
+      const { result } = renderHook(() => useAuthFlow(CONFIG));
+      act(() => {
+        result.current.setEmail('new@gmail.com');
+        result.current.setPassword('Secure123!');
+        result.current.setPrivacyAccepted(true);
+      });
+
+      await act(async () => { await result.current.signUpWithEmail(); });
+
+      expect(mockRpc).toHaveBeenCalledWith('is_supported_university_domain', { p_domain: 'gmail.com' });
+      expect(result.current.emailError).toBe('This university is not supported yet.');
+      expect(mockSignUp).not.toHaveBeenCalled();
+      expect(result.current.loadingState.signup).toBe(false);
+    });
+
+    it('fails open and proceeds to signUp when the domain check errors', async () => {
+      mockRpc.mockResolvedValue({ data: null, error: { message: 'network' } });
+      mockFunctionsInvoke.mockResolvedValue({ data: { exists: false } });
+      mockSignUp.mockResolvedValue({ data: { session: null, user: {} }, error: null });
+
+      const { result } = renderHook(() => useAuthFlow(CONFIG));
+      act(() => {
+        result.current.setEmail('new@sdu.edu.kz');
+        result.current.setPassword('Secure123!');
+        result.current.setPrivacyAccepted(true);
+      });
+
+      await act(async () => { await result.current.signUpWithEmail(); });
+
+      expect(mockSignUp).toHaveBeenCalled();
     });
 
     it('shows Verify alert when signup succeeds with no session', async () => {

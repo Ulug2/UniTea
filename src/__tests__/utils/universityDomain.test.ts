@@ -7,7 +7,7 @@ import {
 describe("universityDomain", () => {
   it("extracts domain from email", () => {
     expect(extractEmailDomain("student@nu.edu.kz")).toBe("nu.edu.kz");
-    expect(extractEmailDomain("  user@stu.sdu.edu.kz ")).toBe("stu.sdu.edu.kz");
+    expect(extractEmailDomain("  user@sdu.edu.kz ")).toBe("sdu.edu.kz");
     expect(extractEmailDomain(null)).toBeNull();
     expect(extractEmailDomain("not-an-email")).toBeNull();
   });
@@ -20,10 +20,10 @@ describe("universityDomain", () => {
   it("prefers profile domain over email", () => {
     expect(
       resolveUniversityDomain({
-        profileUniversityDomain: "stu.sdu.edu.kz",
+        profileUniversityDomain: "sdu.edu.kz",
         userEmail: "student@nu.edu.kz",
       }),
-    ).toBe("stu.sdu.edu.kz");
+    ).toBe("sdu.edu.kz");
   });
 
   it("falls back to email when profile and cache are missing", () => {
