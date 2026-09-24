@@ -341,6 +341,39 @@ describe('ChatMessageRow — multi-image messages', () => {
     expect(onImagePress).not.toHaveBeenCalled();
   });
 
+  it('renders 2-3 images as separately rounded tiles like posts (single image stays flush)', () => {
+    const { unmount } = render(
+      <ChatMessageRow
+        {...defaultProps}
+        item={makeMessage({ image_url: 'c/1.webp', image_urls: ['c/1.webp', 'c/2.webp'] })}
+      />,
+    );
+    // No borderRadius override -> ResponsiveImage's default rounded corners, as in posts.
+    expect(screen.getAllByTestId('responsive-image').every((i) => i.props.borderRadius === undefined)).toBe(true);
+    unmount();
+
+    render(<ChatMessageRow {...defaultProps} item={makeMessage({ image_url: 'c/1.webp' })} />);
+    expect(screen.getByTestId('responsive-image').props.borderRadius).toBe(0);
+  });
+
+  it('gives a caption under an image strip its own rounded top corners', () => {
+    const { StyleSheet } = require('react-native');
+    render(
+      <ChatMessageRow
+        {...defaultProps}
+        item={makeMessage({
+          content: 'look at these',
+          image_url: 'c/1.webp',
+          image_urls: ['c/1.webp', 'c/2.webp'],
+        })}
+      />,
+    );
+    const captionBubble = screen.getByText('look at these').parent!.parent!;
+    const style = StyleSheet.flatten(captionBubble.props.style);
+    expect(style.borderTopLeftRadius).toBeGreaterThan(0);
+    expect(style.borderTopRightRadius).toBeGreaterThan(0);
+  });
+
   it('hides every image once the message is deleted for everyone', () => {
     render(
       <ChatMessageRow

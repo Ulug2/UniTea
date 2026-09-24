@@ -83,6 +83,9 @@ function ChatMessageRowInner({
     : false;
   const showTombstone = isDeletedForEveryone(item);
   const hasImages = imagePaths.length > 0 && !showTombstone;
+  // 2–3 images render as separate rounded tiles (like multi-image posts)
+  // rather than one image joined edge-to-edge with the caption bubble.
+  const hasImageStrip = hasImages && imagePaths.length > 1;
 
   const showDateDivider = shouldShowDateDivider(item, nextMsg);
 
@@ -123,6 +126,8 @@ function ChatMessageRowInner({
   // container is never silently dropped.
   const hasReply = !!(item.reply_to_id && !showTombstone);
   const hasReplyData = hasReply && !!item.replyToMessage;
+  // Caption joins flush (square top corners) to what sits directly above it.
+  const captionJoinsAbove = hasImages ? !hasImageStrip : hasReply;
   const replyDeleted =
     hasReplyData &&
     item.replyToMessage!.deleted_by_sender === true &&
@@ -251,14 +256,18 @@ function ChatMessageRowInner({
 
           {hasImages && (
             <View
-              style={[
-                chatDetailStyles.messageImageContainer,
-                item.content
-                  ? chatDetailStyles.messageImageContainerWithText
-                  : undefined,
-                // Need relative positioning so the pill timestamp can sit over the image
-                !item.content ? { position: "relative" as const } : undefined,
-              ]}
+              style={
+                hasImageStrip
+                  ? multiImageStyles.stripContainer
+                  : [
+                      chatDetailStyles.messageImageContainer,
+                      item.content
+                        ? chatDetailStyles.messageImageContainerWithText
+                        : undefined,
+                      // Need relative positioning so the pill timestamp can sit over the image
+                      !item.content ? { position: "relative" as const } : undefined,
+                    ]
+              }
             >
               {imagePaths.length === 1 ? (
                 <Pressable
@@ -313,15 +322,25 @@ function ChatMessageRowInner({
                         bucket="chat-images"
                         sourceKind="supabasePath"
                         mode="galleryPreview"
-                        borderRadius={0}
-                        backgroundColor="#F3F4F6"
+                        backgroundColor="#F0F0F0"
                         assumeCached={assumeCached}
                       />
+                      {isTemp && (
+                        <View
+                          style={[
+                            chatDetailStyles.messageImageSendingOverlay,
+                            multiImageStyles.tileOverlay,
+                          ]}
+                          pointerEvents="none"
+                        >
+                          <ActivityIndicator size="small" color="#fff" />
+                        </View>
+                      )}
                     </Pressable>
                   ))}
                 </ScrollView>
               )}
-              {isTemp && (
+              {isTemp && !hasImageStrip && (
                 <View
                   style={chatDetailStyles.messageImageSendingOverlay}
                   pointerEvents="none"
@@ -377,14 +396,9 @@ function ChatMessageRowInner({
                   minWidth: scale(80),
                   borderBottomLeftRadius: moderateScale(20),
                   borderBottomRightRadius: moderateScale(20),
-                  borderTopLeftRadius:
-                    hasImages || hasReply
-                      ? 0
-                      : moderateScale(20),
-                  borderTopRightRadius:
-                    hasImages || hasReply
-                      ? 0
-                      : moderateScale(20),
+                  borderTopLeftRadius: captionJoinsAbove ? 0 : moderateScale(20),
+                  borderTopRightRadius: captionJoinsAbove ? 0 : moderateScale(20),
+                  marginTop: hasImageStrip ? verticalScale(4) : 0,
                   position: "relative" as const,
                 },
                 hasImages && chatDetailStyles.messageTextWrapWithImage,
@@ -507,8 +521,12 @@ export const ChatMessageRow = memo(
   areMessageRowPropsEqual,
 );
 
+// Matches the multi-image post gallery: rounded tiles (ResponsiveImage's
+// default radius) with a 4px gap, no background behind them.
 const multiImageStyles = StyleSheet.create({
+  stripContainer: { position: "relative" },
   gap: { marginRight: scale(4) },
+  tileOverlay: { borderRadius: moderateScale(10) },
 });
 
 /** Inline timestamp styles used for WhatsApp-style time inside the bubble. */
