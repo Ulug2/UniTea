@@ -17,7 +17,7 @@ import {
   deletedLabel,
 } from "../types";
 import { chatDetailStyles } from "../styles";
-import ResponsiveImage from "../../../components/ResponsiveImage";
+import ResponsiveImage, { GALLERY_ITEM_HEIGHT } from "../../../components/ResponsiveImage";
 import type { Theme } from "../../../context/ThemeContext";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { getChatImageBounds } from "../../../utils/chatImageSizing";
@@ -286,13 +286,20 @@ function ChatMessageRowInner({
                   />
                 </Pressable>
               ) : (
-                // Same preview strip as multi-image posts; fixed width so the
-                // horizontal scroll has a bound inside the auto-sized bubble.
+                // Same preview strip as multi-image posts. Explicit width and
+                // height with flexGrow 0: ScrollView defaults to flexGrow 1,
+                // which otherwise stretches it (and the grey container behind
+                // it) far below the images.
                 <ScrollView
+                  testID="chat-image-strip"
                   horizontal
                   nestedScrollEnabled
                   showsHorizontalScrollIndicator={false}
-                  style={{ width: getChatImageBounds(screenWidth, screenHeight).maxWidth }}
+                  style={{
+                    width: getChatImageBounds(screenWidth, screenHeight).maxWidth,
+                    height: GALLERY_ITEM_HEIGHT,
+                    flexGrow: 0,
+                  }}
                 >
                   {imagePaths.map((path, index) => (
                     <Pressable

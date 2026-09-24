@@ -15,8 +15,12 @@
  */
 jest.mock('../../../../components/ResponsiveImage', () => {
   const { View } = require('react-native');
-  return function MockResponsiveImage(props: any) {
-    return <View testID="responsive-image" {...props} />;
+  return {
+    __esModule: true,
+    GALLERY_ITEM_HEIGHT: 300,
+    default: function MockResponsiveImage(props: any) {
+      return <View testID="responsive-image" {...props} />;
+    },
   };
 });
 
@@ -290,6 +294,19 @@ describe('ChatMessageRow — multi-image messages', () => {
 
     fireEvent.press(images[1]);
     expect(onImagePress).toHaveBeenCalledWith(paths, 1);
+  });
+
+  it('sizes the image strip to exactly one preview tall so it never stretches below the images', () => {
+    render(
+      <ChatMessageRow
+        {...defaultProps}
+        item={makeMessage({ image_url: 'c/1.webp', image_urls: ['c/1.webp', 'c/2.webp'] })}
+      />,
+    );
+    const { StyleSheet } = require('react-native');
+    const style = StyleSheet.flatten(screen.getByTestId('chat-image-strip').props.style);
+    expect(style.flexGrow).toBe(0);
+    expect(style.height).toBe(300); // mocked GALLERY_ITEM_HEIGHT
   });
 
   it('renders a message from an older build (image_url only) as a single bubble image', () => {

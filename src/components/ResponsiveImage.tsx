@@ -20,7 +20,8 @@ const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 const DEFAULT_BACKGROUND = "#F0F0F0";
 const SINGLE_MAX_HEIGHT_RATIO = 0.55;
 const GALLERY_ITEM_WIDTH = scale(225);
-const GALLERY_ITEM_HEIGHT = verticalScale(300);
+/** Height of a "galleryPreview" item — for containers that must match it exactly. */
+export const GALLERY_ITEM_HEIGHT = verticalScale(300);
 const IMAGE_TRANSITION_MS = 150;
 
 type ResponsiveImageProps = {
