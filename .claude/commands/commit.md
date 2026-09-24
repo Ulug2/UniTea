@@ -14,6 +14,7 @@ Tasks:
 - Verify there are no accidental files, secrets, temporary files, or debug code.
 - Stage everything that belongs to these completed phases.
 - Create logical commit(s) with clear commit messages.
+- If a commit relates to a `ROADMAP.md` item, update `ROADMAP.md` in that same commit (status, commit hash, move to Done / Waiting on a store build).
 - Push all commits to the correct remote branch.
 
 2. Database

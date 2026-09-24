@@ -65,6 +65,23 @@ Next.js 15 app. Requires `profiles.is_admin = true` in Supabase. Reads from the 
 
 Tests use `jest-expo` preset. The shared Supabase mock is at `src/__mocks__/supabase.ts` — individual tests override specific methods with `mockResolvedValueOnce` / `mockImplementationOnce`. Coverage collection is scoped to a specific file list in `package.json`; don't expect 100% project coverage.
 
+## Live production app
+
+UniTee is live with real users on both stores. Every change must keep working for people using the app right now:
+
+- **Server changes go live immediately and must stay backward compatible.** Migrations, RLS, RPCs, and Edge Function deploys hit every installed app version the moment they ship — including older store builds that won't update for weeks. Never rename/drop a column, view, RPC, bucket, or response field an installed build still uses; add the new thing alongside, ship the client, and remove the old one only once no supported build depends on it.
+- **Client changes reach users only through a store build** (no OTA updates are configured). Assume old and new builds coexist against the same backend.
+- **Fail safe, never crash.** Handle missing/null data, network errors, and unexpected server responses gracefully; prefer degrading a feature over a crash or a blocked screen.
+- Verify risky changes against live data (read-only) before deploying, and call out anything that can't be verified.
+
+## Branching
+
+Before starting any new feature or change, create a new branch from an up-to-date `main` (`feat/<name>`, `fix/<name>`, `chore/<name>`) and do all work there. Never commit feature/fix work directly to `main`. Note that deploying migrations or Edge Functions from a branch still changes production immediately (see above).
+
+## Roadmap
+
+`ROADMAP.md` is the living product/bug plan. Whenever a commit relates to a roadmap item, update `ROADMAP.md` in that same commit: mark progress, add the commit hash, and move finished items to **Done** (and to **Waiting on a store build** if the change is client-side).
+
 ## Key conventions
 
 - Cast to `(supabase as any)` when querying tables/RPCs not yet reflected in the generated types (e.g., after adding a migration before running `npm run types`).
