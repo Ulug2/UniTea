@@ -8,7 +8,12 @@ import {
 import { supabase } from "../../../lib/supabase";
 import { uploadImage } from "../../../utils/supabaseImages";
 import { logger } from "../../../utils/logger";
-import type { ChatMessageVM, MessagesQueryData, ReplyPreview } from "../types";
+import {
+  type ChatMessageVM,
+  type MessagesQueryData,
+  type PickedChatImage,
+  type ReplyPreview,
+} from "../types";
 import {
   addOptimisticMessage,
   replaceOptimisticMessage,
@@ -23,11 +28,7 @@ const PENDING_CLEANUP_MS = 5000;
 
 type SendParams = {
   text: string;
-  localImageUri?: string | null;
-  /** Picker-reported type metadata — most reliable source for resolving the image's type on upload. */
-  localImageMimeType?: string | null;
-  localImageFileName?: string | null;
-  imageAspectRatio?: number | null;
+  images?: PickedChatImage[];
   replyToId?: string | null;
   /**
    * Idempotency key for this logical send attempt (Phase 3). Omit for a
@@ -40,16 +41,20 @@ type SendParams = {
 
 type Options = {
   pendingMessageIdsRef: React.MutableRefObject<Set<string>>;
-  optimisticImageUrisRef: React.MutableRefObject<Map<string, string>>;
   flatListRef?: React.RefObject<{ scrollToOffset: (p: { offset: number; animated: boolean }) => void } | null>;
-  onRestoreInput?: (
-    messageText: string,
-    localImageUri: string | null,
-    imageAspectRatio: number | null,
-    localImageMimeType: string | null,
-    localImageFileName: string | null,
-  ) => void;
+  onRestoreInput?: (messageText: string, images: PickedChatImage[]) => void;
 };
+
+/**
+ * Deterministic storage path per image of one logical send: the first image
+ * keeps the original single-image path (chatId/clientMessageId), so a retry
+ * overwrites the same objects instead of orphaning new ones.
+ */
+function chatImageStoragePath(chatId: string, clientMessageId: string, index: number): string {
+  return index === 0
+    ? `${chatId}/${clientMessageId}`
+    : `${chatId}/${clientMessageId}-${index}`;
+}
 
 type MutationContext = {
   previousMessages: MessagesQueryData | undefined;
@@ -142,7 +147,7 @@ export function useChatSendMessage(
   options: Options
 ) {
   const queryClient = useQueryClient();
-  const { pendingMessageIdsRef, optimisticImageUrisRef, flatListRef, onRestoreInput } = options;
+  const { pendingMessageIdsRef, flatListRef, onRestoreInput } = options;
 
   const [isSending, setIsSending] = useState(false);
   const isSendingRef = useRef(false);
@@ -153,17 +158,16 @@ export function useChatSendMessage(
     Error,
     {
       messageText: string;
-      imageUrl?: string | null;
-      localImageUri?: string | null;
-      localImageMimeType?: string | null;
-      localImageFileName?: string | null;
-      imageAspectRatio?: number | null;
+      /** Uploaded storage paths, in order. */
+      imagePaths: string[];
+      /** The local images those paths were uploaded from (kept for retry/restore). */
+      images: PickedChatImage[];
       replyToId?: string | null;
       clientMessageId: string;
     },
     MutationContext | undefined
   >({
-    mutationFn: async ({ messageText, imageUrl, imageAspectRatio, replyToId, clientMessageId }) => {
+    mutationFn: async ({ messageText, imagePaths, images, replyToId, clientMessageId }) => {
       if (!chatId || !currentUserId) {
         throw new Error("Missing chat ID or user ID");
       }
@@ -205,6 +209,14 @@ export function useChatSendMessage(
         }
       }
 
+      // image_url stays the first image so older app builds (which only know
+      // image_url) still render something; image_urls carries all of them.
+      const imageColumns = {
+        image_url: imagePaths[0] ?? null,
+        image_urls: imagePaths.length > 0 ? imagePaths : null,
+        image_aspect_ratio: images[0]?.aspectRatio ?? null,
+      };
+
       let newMessage: ChatMessageVM;
 
       if (isAnonymous) {
@@ -221,10 +233,9 @@ export function useChatSendMessage(
           chat_id: chatId,
           user_id: currentUserId,
           content: messageText?.trim() ?? "",
-          image_url: imageUrl ?? null,
-          image_aspect_ratio: imageAspectRatio ?? null,
+          ...imageColumns,
           reply_to_id: replyToId ?? null,
-        });
+        } as any);
 
         // A unique-violation on `id` means this exact logical send already
         // committed on a prior attempt whose response never reached the
@@ -251,7 +262,7 @@ export function useChatSendMessage(
         // as RETURNING above).
       } else {
         const REPLY_SELECT =
-          "*, reply_message:reply_to_id(id, content, image_url, user_id, deleted_by_sender, deleted_by_receiver)";
+          "*, reply_message:reply_to_id(id, content, image_url, image_urls, user_id, deleted_by_sender, deleted_by_receiver)";
 
         let { data, error } = await supabase
           .from("chat_messages")
@@ -260,10 +271,9 @@ export function useChatSendMessage(
             chat_id: chatId,
             user_id: currentUserId,
             content: messageText?.trim() ?? "",
-            image_url: imageUrl ?? null,
-            image_aspect_ratio: imageAspectRatio ?? null,
+            ...imageColumns,
             reply_to_id: replyToId ?? null,
-          })
+          } as any)
           .select(REPLY_SELECT)
           .single();
 
@@ -301,11 +311,8 @@ export function useChatSendMessage(
     },
     onMutate: async ({
       messageText,
-      imageUrl,
-      localImageUri,
-      localImageMimeType,
-      localImageFileName,
-      imageAspectRatio,
+      imagePaths,
+      images,
       replyToId,
       clientMessageId,
     }) => {
@@ -330,10 +337,6 @@ export function useChatSendMessage(
       const tempId = `temp-${Date.now()}-${Math.random()}`;
       const now = new Date().toISOString();
 
-      if (localImageUri && imageUrl) {
-        optimisticImageUrisRef.current.set(tempId, localImageUri);
-      }
-
       // Look up the replied-to message from cache so the optimistic bubble renders immediately
       let optimisticReplyToMessage: ReplyPreview | null = null;
       if (replyToId) {
@@ -348,6 +351,7 @@ export function useChatSendMessage(
               id: found.id,
               content: found.content ?? null,
               image_url: found.image_url ?? null,
+              image_urls: found.image_urls ?? null,
               user_id: found.user_id,
               deleted_by_sender: found.deleted_by_sender,
               deleted_by_receiver: found.deleted_by_receiver,
@@ -361,8 +365,9 @@ export function useChatSendMessage(
         chat_id: chatId,
         user_id: currentUserId,
         content: messageText || "",
-        image_url: imageUrl || null,
-        image_aspect_ratio: imageAspectRatio ?? null,
+        image_url: imagePaths[0] ?? null,
+        image_urls: imagePaths.length > 0 ? imagePaths : null,
+        image_aspect_ratio: images[0]?.aspectRatio ?? null,
         created_at: now,
         is_read: false,
         deleted_by_receiver: null,
@@ -372,11 +377,7 @@ export function useChatSendMessage(
         sendStatus: "sending",
         _clientPayload: {
           messageText,
-          imageUrl: imageUrl ?? null,
-          localImageUri: localImageUri ?? null,
-          localImageMimeType: localImageMimeType ?? null,
-          localImageFileName: localImageFileName ?? null,
-          imageAspectRatio: imageAspectRatio ?? null,
+          images,
           replyToId: replyToId ?? null,
           clientMessageId,
         },
@@ -417,8 +418,7 @@ export function useChatSendMessage(
 
             if (s.chat_id === chatId) {
               const isP1 = s.participant_1_id === currentUserId;
-              const hasImage =
-                !!imageUrl && String(imageUrl).trim() !== "";
+              const hasImage = imagePaths.length > 0;
 
               updatedChat = isP1
                 ? {
@@ -471,7 +471,6 @@ export function useChatSendMessage(
       const { tempId } = context;
 
       pendingMessageIdsRef.current.delete(tempId);
-      optimisticImageUrisRef.current.delete(tempId);
       pendingMessageIdsRef.current.add(newMessage.id);
       setTimeout(() => {
         pendingMessageIdsRef.current.delete(newMessage.id);
@@ -490,14 +489,13 @@ export function useChatSendMessage(
         userId: currentUserId,
         chatId,
         operation: "sendMessage",
-        hasImage: !!variables?.imageUrl,
+        imageCount: variables?.imagePaths.length ?? 0,
       });
 
       if (!context) return;
 
       if (context.tempId) {
         pendingMessageIdsRef.current.delete(context.tempId);
-        optimisticImageUrisRef.current.delete(context.tempId);
       }
 
       const isNetworkError =
@@ -548,13 +546,7 @@ export function useChatSendMessage(
       const isPgrst204 =
         (error as { code?: string })?.code === "PGRST204" || msg.includes("Could not find");
       if (variables && onRestoreInput) {
-        onRestoreInput(
-          variables.messageText ?? "",
-          variables.localImageUri ?? null,
-          variables.imageAspectRatio ?? null,
-          variables.localImageMimeType ?? null,
-          variables.localImageFileName ?? null,
-        );
+        onRestoreInput(variables.messageText ?? "", variables.images);
       }
       Alert.alert(
         "Error",
@@ -590,14 +582,11 @@ export function useChatSendMessage(
 
       const {
         text: messageText,
-        localImageUri,
-        localImageMimeType,
-        localImageFileName,
-        imageAspectRatio,
+        images = [],
         replyToId,
         clientMessageId: providedClientMessageId,
       } = params;
-      if (!messageText?.trim() && !localImageUri) return;
+      if (!messageText?.trim() && images.length === 0) return;
 
       // Idempotency key for this logical send attempt (Phase 3). A fresh,
       // user-initiated send (no id passed in) generates a new one; retry()
@@ -627,25 +616,27 @@ export function useChatSendMessage(
       }
       messageSendTimes.current.push(now);
 
-      let imageUrl: string | null = null;
-      if (localImageUri) {
+      let imagePaths: string[] = [];
+      if (images.length > 0) {
         try {
-          // Deterministic path (chatId/clientMessageId) reuses the same
-          // idempotency id this send/retry already resolved above (Phase
-          // 3) — a retry of a failed send overwrites the same storage
-          // object in place instead of creating a new orphaned one on
-          // every attempt.
-          imageUrl = await uploadImage(
-            localImageUri,
-            supabase,
-            "chat-images",
-            undefined,
-            localImageMimeType,
-            localImageFileName,
-            { path: `${chatId}/${clientMessageId}`, upsert: true },
+          // Deterministic paths (see chatImageStoragePath) reuse the same
+          // idempotency id this send/retry already resolved above (Phase 3)
+          // — a retry overwrites the same storage objects in place.
+          imagePaths = await Promise.all(
+            images.map((image, index) =>
+              uploadImage(
+                image.localUri,
+                supabase,
+                "chat-images",
+                undefined,
+                image.mimeType,
+                image.fileName,
+                { path: chatImageStoragePath(chatId, clientMessageId, index), upsert: true },
+              ),
+            ),
           );
         } catch (err) {
-          logger.error("Error uploading chat image", err as Error);
+          logger.error("Error uploading chat image", err as Error, { imageCount: images.length });
           Alert.alert("Error", "Failed to upload image. Please try again.");
           isSendingRef.current = false;
           setIsSending(false);
@@ -656,11 +647,8 @@ export function useChatSendMessage(
       mutation.mutate(
         {
           messageText: messageText?.trim() ?? "",
-          imageUrl,
-          localImageUri,
-          localImageMimeType: localImageMimeType ?? null,
-          localImageFileName: localImageFileName ?? null,
-          imageAspectRatio: imageAspectRatio ?? null,
+          imagePaths,
+          images,
           replyToId: replyToId ?? null,
           clientMessageId,
         },
@@ -683,15 +671,22 @@ export function useChatSendMessage(
       const msg = all.find((m) => m.id === messageIdOrTempId);
       if (!msg?.sendStatus || msg.sendStatus !== "failed") return;
       const payload = msg._clientPayload;
-      const localUri =
-        payload?.localImageUri ?? optimisticImageUrisRef.current.get(messageIdOrTempId);
+      // Failed messages persisted by an older build carry the single-image
+      // payload shape instead of `images`.
+      const legacyImage: PickedChatImage[] = payload?.localImageUri
+        ? [
+            {
+              localUri: payload.localImageUri,
+              mimeType: payload.localImageMimeType ?? null,
+              fileName: payload.localImageFileName ?? null,
+              aspectRatio: payload.imageAspectRatio ?? msg.image_aspect_ratio ?? null,
+            },
+          ]
+        : [];
       removeOptimisticMessage(queryClient, chatId, messageIdOrTempId);
       send({
         text: payload?.messageText ?? msg.content ?? "",
-        localImageUri: localUri ?? null,
-        localImageMimeType: payload?.localImageMimeType ?? null,
-        localImageFileName: payload?.localImageFileName ?? null,
-        imageAspectRatio: payload?.imageAspectRatio ?? msg.image_aspect_ratio ?? null,
+        images: payload?.images ?? legacyImage,
         replyToId: payload?.replyToId ?? null,
         // Reuse the same id this attempt already sent to the server (Phase
         // 3) so a retry can never create a second row. Falls back to a
@@ -700,7 +695,7 @@ export function useChatSendMessage(
         clientMessageId: payload?.clientMessageId,
       });
     },
-    [chatId, currentUserId, queryClient, send, optimisticImageUrisRef]
+    [chatId, currentUserId, queryClient, send]
   );
 
   return { send, retry, isSending };

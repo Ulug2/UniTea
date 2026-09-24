@@ -171,6 +171,7 @@ describe('useChatMessagesRealtime', () => {
           id: 'orig-1',
           content: 'the original text',
           image_url: null,
+          image_urls: null,
           user_id: 'u2',
           deleted_by_sender: null,
           deleted_by_receiver: null,

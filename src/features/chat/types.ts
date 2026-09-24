@@ -3,6 +3,30 @@ import type { BlockRecord } from "../../hooks/useBlocks";
 
 type ChatMessageRow = Database["public"]["Tables"]["chat_messages"]["Row"];
 
+export const MAX_CHAT_IMAGES = 3;
+
+/** An image picked (and compressed) in the composer, not yet uploaded. */
+export type PickedChatImage = {
+  localUri: string;
+  /** Picker-reported type metadata — most reliable source for resolving the image's type on upload. */
+  mimeType: string | null;
+  fileName: string | null;
+  aspectRatio: number | null;
+};
+
+/**
+ * Every image path of a message, in order. Messages from older app builds
+ * only have image_url; newer builds also set image_urls (first entry ===
+ * image_url).
+ */
+export function getMessageImagePaths(message: {
+  image_url?: string | null;
+  image_urls?: string[] | null;
+}): string[] {
+  if (message.image_urls && message.image_urls.length > 0) return message.image_urls;
+  return message.image_url ? [message.image_url] : [];
+}
+
 /**
  * Minimal shape of a replied-to message embedded in a bubble.
  * Populated via a JOIN when fetching messages (reply_message alias).
@@ -11,6 +35,7 @@ export type ReplyPreview = {
   id: string;
   content: string | null;
   image_url: string | null;
+  image_urls?: string[] | null;
   user_id: string;
   deleted_by_sender?: boolean | null;
   deleted_by_receiver?: boolean | null;
@@ -26,12 +51,15 @@ export type ReplyingToState = {
 
 export type ChatMessageVM = ChatMessageRow & {
   image_url?: string | null;
+  /** Not yet in the generated DB types (20260925000000_chat_messages_multi_image.sql). */
+  image_urls?: string[] | null;
   sendStatus?: "sending" | "failed";
   _clientPayload?: {
     messageText: string;
-    imageUrl?: string | null;
+    /** Local picked images, preserved so a failed send can be retried (re-uploaded). */
+    images?: PickedChatImage[];
+    /** Single-image payload from before multi-image; may still exist on failed messages persisted by an older build. */
     localImageUri?: string | null;
-    /** Picker-reported type metadata, preserved so a retried upload still resolves its type reliably instead of falling back to URI parsing. */
     localImageMimeType?: string | null;
     localImageFileName?: string | null;
     imageAspectRatio?: number | null;

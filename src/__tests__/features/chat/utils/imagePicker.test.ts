@@ -1,9 +1,10 @@
 /**
  * Tests for src/features/chat/utils/imagePicker.ts
  *
- * pickChatImage picks an image from the library and compresses it with the
- * shared upload pipeline (compressImageForUpload), falling back to the
- * original picker file and metadata if compression fails.
+ * pickChatImages picks up to `maxCount` images from the library and
+ * compresses each with the shared upload pipeline (compressImageForUpload),
+ * falling back to an image's original file and metadata if compressing it
+ * fails.
  */
 
 jest.mock('expo-image-picker', () => ({
@@ -21,148 +22,113 @@ jest.mock('../../../../utils/logger', () => ({
 import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { logger } from '../../../../utils/logger';
-import { pickChatImage } from '../../../../features/chat/utils/imagePicker';
+import { pickChatImages } from '../../../../features/chat/utils/imagePicker';
 import { compressImageForUpload } from '../../../../utils/imageCompression';
 
 const mockRequestPerms = ImagePicker.requestMediaLibraryPermissionsAsync as jest.Mock;
 const mockLaunchLibrary = ImagePicker.launchImageLibraryAsync as jest.Mock;
 const mockCompress = compressImageForUpload as jest.Mock;
 
+const asset = (n: number, extra: Record<string, unknown> = {}) => ({
+  uri: `file://picked-${n}.jpg`,
+  width: 1200,
+  height: 800,
+  mimeType: 'image/jpeg',
+  fileName: `picked-${n}.jpg`,
+  ...extra,
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mockRequestPerms.mockResolvedValue({ status: 'granted' });
-  mockCompress.mockResolvedValue('file://compressed.webp');
-  mockLaunchLibrary.mockResolvedValue({
-    canceled: false,
-    assets: [
-      {
-        uri: 'file://picked.jpg',
-        width: 1200,
-        height: 800,
-        mimeType: 'image/jpeg',
-        fileName: 'picked.jpg',
-      },
-    ],
-  });
+  mockLaunchLibrary.mockResolvedValue({ canceled: false, assets: [asset(1)] });
+  mockCompress.mockImplementation(async (uri: string) => uri.replace('.jpg', '.webp'));
 });
 
 afterEach(() => {
   jest.restoreAllMocks();
 });
 
-describe('pickChatImage', () => {
-  it('returns the compressed WebP URI with its type and the picker aspect ratio on happy path', async () => {
-    const result = await pickChatImage();
-    expect(mockCompress).toHaveBeenCalledWith('file://picked.jpg', 1200);
-    expect(result).toEqual({
-      localUri: 'file://compressed.webp',
-      mimeType: 'image/webp',
-      fileName: null,
-      aspectRatio: 1.5,
-    });
+describe('pickChatImages', () => {
+  it('returns compressed WebP images with the picker aspect ratio', async () => {
+    const result = await pickChatImages(3);
+    expect(mockCompress).toHaveBeenCalledWith('file://picked-1.jpg', 1200);
+    expect(result).toEqual([
+      { localUri: 'file://picked-1.webp', mimeType: 'image/webp', fileName: null, aspectRatio: 1.5 },
+    ]);
   });
 
-  it('returns aspectRatio: null (and lets compression resize) when the picker does not report dimensions', async () => {
-    mockLaunchLibrary.mockResolvedValue({
-      canceled: false,
-      assets: [{ uri: 'file://picked.jpg', mimeType: 'image/jpeg', fileName: 'picked.jpg' }],
-    });
-    const result = await pickChatImage();
-    expect(mockCompress).toHaveBeenCalledWith('file://picked.jpg', undefined);
-    expect(result).toEqual({
-      localUri: 'file://compressed.webp',
-      mimeType: 'image/webp',
-      fileName: null,
-      aspectRatio: null,
-    });
-  });
-
-  it('converts a HEIC photo to WebP so every recipient platform can display it', async () => {
-    mockLaunchLibrary.mockResolvedValue({
-      canceled: false,
-      assets: [
-        {
-          uri: 'file:///var/mobile/.../ImagePicker/ABCDEF.heic',
-          width: 3024,
-          height: 4032,
-          mimeType: 'image/heic',
-          fileName: 'IMG_0001.HEIC',
-        },
-      ],
-    });
-    const result = await pickChatImage();
-    expect(result).toEqual({
-      localUri: 'file://compressed.webp',
-      mimeType: 'image/webp',
-      fileName: null,
-      aspectRatio: 3024 / 4032,
-    });
-  });
-
-  describe('when compression fails', () => {
-    beforeEach(() => {
-      mockCompress.mockRejectedValue(new Error('manipulator failed'));
-    });
-
-    it('falls back to the original file with its picker metadata instead of failing the pick', async () => {
-      const result = await pickChatImage();
-      expect(result).toEqual({
-        localUri: 'file://picked.jpg',
-        mimeType: 'image/jpeg',
-        fileName: 'picked.jpg',
-        aspectRatio: 1.5,
-      });
-      expect(logger.warn).toHaveBeenCalled();
-      expect(Alert.alert).not.toHaveBeenCalled();
-    });
-
-    it('keeps mimeType/fileName null when the provider did not report them (some Android content:// providers)', async () => {
-      mockLaunchLibrary.mockResolvedValue({
-        canceled: false,
-        assets: [{ uri: 'content://media/external/images/media/48291', width: 1200, height: 800 }],
-      });
-      const result = await pickChatImage();
-      expect(result).toEqual({
-        localUri: 'content://media/external/images/media/48291',
-        mimeType: null,
-        fileName: null,
-        aspectRatio: 1.5,
-      });
-    });
-  });
-
-  it('passes allowsEditing: false to the image picker', async () => {
-    await pickChatImage();
+  it('enables multi-select limited to maxCount when more than one image is allowed', async () => {
+    await pickChatImages(3);
     expect(mockLaunchLibrary).toHaveBeenCalledWith(
-      expect.objectContaining({ allowsEditing: false })
+      expect.objectContaining({ allowsMultipleSelection: true, selectionLimit: 3, allowsEditing: false }),
     );
   });
 
-  it('shows Alert and returns null when permissions are denied', async () => {
-    mockRequestPerms.mockResolvedValue({ status: 'denied' });
-    const result = await pickChatImage();
-    expect(Alert.alert).toHaveBeenCalled();
-    expect(result).toBeNull();
+  it('uses single selection when only one more image is allowed', async () => {
+    await pickChatImages(1);
+    const options = mockLaunchLibrary.mock.calls[0][0];
+    expect(options.allowsMultipleSelection).toBeUndefined();
   });
 
-  it('returns null when user cancels picker', async () => {
-    mockLaunchLibrary.mockResolvedValue({ canceled: true, assets: [] });
-    const result = await pickChatImage();
-    expect(result).toBeNull();
+  it('keeps pick order and trims to maxCount when the picker ignores selectionLimit', async () => {
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false,
+      assets: [asset(1), asset(2), asset(3), asset(4)],
+    });
+    const result = await pickChatImages(2);
+    expect(result.map((r) => r.localUri)).toEqual(['file://picked-1.webp', 'file://picked-2.webp']);
+  });
+
+  it('returns [] without opening the picker when no slots are left', async () => {
+    await expect(pickChatImages(0)).resolves.toEqual([]);
+    expect(mockLaunchLibrary).not.toHaveBeenCalled();
+  });
+
+  it('returns aspectRatio: null when the picker does not report dimensions', async () => {
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file://picked-1.jpg', mimeType: 'image/jpeg', fileName: 'picked-1.jpg' }],
+    });
+    const [result] = await pickChatImages(3);
+    expect(mockCompress).toHaveBeenCalledWith('file://picked-1.jpg', undefined);
+    expect(result.aspectRatio).toBeNull();
+  });
+
+  it("falls back to an image's original file and metadata when compressing it fails", async () => {
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false,
+      assets: [asset(1), asset(2, { uri: 'content://media/48291', mimeType: undefined, fileName: undefined })],
+    });
+    mockCompress
+      .mockResolvedValueOnce('file://picked-1.webp')
+      .mockRejectedValueOnce(new Error('manipulator failed'));
+
+    const result = await pickChatImages(3);
+    expect(result).toEqual([
+      { localUri: 'file://picked-1.webp', mimeType: 'image/webp', fileName: null, aspectRatio: 1.5 },
+      { localUri: 'content://media/48291', mimeType: null, fileName: null, aspectRatio: 1.5 },
+    ]);
+    expect(logger.warn).toHaveBeenCalled();
     expect(Alert.alert).not.toHaveBeenCalled();
   });
 
-  it('returns null when picker returns no assets', async () => {
-    mockLaunchLibrary.mockResolvedValue({ canceled: false, assets: [] });
-    const result = await pickChatImage();
-    expect(result).toBeNull();
+  it('shows Alert and returns [] when permissions are denied', async () => {
+    mockRequestPerms.mockResolvedValue({ status: 'denied' });
+    await expect(pickChatImages(3)).resolves.toEqual([]);
+    expect(Alert.alert).toHaveBeenCalled();
   });
 
-  it('shows Alert and returns null when an exception is thrown', async () => {
+  it('returns [] when the user cancels', async () => {
+    mockLaunchLibrary.mockResolvedValue({ canceled: true, assets: [] });
+    await expect(pickChatImages(3)).resolves.toEqual([]);
+    expect(Alert.alert).not.toHaveBeenCalled();
+  });
+
+  it('shows Alert and returns [] when an exception is thrown', async () => {
     mockLaunchLibrary.mockRejectedValue(new Error('crash'));
-    const result = await pickChatImage();
-    expect(result).toBeNull();
+    await expect(pickChatImages(3)).resolves.toEqual([]);
     expect(Alert.alert).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
   });

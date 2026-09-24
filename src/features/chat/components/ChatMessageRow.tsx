@@ -3,12 +3,15 @@ import {
   View,
   Text,
   Pressable,
+  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
+  useWindowDimensions,
 } from "react-native";
 import type { ChatMessageVM } from "../types";
 import {
+  getMessageImagePaths,
   isDeletedForViewer,
   isDeletedForEveryone,
   deletedLabel,
@@ -17,6 +20,7 @@ import { chatDetailStyles } from "../styles";
 import ResponsiveImage from "../../../components/ResponsiveImage";
 import type { Theme } from "../../../context/ThemeContext";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
+import { getChatImageBounds } from "../../../utils/chatImageSizing";
 
 type ChatMessageRowProps = {
   item: ChatMessageVM;
@@ -25,7 +29,8 @@ type ChatMessageRowProps = {
   theme: Theme;
   onLongPress: (message: ChatMessageVM) => void;
   onRetry: (messageId: string) => void;
-  onImagePress: (url: string) => void;
+  /** Opens the full-screen gallery for this message's images at `index`. */
+  onImagePress: (paths: string[], index: number) => void;
   getMessageTime: (dateString: string | null) => string;
   getDateDivider: (dateString: string | null) => string;
   shouldShowDateDivider: (
@@ -68,12 +73,16 @@ function ChatMessageRowInner({
   hasVisibleSiblingSameDay = false,
   assumeCached = false,
 }: ChatMessageRowProps) {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const isCurrentUser = item.user_id === currentUserId;
   const sendStatus = item.sendStatus;
+  const imagePaths = getMessageImagePaths(item);
+  const isTemp = item.id.startsWith("temp-");
   const isHiddenForCurrentUser = currentUserId
     ? isDeletedForViewer(item, currentUserId)
     : false;
   const showTombstone = isDeletedForEveryone(item);
+  const hasImages = imagePaths.length > 0 && !showTombstone;
 
   const showDateDivider = shouldShowDateDivider(item, nextMsg);
 
@@ -240,8 +249,8 @@ function ChatMessageRowInner({
           {/* Reply quote — only present when hasReply is true */}
           {replyBlock}
 
-          {item.image_url && !showTombstone && (
-            <Pressable
+          {hasImages && (
+            <View
               style={[
                 chatDetailStyles.messageImageContainer,
                 item.content
@@ -250,40 +259,72 @@ function ChatMessageRowInner({
                 // Need relative positioning so the pill timestamp can sit over the image
                 !item.content ? { position: "relative" as const } : undefined,
               ]}
-              onPress={() =>
-                !item.id.startsWith("temp-") &&
-                item.image_url &&
-                onImagePress(item.image_url)
-              }
-              onLongPress={() => onLongPress(item)}
             >
-              {/*
-                Same rendering path whether the message is still sending
-                (temp-) or confirmed: the image is already uploaded by the
-                time the optimistic bubble exists (upload happens before the
-                mutation fires), and image_aspect_ratio is known from the
-                moment the image was picked. Using one path with a fixed,
-                pre-computed size everywhere means the bubble never resizes
-                between "sending" → "sent" → "reopened later".
-              */}
-              <ResponsiveImage
-                source={item.image_url}
-                bucket="chat-images"
-                sourceKind="auto"
-                mode="chatBubble"
-                knownAspectRatio={item.image_aspect_ratio}
-                borderRadius={0}
-                backgroundColor="#F3F4F6"
-                assumeCached={assumeCached}
-              />
-              {item.id.startsWith("temp-") && (
-                <View style={chatDetailStyles.messageImageSendingOverlay}>
+              {imagePaths.length === 1 ? (
+                <Pressable
+                  onPress={() => !isTemp && onImagePress(imagePaths, 0)}
+                  onLongPress={() => onLongPress(item)}
+                >
+                  {/*
+                    Same rendering path whether the message is still sending
+                    (temp-) or confirmed: the image is already uploaded by the
+                    time the optimistic bubble exists (upload happens before the
+                    mutation fires), and image_aspect_ratio is known from the
+                    moment the image was picked. Using one path with a fixed,
+                    pre-computed size everywhere means the bubble never resizes
+                    between "sending" → "sent" → "reopened later".
+                  */}
+                  <ResponsiveImage
+                    source={imagePaths[0]}
+                    bucket="chat-images"
+                    sourceKind="auto"
+                    mode="chatBubble"
+                    knownAspectRatio={item.image_aspect_ratio}
+                    borderRadius={0}
+                    backgroundColor="#F3F4F6"
+                    assumeCached={assumeCached}
+                  />
+                </Pressable>
+              ) : (
+                // Same preview strip as multi-image posts; fixed width so the
+                // horizontal scroll has a bound inside the auto-sized bubble.
+                <ScrollView
+                  horizontal
+                  nestedScrollEnabled
+                  showsHorizontalScrollIndicator={false}
+                  style={{ width: getChatImageBounds(screenWidth, screenHeight).maxWidth }}
+                >
+                  {imagePaths.map((path, index) => (
+                    <Pressable
+                      key={`${path}-${index}`}
+                      onPress={() => !isTemp && onImagePress(imagePaths, index)}
+                      onLongPress={() => onLongPress(item)}
+                      style={index < imagePaths.length - 1 ? multiImageStyles.gap : undefined}
+                    >
+                      <ResponsiveImage
+                        source={path}
+                        bucket="chat-images"
+                        sourceKind="supabasePath"
+                        mode="galleryPreview"
+                        borderRadius={0}
+                        backgroundColor="#F3F4F6"
+                        assumeCached={assumeCached}
+                      />
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
+              {isTemp && (
+                <View
+                  style={chatDetailStyles.messageImageSendingOverlay}
+                  pointerEvents="none"
+                >
                   <ActivityIndicator size="small" color="#fff" />
                 </View>
               )}
               {/* Image-only: float timestamp pill over bottom-right corner */}
               {!item.content && (
-                <View style={inlineTimestampStyles.imagePill}>
+                <View style={inlineTimestampStyles.imagePill} pointerEvents="none">
                   <Text
                     style={inlineTimestampStyles.imagePillText}
                     numberOfLines={1}
@@ -292,7 +333,7 @@ function ChatMessageRowInner({
                   </Text>
                 </View>
               )}
-            </Pressable>
+            </View>
           )}
           {/*
             Gated on showTombstone in addition to item.content: an
@@ -330,18 +371,16 @@ function ChatMessageRowInner({
                   borderBottomLeftRadius: moderateScale(20),
                   borderBottomRightRadius: moderateScale(20),
                   borderTopLeftRadius:
-                    (item.image_url && !showTombstone) || hasReply
+                    hasImages || hasReply
                       ? 0
                       : moderateScale(20),
                   borderTopRightRadius:
-                    (item.image_url && !showTombstone) || hasReply
+                    hasImages || hasReply
                       ? 0
                       : moderateScale(20),
                   position: "relative" as const,
                 },
-                item.image_url &&
-                  !showTombstone &&
-                  chatDetailStyles.messageTextWrapWithImage,
+                hasImages && chatDetailStyles.messageTextWrapWithImage,
               ]}
             >
               {showTombstone ? (
@@ -460,6 +499,10 @@ export const ChatMessageRow = memo(
   ChatMessageRowInner,
   areMessageRowPropsEqual,
 );
+
+const multiImageStyles = StyleSheet.create({
+  gap: { marginRight: scale(4) },
+});
 
 /** Inline timestamp styles used for WhatsApp-style time inside the bubble. */
 const inlineTimestampStyles = StyleSheet.create({

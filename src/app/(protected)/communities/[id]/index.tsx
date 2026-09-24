@@ -37,6 +37,7 @@ import { useRevealAfterFirstNImages } from "../../../../hooks/useRevealAfterFirs
 import PostListItem from "../../../../components/PostListItem";
 import ReportModal from "../../../../components/ReportModal";
 import { FullscreenImageModal } from "../../../../components/FullscreenImageModal";
+import { useFullscreenGallery } from "../../../../hooks/useFullscreenGallery";
 import SupabaseImage from "../../../../components/SupabaseImage";
 import EntityAvatar from "../../../../components/EntityAvatar";
 import { getAvatarForEntity } from "../../../../utils/entityDisplay";
@@ -176,7 +177,7 @@ export default function CommunityViewScreen() {
   // nothing actually needs to reload.
   const hasCachedPosts = (postsData?.pages?.length ?? 0) > 0;
 
-  const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const { open: openGallery, modalProps: galleryModalProps } = useFullscreenGallery();
 
   // ── Report Community ────────────────────────────────────────────────────
   const [showMenu, setShowMenu] = useState(false);
@@ -244,7 +245,7 @@ export default function CommunityViewScreen() {
         originalAuthorAvatar={item.original_author_avatar}
         originalIsAnonymous={item.original_is_anonymous}
         originalCreatedAt={item.original_created_at}
-        onImagePress={setFullscreenUri}
+        onImagePress={openGallery}
         isAdmin={isAdmin}
         imagesAssumeCached={hasCachedPosts}
         disableCommunityNavigation
@@ -462,11 +463,7 @@ export default function CommunityViewScreen() {
         }
       />
 
-      <FullscreenImageModal
-        visible={Boolean(fullscreenUri)}
-        uri={fullscreenUri}
-        onClose={() => setFullscreenUri(null)}
-      />
+      <FullscreenImageModal {...galleryModalProps} />
 
       {canManage ? (
         <Pressable

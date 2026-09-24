@@ -7,7 +7,7 @@ type PostHeaderCardProps = {
   commentCount: number;
   isBookmarked: boolean;
   onToggleBookmark: () => void;
-  onImagePress?: (uri: string) => void;
+  onImagePress?: (uris: string[], index: number) => void;
   isAdmin?: boolean;
   /** Fires once this card's avatar + all its images have loaded — see PostListItem's onImageLoad. */
   onImageLoad?: () => void;

@@ -65,6 +65,7 @@ import {
   FullscreenImageModal,
   resolvePostImageUri,
 } from "../../components/FullscreenImageModal";
+import { useFullscreenGallery } from "../../hooks/useFullscreenGallery";
 import { mapWithConcurrency } from "../../utils/asyncConcurrency";
 import { moderateScale, scale, verticalScale } from "../../utils/scaling";
 import { generateUuidV4 } from "../../utils/uuid";
@@ -146,9 +147,7 @@ export default function CreatePostScreen() {
   const { profile: currentUser, universityDomain } = useResolvedAuthorProfile(
     session?.user?.id,
   );
-  const [expandedImageUri, setExpandedImageUri] = React.useState<string | null>(
-    null,
-  );
+  const { open: openGallery, modalProps: galleryModalProps } = useFullscreenGallery();
   const { originalPost, isLoadingOriginal } =
     useOriginalPostForRepost(repostId);
 
@@ -1048,7 +1047,10 @@ export default function CreatePostScreen() {
                       uri={uri}
                       isLast={index === images.length - 1}
                       onOpen={() =>
-                        setExpandedImageUri(resolvePostImageUri(uri))
+                        openGallery(
+                          images.map((u) => resolvePostImageUri(u) ?? u),
+                          index,
+                        )
                       }
                       onRemove={() =>
                         setImages((current) => current.filter((u) => u !== uri))
@@ -1203,11 +1205,7 @@ export default function CreatePostScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      <FullscreenImageModal
-        visible={Boolean(expandedImageUri)}
-        uri={expandedImageUri}
-        onClose={() => setExpandedImageUri(null)}
-      />
+      <FullscreenImageModal {...galleryModalProps} />
     </SafeAreaView>
   );
 

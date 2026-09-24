@@ -99,7 +99,7 @@ function subscribeToNonAnonymousChatMessages(
           supabase
             .from("chat_messages")
             .select(
-              "*, reply_message:reply_to_id(id, content, image_url, user_id, deleted_by_sender, deleted_by_receiver)"
+              "*, reply_message:reply_to_id(id, content, image_url, image_urls, user_id, deleted_by_sender, deleted_by_receiver)"
             )
             .eq("id", rawMsg.id)
             .single()

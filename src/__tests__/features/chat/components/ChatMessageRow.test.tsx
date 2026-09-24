@@ -21,7 +21,7 @@ jest.mock('../../../../components/ResponsiveImage', () => {
 });
 
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { ChatMessageRow } from '../../../../features/chat/components/ChatMessageRow';
 import type { ChatMessageVM } from '../../../../features/chat/types';
 import type { Theme } from '../../../../context/ThemeContext';
@@ -269,5 +269,73 @@ describe('ChatMessageRow — assumeCached image prop forwarding (Phase 7.2)', ()
     render(<ChatMessageRow item={item} {...defaultProps} />);
 
     expect(screen.getByTestId('responsive-image').props.assumeCached).toBe(false);
+  });
+});
+
+describe('ChatMessageRow — multi-image messages', () => {
+  it('renders one preview per image and opens the gallery at the tapped index', () => {
+    const onImagePress = jest.fn();
+    const paths = ['chat-1/a.webp', 'chat-1/a-1.webp', 'chat-1/a-2.webp'];
+    render(
+      <ChatMessageRow
+        {...defaultProps}
+        onImagePress={onImagePress}
+        item={makeMessage({ image_url: paths[0], image_urls: paths })}
+      />,
+    );
+
+    const images = screen.getAllByTestId('responsive-image');
+    expect(images.map((i) => i.props.source)).toEqual(paths);
+    expect(images.every((i) => i.props.mode === 'galleryPreview')).toBe(true);
+
+    fireEvent.press(images[1]);
+    expect(onImagePress).toHaveBeenCalledWith(paths, 1);
+  });
+
+  it('renders a message from an older build (image_url only) as a single bubble image', () => {
+    const onImagePress = jest.fn();
+    render(
+      <ChatMessageRow
+        {...defaultProps}
+        onImagePress={onImagePress}
+        item={makeMessage({ image_url: 'legacy.jpg', image_urls: null })}
+      />,
+    );
+
+    const images = screen.getAllByTestId('responsive-image');
+    expect(images).toHaveLength(1);
+    expect(images[0].props.mode).toBe('chatBubble');
+    fireEvent.press(images[0]);
+    expect(onImagePress).toHaveBeenCalledWith(['legacy.jpg'], 0);
+  });
+
+  it('does not open the gallery while the message is still sending', () => {
+    const onImagePress = jest.fn();
+    render(
+      <ChatMessageRow
+        {...defaultProps}
+        currentUserId={OTHER_USER}
+        onImagePress={onImagePress}
+        item={makeMessage({ id: 'temp-1', image_url: 'c/1.webp', image_urls: ['c/1.webp', 'c/2.webp'] })}
+      />,
+    );
+
+    fireEvent.press(screen.getAllByTestId('responsive-image')[0]);
+    expect(onImagePress).not.toHaveBeenCalled();
+  });
+
+  it('hides every image once the message is deleted for everyone', () => {
+    render(
+      <ChatMessageRow
+        {...defaultProps}
+        item={makeMessage({
+          image_url: 'c/1.webp',
+          image_urls: ['c/1.webp', 'c/2.webp'],
+          deleted_by_sender: true,
+          deleted_by_receiver: true,
+        })}
+      />,
+    );
+    expect(screen.queryAllByTestId('responsive-image')).toHaveLength(0);
   });
 });

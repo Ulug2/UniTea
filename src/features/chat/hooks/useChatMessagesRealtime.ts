@@ -49,6 +49,7 @@ function withCachedReplyPreview(
       id: original.id,
       content: original.content ?? null,
       image_url: original.image_url ?? null,
+      image_urls: original.image_urls ?? null,
       user_id: original.user_id,
       deleted_by_sender: original.deleted_by_sender,
       deleted_by_receiver: original.deleted_by_receiver,

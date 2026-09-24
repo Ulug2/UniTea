@@ -1,45 +1,29 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Modal,
   View,
   Pressable,
-  Dimensions,
   StyleSheet,
   Text,
+  useWindowDimensions,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { Image } from "expo-image";
 import { AntDesign } from "@expo/vector-icons";
 import { PinchToZoom } from "./PinchToZoom";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-  },
-  overlay: {
-    flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.92)",
+  },
+  page: {
     justifyContent: "center",
     alignItems: "center",
-  },
-  imageWrapOuter: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  imageWrapInner: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  image: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
   },
   centerOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -74,50 +58,136 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     zIndex: 2,
   },
+  counter: {
+    position: "absolute",
+    top: verticalScale(60),
+    alignSelf: "center",
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(4),
+    borderRadius: moderateScale(12),
+    backgroundColor: "rgba(0, 0, 0, 0.45)",
+    zIndex: 2,
+  },
+  counterText: {
+    color: "#fff",
+    fontSize: moderateScale(13),
+    fontWeight: "600",
+  },
 });
 
-type FullscreenImageModalProps = {
-  visible: boolean;
-  /** Fully-resolved https:// URI. Pass null to hide. */
+export type FullscreenImage = {
+  /** Fully-resolved URI, or null while it is still being resolved (e.g. signing). */
   uri: string | null;
   /** Stable expo-image cache key (e.g. for signed URLs whose token changes). */
   cacheKey?: string;
-  /** The URI is still being resolved (e.g. signing) — shows a spinner. */
-  isResolving?: boolean;
-  /** Resolving the URI failed — shows the error state. */
+};
+
+type FullscreenImageModalProps = {
+  visible: boolean;
+  /** One or more images; with more than one, the viewer swipes between them. */
+  images: FullscreenImage[];
+  /** Page shown first. */
+  initialIndex?: number;
+  /** Resolving the URIs failed — pages without a URI show the error state. */
   resolveFailed?: boolean;
-  /** Called on "Retry" in addition to reloading the image. */
+  /** Called on "Retry" in addition to reloading the page's image. */
   onRetry?: () => void;
   onClose: () => void;
 };
 
-/**
- * Generic full-screen image viewer with pinch-to-zoom.
- * Uses expo-image so the image is served instantly from the same disk cache
- * already populated by SupabaseImage in the feed/detail screens.
- */
-export function FullscreenImageModal({
-  visible,
-  uri,
-  cacheKey,
-  isResolving = false,
-  resolveFailed = false,
-  onRetry,
-  onClose,
-}: FullscreenImageModalProps) {
+type GalleryPageProps = {
+  image: FullscreenImage;
+  width: number;
+  height: number;
+  resolveFailed: boolean;
+  onRetry?: () => void;
+  onClose: () => void;
+};
+
+function GalleryPage({ image, width, height, resolveFailed, onRetry, onClose }: GalleryPageProps) {
   const [hasLoadError, setHasLoadError] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const { uri, cacheKey } = image;
 
   useEffect(() => {
     setHasLoadError(false);
   }, [uri]);
 
-  const showError = resolveFailed || hasLoadError;
+  const showError = hasLoadError || (resolveFailed && uri == null);
   const handleRetry = () => {
     setHasLoadError(false);
     setAttempt((n) => n + 1);
     onRetry?.();
   };
+
+  return (
+    <Pressable style={[styles.page, { width, height }]} onPress={onClose}>
+      {/* Behind the image: visible until the image draws over it, so an
+          already-cached image never flashes a spinner. */}
+      {!showError && (
+        <View style={styles.centerOverlay} pointerEvents="none">
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      )}
+      {showError && (
+        <View style={styles.centerOverlay}>
+          <Text style={styles.errorText}>Couldn't load image</Text>
+          <Pressable style={styles.retryButton} onPress={handleRetry}>
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+        </View>
+      )}
+      {uri != null && !showError && (
+        // Keyed on uri + attempt so a new image or a retry always mounts a
+        // fresh PinchToZoom — no leftover zoom/translate state.
+        <PinchToZoom key={`${uri}#${attempt}`} style={{ width, height }}>
+          <Image
+            source={{ uri, cacheKey }}
+            style={{ width, height }}
+            contentFit="contain"
+            cachePolicy="disk"
+            onError={() => setHasLoadError(true)}
+          />
+        </PinchToZoom>
+      )}
+    </Pressable>
+  );
+}
+
+/**
+ * Full-screen image viewer shared by posts and chat: pinch-to-zoom per image,
+ * horizontal swipe between images, loading spinner and error/retry state.
+ * Uses expo-image so images already shown in the feed/chat are served from
+ * the same disk cache.
+ */
+export function FullscreenImageModal({
+  visible,
+  images,
+  initialIndex = 0,
+  resolveFailed = false,
+  onRetry,
+  onClose,
+}: FullscreenImageModalProps) {
+  const { width, height } = useWindowDimensions();
+  const startIndex = Math.min(Math.max(initialIndex, 0), Math.max(images.length - 1, 0));
+  const [currentIndex, setCurrentIndex] = useState(startIndex);
+  const listRef = useRef<FlatList<FullscreenImage>>(null);
+
+  useEffect(() => {
+    if (visible) setCurrentIndex(startIndex);
+  }, [visible, startIndex]);
+
+  const handleMomentumEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      setCurrentIndex(Math.round(e.nativeEvent.contentOffset.x / width));
+    },
+    [width],
+  );
+
+  const getItemLayout = useCallback(
+    (_: unknown, index: number) => ({ length: width, offset: width * index, index }),
+    [width],
+  );
 
   return (
     <Modal
@@ -127,38 +197,37 @@ export function FullscreenImageModal({
       onRequestClose={onClose}
     >
       <View style={styles.root}>
-        <Pressable style={styles.overlay} onPress={onClose}>
-          {/* Behind the image: visible until the image draws over it, so an
-              already-cached image never flashes a spinner. */}
-          {!showError && (uri != null || isResolving) && (
-            <View style={styles.centerOverlay} pointerEvents="none">
-              <ActivityIndicator size="large" color="#fff" />
-            </View>
-          )}
-          {showError && (
-            <View style={styles.centerOverlay}>
-              <Text style={styles.errorText}>Couldn't load image</Text>
-              <Pressable style={styles.retryButton} onPress={handleRetry}>
-                <Text style={styles.retryText}>Retry</Text>
-              </Pressable>
-            </View>
-          )}
-          {uri != null && !showError && (
-            // Keyed on uri so a new image always mounts a fresh PinchToZoom
-            // instance — no leftover zoom/translate state from the last image.
-            <PinchToZoom key={`${uri}#${attempt}`} style={styles.imageWrapOuter}>
-              <View style={styles.imageWrapInner}>
-                <Image
-                  source={{ uri, cacheKey }}
-                  style={styles.image}
-                  contentFit="contain"
-                  cachePolicy="disk"
-                  onError={() => setHasLoadError(true)}
-                />
-              </View>
-            </PinchToZoom>
-          )}
-        </Pressable>
+        {visible && images.length > 0 && (
+          <FlatList
+            ref={listRef}
+            data={images}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={startIndex}
+            getItemLayout={getItemLayout}
+            onMomentumScrollEnd={handleMomentumEnd}
+            keyExtractor={(image, index) => `${image.cacheKey ?? image.uri ?? "pending"}-${index}`}
+            renderItem={({ item }) => (
+              <GalleryPage
+                image={item}
+                width={width}
+                height={height}
+                resolveFailed={resolveFailed}
+                onRetry={onRetry}
+                onClose={onClose}
+              />
+            )}
+          />
+        )}
+
+        {images.length > 1 && (
+          <View style={styles.counter} pointerEvents="none">
+            <Text style={styles.counterText}>
+              {currentIndex + 1} / {images.length}
+            </Text>
+          </View>
+        )}
 
         <Pressable
           onPress={onClose}

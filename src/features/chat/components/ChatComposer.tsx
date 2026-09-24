@@ -12,7 +12,8 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import type { ReplyingToState } from "../types";
+import { Image } from "expo-image";
+import type { PickedChatImage, ReplyingToState } from "../types";
 import ResponsiveImage from "../../../components/ResponsiveImage";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
@@ -21,9 +22,10 @@ type ChatComposerProps = {
   onChangeText: (text: string) => void;
   onSend: () => void;
   onPickImage: () => void;
-  selectedImageUri: string | null;
-  selectedImageAspectRatio?: number | null;
-  onRemoveImage: () => void;
+  selectedImages: PickedChatImage[];
+  /** False once the per-message image limit is reached. */
+  canAddImage: boolean;
+  onRemoveImage: (index: number) => void;
   isSending: boolean;
   disabled: boolean;
   placeholder?: string;
@@ -55,8 +57,8 @@ export function ChatComposer({
   onChangeText,
   onSend,
   onPickImage,
-  selectedImageUri,
-  selectedImageAspectRatio,
+  selectedImages,
+  canAddImage,
   onRemoveImage,
   isSending,
   disabled,
@@ -133,19 +135,23 @@ export function ChatComposer({
         </View>
       )}
 
-      {/* Attached image preview */}
-      {selectedImageUri && (
+      {/* Attached image preview: one image at its own shape, 2–3 as a thumbnail row */}
+      {selectedImages.length === 1 && (
         <View style={styleSet.imagePreviewContainer}>
           <ResponsiveImage
-            source={selectedImageUri}
+            source={selectedImages[0].localUri}
             sourceKind="uri"
             mode="single"
-            knownAspectRatio={selectedImageAspectRatio}
+            knownAspectRatio={selectedImages[0].aspectRatio}
             borderRadius={moderateScale(12)}
             backgroundColor="#F3F4F6"
             style={styleSet.imagePreview}
           />
-          <Pressable style={styleSet.removeImageButton} onPress={onRemoveImage}>
+          <Pressable
+            testID="remove-image-0"
+            style={styleSet.removeImageButton}
+            onPress={() => onRemoveImage(0)}
+          >
             <Ionicons
               name="close-circle"
               size={removeImageIconSize}
@@ -154,10 +160,40 @@ export function ChatComposer({
           </Pressable>
         </View>
       )}
+      {selectedImages.length > 1 && (
+        <View style={thumbStyles.row}>
+          {selectedImages.map((image, index) => (
+            <View key={`${image.localUri}-${index}`} style={thumbStyles.thumbWrap}>
+              <Image
+                source={{ uri: image.localUri }}
+                style={thumbStyles.thumb}
+                contentFit="cover"
+              />
+              <Pressable
+                testID={`remove-image-${index}`}
+                style={styleSet.removeImageButton}
+                onPress={() => onRemoveImage(index)}
+                hitSlop={moderateScale(6)}
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={removeImageIconSize}
+                  color="#FFFFFF"
+                />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
 
       {/* Input row */}
       <Animated.View style={[styleSet.inputContainer, { paddingBottom }]}>
-        <Pressable style={styleSet.imagePickerButton} onPress={onPickImage}>
+        <Pressable
+          testID="pick-image-button"
+          style={[styleSet.imagePickerButton, !canAddImage && { opacity: 0.4 }]}
+          onPress={onPickImage}
+          disabled={!canAddImage}
+        >
           <Ionicons
             name="image-outline"
             size={composerIconSize}
@@ -187,6 +223,25 @@ export function ChatComposer({
     </>
   );
 }
+
+const thumbStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    gap: scale(12),
+    marginHorizontal: scale(16),
+    marginBottom: verticalScale(8),
+    paddingTop: verticalScale(8),
+  },
+  thumbWrap: {
+    position: "relative",
+  },
+  thumb: {
+    width: scale(88),
+    height: scale(88),
+    borderRadius: moderateScale(12),
+    backgroundColor: "#F3F4F6",
+  },
+});
 
 const replyStyles = StyleSheet.create({
   replyPreviewContainer: {

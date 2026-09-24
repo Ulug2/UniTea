@@ -72,10 +72,13 @@ function createWrapper() {
     React.createElement(QueryClientProvider, { client: queryClient }, children);
 }
 
+function pickedImage(localUri: string, extra: Partial<{ mimeType: string | null; fileName: string | null; aspectRatio: number | null }> = {}) {
+  return { localUri, mimeType: null, fileName: null, aspectRatio: null, ...extra };
+}
+
 function makeOptions() {
   return {
     pendingMessageIdsRef: { current: new Set<string>() } as React.MutableRefObject<Set<string>>,
-    optimisticImageUrisRef: { current: new Map<string, string>() } as React.MutableRefObject<Map<string, string>>,
     flatListRef: { current: null } as React.RefObject<any>,
     onRestoreInput: jest.fn(),
   };
@@ -207,7 +210,7 @@ describe('useChatSendMessage', () => {
       });
 
       await act(async () => {
-        await result.current.send({ text: '', localImageUri: 'file://photo.jpg' });
+        await result.current.send({ text: '', images: [pickedImage('file://photo.jpg')] });
       });
 
       await waitFor(() => {
@@ -219,8 +222,8 @@ describe('useChatSendMessage', () => {
           supabase,
           'chat-images',
           undefined,
-          undefined,
-          undefined,
+          null,
+          null,
           {
             path: expect.stringMatching(/^chat-1\/[0-9a-f-]{36}$/),
             upsert: true,
@@ -239,9 +242,12 @@ describe('useChatSendMessage', () => {
       await act(async () => {
         await result.current.send({
           text: '',
-          localImageUri: 'file:///var/mobile/.../ABCDEF.heic',
-          localImageMimeType: 'image/heic',
-          localImageFileName: 'IMG_0001.HEIC',
+          images: [
+            pickedImage('file:///var/mobile/.../ABCDEF.heic', {
+              mimeType: 'image/heic',
+              fileName: 'IMG_0001.HEIC',
+            }),
+          ],
         });
       });
 
@@ -261,6 +267,79 @@ describe('useChatSendMessage', () => {
       });
     });
 
+    it('writes image_url (first image), image_urls and the first aspect ratio for a single image', async () => {
+      mockUploadImage.mockResolvedValue('chat-1/abc.webp');
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: '', images: [pickedImage('file://a.webp', { aspectRatio: 0.75 })] });
+      });
+
+      await waitFor(() => expect(mockFrom).toHaveBeenCalledWith('chat_messages'));
+      const inserted = mockFrom.mock.results[0].value.insert.mock.calls[0][0];
+      expect(inserted).toEqual(
+        expect.objectContaining({
+          image_url: 'chat-1/abc.webp',
+          image_urls: ['chat-1/abc.webp'],
+          image_aspect_ratio: 0.75,
+        }),
+      );
+    });
+
+    it('uploads up to 3 images in parallel to deterministic per-index paths and stores them in order', async () => {
+      mockUploadImage.mockImplementation(async (_uri: string, _sb: unknown, _bucket: string, _f: unknown, _m: unknown, _n: unknown, opts: { path: string }) => `${opts.path}.webp`);
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({
+          text: 'three',
+          images: [
+            pickedImage('file://1.webp', { aspectRatio: 1.5 }),
+            pickedImage('file://2.webp'),
+            pickedImage('file://3.webp'),
+          ],
+        });
+      });
+
+      await waitFor(() => expect(mockFrom).toHaveBeenCalledWith('chat_messages'));
+      const paths = mockUploadImage.mock.calls.map((c) => c[6].path as string);
+      const id = mockFrom.mock.results[0].value.insert.mock.calls[0][0].id;
+      expect(paths).toEqual([`chat-1/${id}`, `chat-1/${id}-1`, `chat-1/${id}-2`]);
+
+      const inserted = mockFrom.mock.results[0].value.insert.mock.calls[0][0];
+      expect(inserted.image_url).toBe(`chat-1/${id}.webp`);
+      expect(inserted.image_urls).toEqual([
+        `chat-1/${id}.webp`,
+        `chat-1/${id}-1.webp`,
+        `chat-1/${id}-2.webp`,
+      ]);
+      expect(inserted.image_aspect_ratio).toBe(1.5);
+    });
+
+    it('sends no image columns for a text-only message', async () => {
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'just text' });
+      });
+
+      await waitFor(() => expect(mockFrom).toHaveBeenCalledWith('chat_messages'));
+      const inserted = mockFrom.mock.results[0].value.insert.mock.calls[0][0];
+      expect(inserted).toEqual(
+        expect.objectContaining({ image_url: null, image_urls: null, image_aspect_ratio: null }),
+      );
+      expect(mockUploadImage).not.toHaveBeenCalled();
+    });
+
     it('shows alert and returns early when uploadImage fails', async () => {
       mockUploadImage.mockRejectedValue(new Error('upload failed'));
       const opts = makeOptions();
@@ -269,7 +348,7 @@ describe('useChatSendMessage', () => {
       });
 
       await act(async () => {
-        await result.current.send({ text: 'hi', localImageUri: 'file://bad.jpg' });
+        await result.current.send({ text: 'hi', images: [pickedImage('file://bad.jpg')] });
       });
 
       expect(Alert.alert).toHaveBeenCalledWith('Error', expect.any(String));
@@ -329,6 +408,7 @@ describe('useChatSendMessage', () => {
         id: 'original-msg',
         content: 'the original message',
         image_url: null,
+        image_urls: null,
         user_id: 'other-user',
         deleted_by_sender: null,
         deleted_by_receiver: null,
@@ -666,7 +746,7 @@ describe('useChatSendMessage', () => {
       mockUploadImage.mockResolvedValue('https://storage.example.com/image-1.webp');
 
       await act(async () => {
-        await result.current.send({ text: '', localImageUri: 'file://photo.jpg' });
+        await result.current.send({ text: '', images: [pickedImage('file://photo.jpg')] });
       });
 
       await waitFor(() => expect(mockMarkFailed).toHaveBeenCalled());

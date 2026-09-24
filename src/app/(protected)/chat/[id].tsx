@@ -10,8 +10,6 @@ import {
   FlatList,
   Platform,
   Alert,
-  ActivityIndicator,
-  Image,
   Keyboard,
   ActionSheetIOS,
   type StyleProp,
@@ -29,7 +27,7 @@ import { useAuth } from "../../../context/AuthContext";
 import ChatDetailSkeleton from "../../../components/ChatDetailSkeleton";
 import CachedAvatar from "../../../components/CachedAvatar";
 import { logger } from "../../../utils/logger";
-import { pickChatImage } from "../../../features/chat/utils/imagePicker";
+import { pickChatImages } from "../../../features/chat/utils/imagePicker";
 import UserProfileModal from "../../../components/UserProfileModal";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import EntityAvatar from "../../../components/EntityAvatar";
@@ -45,9 +43,11 @@ import { hashStringToNumber } from "../../../features/chat/utils/anon";
 import { getChatDisplayIdentity } from "../../../features/chat/utils/getChatIdentity";
 import type {
   ChatMessageVM,
+  PickedChatImage,
   ReplyingToState,
 } from "../../../features/chat/types";
 import {
+  MAX_CHAT_IMAGES,
   selectMessages,
   isDeletedForViewer,
   isDeletedForEveryone,
@@ -90,22 +90,12 @@ export default function ChatDetailScreen() {
   // (disabled while the keyboard is up to avoid list jump/lag mid-scroll) —
   // the actual bottom-inset values below drive their own animated timing.
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [selectedImageAspectRatio, setSelectedImageAspectRatio] = useState<
-    number | null
-  >(null);
-  // Picker-reported type metadata for selectedImage — the most reliable
-  // source for resolving the image's type on upload (see supabaseImages.ts).
-  const [selectedImageMimeType, setSelectedImageMimeType] = useState<
-    string | null
-  >(null);
-  const [selectedImageFileName, setSelectedImageFileName] = useState<
-    string | null
-  >(null);
+  const [selectedImages, setSelectedImages] = useState<PickedChatImage[]>([]);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
-  const [fullScreenImagePath, setFullScreenImagePath] = useState<string | null>(
-    null,
-  );
+  const [fullScreenGallery, setFullScreenGallery] = useState<{
+    paths: string[];
+    index: number;
+  } | null>(null);
   const [replyingTo, setReplyingTo] = useState<ReplyingToState | null>(null);
   // True while a notification tap is still resolving its target chat (see
   // usePushNotifications.ts). Covers this screen's real content below
@@ -209,13 +199,9 @@ export default function ChatDetailScreen() {
 
   // Track pending message IDs to prevent duplicate processing from real-time
   const pendingMessageIds = useRef<Set<string>>(new Set());
-  // Track local image URIs for optimistic messages (tempId -> localUri)
-  const optimisticImageUris = useRef<Map<string, string>>(new Map());
 
-  // Cleanup optimistic image URIs on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
-      optimisticImageUris.current.clear();
       pendingMessageIds.current.clear();
     };
   }, []);
@@ -240,20 +226,10 @@ export default function ChatDetailScreen() {
     isChatAnonymous,
     {
       pendingMessageIdsRef: pendingMessageIds,
-      optimisticImageUrisRef: optimisticImageUris,
       flatListRef,
-      onRestoreInput: (
-        messageText,
-        localImageUri,
-        imageAspectRatio,
-        localImageMimeType,
-        localImageFileName,
-      ) => {
+      onRestoreInput: (messageText, images) => {
         setMessage(messageText);
-        setSelectedImage(localImageUri);
-        setSelectedImageAspectRatio(imageAspectRatio ?? null);
-        setSelectedImageMimeType(localImageMimeType ?? null);
-        setSelectedImageFileName(localImageFileName ?? null);
+        setSelectedImages(images);
       },
     },
   );
@@ -838,36 +814,27 @@ export default function ChatDetailScreen() {
   const handleSend = useCallback(() => {
     send({
       text: message,
-      localImageUri: selectedImage,
-      localImageMimeType: selectedImageMimeType,
-      localImageFileName: selectedImageFileName,
-      imageAspectRatio: selectedImageAspectRatio,
+      images: selectedImages,
       replyToId: replyingTo?.message.id ?? null,
     });
     setMessage("");
-    setSelectedImage(null);
-    setSelectedImageAspectRatio(null);
-    setSelectedImageMimeType(null);
-    setSelectedImageFileName(null);
+    setSelectedImages([]);
     setReplyingTo(null);
-  }, [
-    message,
-    selectedImage,
-    selectedImageMimeType,
-    selectedImageFileName,
-    selectedImageAspectRatio,
-    replyingTo,
-    send,
-  ]);
+  }, [message, selectedImages, replyingTo, send]);
 
   const handlePickImage = useCallback(async () => {
-    const result = await pickChatImage();
-    if (result) {
-      setSelectedImage(result.localUri);
-      setSelectedImageMimeType(result.mimeType);
-      setSelectedImageFileName(result.fileName);
-      setSelectedImageAspectRatio(result.aspectRatio);
+    const picked = await pickChatImages(MAX_CHAT_IMAGES - selectedImages.length);
+    if (picked.length > 0) {
+      setSelectedImages((prev) => [...prev, ...picked].slice(0, MAX_CHAT_IMAGES));
     }
+  }, [selectedImages.length]);
+
+  const handleImagePress = useCallback((paths: string[], index: number) => {
+    setFullScreenGallery({ paths, index });
+  }, []);
+
+  const handleRemoveImage = useCallback((index: number) => {
+    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
   // Block user mutation.
@@ -1323,7 +1290,7 @@ export default function ChatDetailScreen() {
           theme={theme}
           onLongPress={openMessageActionSheet}
           onRetry={retry}
-          onImagePress={setFullScreenImagePath}
+          onImagePress={handleImagePress}
           getMessageTime={getMessageTime}
           getDateDivider={getDateDivider}
           shouldShowDateDivider={shouldShowDateDivider}
@@ -1463,16 +1430,11 @@ export default function ChatDetailScreen() {
           onChangeText={setMessage}
           onSend={handleSend}
           onPickImage={handlePickImage}
-          selectedImageUri={selectedImage}
-          selectedImageAspectRatio={selectedImageAspectRatio}
-          onRemoveImage={() => {
-            setSelectedImage(null);
-            setSelectedImageAspectRatio(null);
-            setSelectedImageMimeType(null);
-            setSelectedImageFileName(null);
-          }}
+          selectedImages={selectedImages}
+          canAddImage={selectedImages.length < MAX_CHAT_IMAGES}
+          onRemoveImage={handleRemoveImage}
           isSending={isSending}
-          disabled={!message.trim() && !selectedImage}
+          disabled={!message.trim() && selectedImages.length === 0}
           textColor={theme.text}
           placeholderColor={theme.secondaryText}
           primaryColor={theme.primary}
@@ -1497,9 +1459,10 @@ export default function ChatDetailScreen() {
       )}
 
       <FullscreenImageModal
-        visible={Boolean(fullScreenImagePath)}
-        imagePath={fullScreenImagePath}
-        onClose={() => setFullScreenImagePath(null)}
+        visible={fullScreenGallery !== null}
+        imagePaths={fullScreenGallery?.paths ?? []}
+        initialIndex={fullScreenGallery?.index ?? 0}
+        onClose={() => setFullScreenGallery(null)}
       />
     </View>
   );

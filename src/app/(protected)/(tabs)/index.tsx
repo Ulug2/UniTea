@@ -31,6 +31,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
+import { useFullscreenGallery } from "../../../hooks/useFullscreenGallery";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { useFeedPosts } from "../../../hooks/useFeedPosts";
 import CommunityFilterBar from "../../../features/communities/components/CommunityFilterBar";
@@ -92,7 +93,7 @@ function FeedPageContent({
   const { session, cachedProfile } = useAuth();
   const currentUserId = session?.user?.id;
   const { hiddenPostIds } = useFilterContext();
-  const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const { open: openGallery, modalProps: galleryModalProps } = useFullscreenGallery();
   const [searchVisible, setSearchVisible] = useState(false);
   const searchHeightAnim = useRef(new Animated.Value(0)).current;
 
@@ -253,7 +254,7 @@ function FeedPageContent({
         originalAuthorAvatar={item.original_author_avatar}
         originalIsAnonymous={item.original_is_anonymous}
         originalCreatedAt={item.original_created_at}
-        onImagePress={setFullscreenUri}
+        onImagePress={openGallery}
         onImageLoad={index < 5 ? onItemReady : undefined}
         isAdmin={isAdmin}
         imagesAssumeCached={hasCachedPosts}
@@ -431,11 +432,7 @@ function FeedPageContent({
         </View>
       )}
 
-      <FullscreenImageModal
-        visible={Boolean(fullscreenUri)}
-        uri={fullscreenUri}
-        onClose={() => setFullscreenUri(null)}
-      />
+      <FullscreenImageModal {...galleryModalProps} />
     </View>
   );
 }

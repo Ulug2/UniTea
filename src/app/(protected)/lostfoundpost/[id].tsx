@@ -26,6 +26,7 @@ import {
   FullscreenImageModal,
   resolvePostImageUri,
 } from "../../../components/FullscreenImageModal";
+import { useFullscreenGallery } from "../../../hooks/useFullscreenGallery";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 import ResponsiveImage from "../../../components/ResponsiveImage";
 import EntityAvatar from "../../../components/EntityAvatar";
@@ -459,7 +460,7 @@ export default function LostFoundPostDetailed() {
   const navigation = useNavigation();
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const chatInProgress = useRef(false);
-  const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const { open: openGallery, modalProps: galleryModalProps } = useFullscreenGallery();
   const [isGalleryInteracting, setIsGalleryInteracting] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -503,6 +504,7 @@ export default function LostFoundPostDetailed() {
   );
 
   const displayImageUrls = normalizeImagePaths(post?.image_url, post?.image_urls);
+  const resolvedImageUris = displayImageUrls.map((path) => resolvePostImageUri(path) ?? path);
 
   // Mirrors LostFoundListItem's own avatar/image readiness coordination —
   // this screen previously had none, so once `post` resolved, the whole
@@ -892,9 +894,7 @@ export default function LostFoundPostDetailed() {
                   {displayImageUrls.length === 1 ? (
                     <LostFoundDetailSingleImage
                       uri={displayImageUrls[0]}
-                      onPress={() =>
-                        setFullscreenUri(resolvePostImageUri(displayImageUrls[0]))
-                      }
+                      onPress={() => openGallery(resolvedImageUris, 0)}
                       onLoad={reportMediaReady}
                     />
                   ) : (
@@ -923,7 +923,7 @@ export default function LostFoundPostDetailed() {
                           key={`${uri}-${index}`}
                           uri={uri}
                           isLast={index === displayImageUrls.length - 1}
-                          onPress={() => setFullscreenUri(resolvePostImageUri(uri))}
+                          onPress={() => openGallery(resolvedImageUris, index)}
                           onLoad={index === 0 ? reportMediaReady : undefined}
                         />
                       ))}
@@ -990,11 +990,7 @@ export default function LostFoundPostDetailed() {
         )}
       </View>
 
-      <FullscreenImageModal
-        visible={Boolean(fullscreenUri)}
-        uri={fullscreenUri}
-        onClose={() => setFullscreenUri(null)}
-      />
+      <FullscreenImageModal {...galleryModalProps} />
 
       {/* Three-dot menu: Report / Block / Delete — same visual pattern and
           hooks as Post Detail's own menu (post/[id].tsx). */}

@@ -34,9 +34,11 @@ _Last updated: 2026-09-24_
 - [ ] **Community header layout.** Make the community avatar smaller so the description has
   room to display properly.
 - [ ] **Optimistic commenting.** Show a new comment immediately, before the server confirms it.
-- [ ] **Chat: up to 3 images per message, shown like posts.** Single image like a post image,
-  2–3 as the post preview strip; old app builds show only the first image until they update.
-- [ ] **Swipeable images.** Swipe between pictures in full screen — chat and posts share one viewer.
+- [~] **Chat: up to 3 images per message, shown like posts.** Single image keeps the whole-photo
+  bubble, 2–3 show as the post preview strip; old app builds show only the first image until they
+  update. Branch `feat/chat-multi-image` — migration `20260925000000` not applied yet.
+- [~] **Swipeable images.** Swipe between pictures in full screen — chat and posts share one viewer.
+  Branch `feat/chat-multi-image` (feed, post detail, communities, Lost & Found, create-post, chat).
 
 ## 🚀 Waiting on a store build
 

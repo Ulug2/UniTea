@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ActivityIndicator,
-  Image,
   NativeSyntheticEvent,
   PixelRatio,
   Pressable,
@@ -289,8 +288,8 @@ type PostListItemProps = {
    * skeleton is already skipped (Phase 7.1 follow-up).
    */
   imagesAssumeCached?: boolean;
-  /** Called when any post image is tapped — parent screen manages the fullscreen modal. */
-  onImagePress?: (uri: string) => void;
+  /** Called when a post image is tapped with all of that post's image URIs and the tapped index — parent screen manages the fullscreen gallery. */
+  onImagePress?: (uris: string[], index: number) => void;
   /**
    * Pass from the parent list so this component doesn't need its own useMyProfile subscription.
    * Defaults to false when not provided (e.g. single-item detail views).
@@ -327,7 +326,7 @@ function normalizeImagePaths(
 
 type HorizontalGalleryProps = {
   imagePaths: string[];
-  onImagePress?: (uri: string) => void;
+  onImagePress?: (uris: string[], index: number) => void;
   onLoadImage?: () => void;
   topMargin?: number;
   assumeCached?: boolean;
@@ -340,6 +339,12 @@ function HorizontalImageGallery({
   topMargin = 14,
   assumeCached = false,
 }: HorizontalGalleryProps) {
+  // imagePaths come from normalizeImagePaths (non-empty, deduped), so each
+  // resolves to a URI and indexes line up with the gallery pages.
+  const resolvedUris = useMemo(
+    () => imagePaths.map((path) => resolvePostImageUri(path) ?? path),
+    [imagePaths],
+  );
   return (
     <FlatList
       horizontal
@@ -351,7 +356,7 @@ function HorizontalImageGallery({
         <HorizontalImageGalleryItem
           path={path}
           isLast={index === imagePaths.length - 1}
-          onPress={onImagePress}
+          onPress={onImagePress ? () => onImagePress(resolvedUris, index) : undefined}
           onLoadImage={onLoadImage}
           assumeCached={assumeCached}
         />
@@ -368,7 +373,7 @@ function HorizontalImageGallery({
 type HorizontalGalleryItemProps = {
   path: string;
   isLast: boolean;
-  onPress?: (uri: string) => void;
+  onPress?: () => void;
   onLoadImage?: () => void;
   assumeCached?: boolean;
 };
@@ -380,12 +385,10 @@ function HorizontalImageGalleryItem({
   onLoadImage,
   assumeCached = false,
 }: HorizontalGalleryItemProps) {
-  const resolvedUri = resolvePostImageUri(path);
-
   const onTap = (e: any) => {
     e.preventDefault();
     e.stopPropagation();
-    if (onPress && resolvedUri) onPress(resolvedUri);
+    onPress?.();
   };
 
   return (
@@ -417,7 +420,7 @@ function AdaptiveSingleImage({
 }: {
   path: string;
   aspectRatio?: number | null;
-  onPress?: (uri: string) => void;
+  onPress?: (uris: string[], index: number) => void;
   onLoadImage?: () => void;
   assumeCached?: boolean;
 }) {
@@ -436,7 +439,7 @@ function AdaptiveSingleImage({
       onPress={
         onPress && resolvedUri
           ? () => {
-              onPress(resolvedUri);
+              onPress([resolvedUri], 0);
             }
           : undefined
       }

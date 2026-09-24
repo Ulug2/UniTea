@@ -58,6 +58,7 @@ import { postDetailQueryOptions } from "../../../features/posts/data/postDetailQ
 import { usePoll } from "../../../hooks/usePoll";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import { FullscreenImageModal } from "../../../components/FullscreenImageModal";
+import { useFullscreenGallery } from "../../../hooks/useFullscreenGallery";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { generateUuidV4 } from "../../../utils/uuid";
 import {
@@ -89,7 +90,7 @@ export default function PostDetailed() {
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [isAnonymousMode, setIsAnonymousMode] = useState(true);
-  const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const { open: openGallery, modalProps: galleryModalProps } = useFullscreenGallery();
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
     null,
   );
@@ -649,7 +650,7 @@ export default function PostDetailed() {
         commentCount={flatComments.length || 0}
         isBookmarked={isBookmarked}
         onToggleBookmark={toggleBookmark}
-        onImagePress={setFullscreenUri}
+        onImagePress={openGallery}
         isAdmin={isAdmin}
         onImageLoad={reportMediaReady}
         imagesAssumeCached={wasPostCachedOnMount}
@@ -966,11 +967,7 @@ export default function PostDetailed() {
         reportType="post"
       />
 
-      <FullscreenImageModal
-        visible={Boolean(fullscreenUri)}
-        uri={fullscreenUri}
-        onClose={() => setFullscreenUri(null)}
-      />
+      <FullscreenImageModal {...galleryModalProps} />
 
       {Platform.OS === "ios" ? (
         <KeyboardAvoidingView

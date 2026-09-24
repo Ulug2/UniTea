@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { logger } from "../../../utils/logger";
 import type { ChatMessageVM, DeleteAction } from "../types";
-import { isDeletedForEveryone } from "../types";
+import { getMessageImagePaths, isDeletedForEveryone } from "../types";
 import { applyMessageDeletion, updateChatSummaryFromMessages } from "../data/cache";
 import type { MessagesQueryData } from "../types";
 
@@ -26,12 +26,12 @@ export function useChatMessageActions(
     mutationFn: async ({
       messageId,
       action,
-      imageUrl,
+      imagePaths,
     }: {
       messageId: string;
       action: DeleteAction;
       isSender: boolean;
-      imageUrl?: string | null;
+      imagePaths?: string[];
     }) => {
       if (!currentUserId) throw new Error("User not authenticated");
 
@@ -47,11 +47,11 @@ export function useChatMessageActions(
       if (error) throw error;
 
       // When a message is deleted for everyone neither party can see it, so the
-      // image file is no longer needed. Delete it from storage (non-fatal).
-      if (action === "delete_for_everyone" && imageUrl) {
+      // image files are no longer needed. Delete them from storage (non-fatal).
+      if (action === "delete_for_everyone" && imagePaths && imagePaths.length > 0) {
         const { error: storageError } = await supabase.storage
           .from("chat-images")
-          .remove([imageUrl]);
+          .remove(imagePaths);
         if (storageError) {
           logger.warn("useChatMessageActions: failed to delete chat image from storage", storageError);
         }
@@ -116,12 +116,12 @@ export function useChatMessageActions(
   );
 
   const deleteForEveryone = useCallback(
-    (messageId: string, imageUrl?: string | null) => {
+    (messageId: string, imagePaths: string[] = []) => {
       deleteMutation.mutate({
         messageId,
         action: "delete_for_everyone",
         isSender: true,
-        imageUrl,
+        imagePaths,
       });
     },
     [deleteMutation]
@@ -154,7 +154,7 @@ export function useChatMessageActions(
               messageId: message.id,
               action: "delete_for_everyone",
               isSender: true,
-              imageUrl: message.image_url,
+              imagePaths: getMessageImagePaths(message),
             }),
           () => { }
         );
