@@ -57,11 +57,11 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
   react-navigation (3 files), `expo/fetch` becomes global `fetch`, iOS minimum 16.4.
 - [ ] **Faster vote retries.** Taps during an in-flight vote are ignored for the whole save
   (network + 100 ms delay + refetches in `useVote`'s `onSettled`).
-
-- [ ] **Security advisor clean-up (pre-existing).** Several `SECURITY DEFINER` RPCs are still
-  executable by `anon` (e.g. `set_chat_message_deletion`, `is_chat_participant`,
-  `can_read_chat_message_directly`, `generate_random_username`); all check `auth.uid()` inside, so
-  not exploitable today, but EXECUTE should be revoked from `anon`. Also 2 functions without a fixed
+- [ ] **Security advisor clean-up (pre-existing, found 2026-09-24).** 6 `SECURITY DEFINER` RPCs are
+  still executable by `anon` (`set_chat_message_deletion`, `is_chat_participant`,
+  `can_read_chat_message_directly`, `generate_random_username`, `is_anonymous_chat_post_blocked`,
+  `is_anonymous_chat_relationship_blocked`) — review each and revoke EXECUTE from `anon`
+  (`is_supported_university_domain` is intentionally public). Also 2 functions without a fixed
   `search_path` (`assign_founding_member`, `is_valid_username`).
 
 ## ✅ Done
