@@ -141,12 +141,15 @@ export function useVote({
         },
     });
 
+    // Ignore taps while a vote is in flight instead of disabling the buttons:
+    // a disabled Pressable doesn't claim the touch, so it falls through to the
+    // parent (e.g. the post card's Link) and navigates.
     const handleUpvote = () => {
-        voteMutation.mutate('upvote');
+        if (!voteMutation.isPending) voteMutation.mutate('upvote');
     };
 
     const handleDownvote = () => {
-        voteMutation.mutate('downvote');
+        if (!voteMutation.isPending) voteMutation.mutate('downvote');
     };
 
     return {
@@ -154,7 +157,6 @@ export function useVote({
         score: score ?? 0,
         handleUpvote,
         handleDownvote,
-        isVoting: voteMutation.isPending,
     };
 }
 

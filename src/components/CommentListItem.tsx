@@ -138,7 +138,6 @@ const CommentListItem = ({
     score: commentScore,
     handleUpvote,
     handleDownvote,
-    isVoting,
   } = useVote({
     commentId: comment.id,
     initialScore: comment.score,
@@ -474,7 +473,7 @@ const CommentListItem = ({
           </Text>
         </Pressable>
         <View style={styles.votes}>
-          <Pressable onPress={handleUpvote} disabled={isVoting}>
+          <Pressable onPress={handleUpvote}>
             <MaterialCommunityIcons
               name={
                 userVote === "upvote"
@@ -490,7 +489,7 @@ const CommentListItem = ({
           <Text style={[styles.voteCount, { color: theme.secondaryText }]}>
             {commentScore}
           </Text>
-          <Pressable onPress={handleDownvote} disabled={isVoting}>
+          <Pressable onPress={handleDownvote}>
             <MaterialCommunityIcons
               name={
                 userVote === "downvote"

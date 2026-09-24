@@ -190,8 +190,8 @@ describe('useVote — error rollback', () => {
   });
 });
 
-describe('useVote — isVoting flag', () => {
-  it('isVoting is true while mutation is in flight', async () => {
+describe('useVote — in-flight guard', () => {
+  it('ignores further vote taps while a vote is in flight', async () => {
     // Use a controllable promise so the test can clean up after asserting
     let resolveMutation!: () => void;
     mockedVote.mockReturnValue(new Promise<void>((res) => { resolveMutation = res; }));
@@ -204,13 +204,21 @@ describe('useVote — isVoting flag', () => {
     act(() => {
       result.current.handleUpvote();
     });
+    await waitFor(() => expect(result.current.userVote).toBe('upvote'));
 
-    // React Query sets isPending asynchronously; waitFor polls until true
-    await waitFor(() => expect(result.current.isVoting).toBe(true));
+    act(() => {
+      result.current.handleDownvote();
+      result.current.handleUpvote();
+    });
+    // Let any (wrongly) started mutations run their async onMutate/mutationFn
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
-    // Resolve the mutation so the component cleans up without leaking
+    expect(mockedVote).toHaveBeenCalledTimes(1);
+    expect(result.current.userVote).toBe('upvote');
+    expect(result.current.score).toBe(1);
+
+    // Resolve the mutation so the hook cleans up without leaking
     await act(async () => { resolveMutation(); });
-    await waitFor(() => expect(result.current.isVoting).toBe(false));
   });
 });
 

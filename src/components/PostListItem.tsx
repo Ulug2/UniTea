@@ -194,6 +194,16 @@ function _buildStyles(theme: Theme) {
     },
   });
 }
+// Extend each vote arrow's touch area into the vote pill's padding
+// (iconBox: paddingHorizontal scale(11), paddingVertical verticalScale(7)).
+const upvoteHitSlop = {
+  top: verticalScale(7),
+  bottom: verticalScale(7),
+  left: scale(11),
+  right: scale(4),
+};
+const downvoteHitSlop = { ...upvoteHitSlop, left: scale(4), right: scale(11) };
+
 function getStyles(theme: Theme) {
   if (!_styleCache.has(theme)) _styleCache.set(theme, _buildStyles(theme));
   return _styleCache.get(theme)!;
@@ -724,7 +734,6 @@ const PostListItem = React.memo(function PostListItem({
     score: postScore,
     handleUpvote,
     handleDownvote,
-    isVoting,
   } = useVote({
     postId,
     initialScore: voteScore,
@@ -1108,14 +1117,16 @@ const PostListItem = React.memo(function PostListItem({
           {/* FOOTER */}
           <View style={styles.footer}>
             <View style={styles.footerLeft}>
-              <View style={styles.iconBox}>
+              {/* Pressable with no onPress: claims taps on the score, divider
+                  and padding so they don't fall through to the card's Link. */}
+              <Pressable style={styles.iconBox}>
                 <Pressable
                   onPress={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     handleUpvote();
                   }}
-                  disabled={isVoting}
+                  hitSlop={upvoteHitSlop}
                 >
                   <MaterialCommunityIcons
                     name={
@@ -1135,7 +1146,7 @@ const PostListItem = React.memo(function PostListItem({
                     e.stopPropagation();
                     handleDownvote();
                   }}
-                  disabled={isVoting}
+                  hitSlop={downvoteHitSlop}
                 >
                   <MaterialCommunityIcons
                     name={
@@ -1147,7 +1158,7 @@ const PostListItem = React.memo(function PostListItem({
                     color={userVote === "downvote" ? theme.primary : theme.text}
                   />
                 </Pressable>
-              </View>
+              </Pressable>
               <Pressable
                 onPress={(e) => {
                   e.preventDefault();

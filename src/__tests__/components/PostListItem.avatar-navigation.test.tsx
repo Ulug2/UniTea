@@ -56,7 +56,6 @@ jest.mock('../../hooks/useVote', () => ({
     score: 0,
     handleUpvote: jest.fn(),
     handleDownvote: jest.fn(),
-    isVoting: false,
   }),
 }));
 
