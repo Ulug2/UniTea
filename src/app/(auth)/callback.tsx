@@ -11,6 +11,27 @@ import { supabase } from "../../lib/supabase";
 import { logger } from "../../utils/logger";
 import { moderateScale, scale, verticalScale } from "../../utils/scaling";
 
+// Supabase verifies the email *before* redirecting here, so any failure after
+// the redirect means the account is already verified — only the automatic
+// sign-in failed (e.g. link opened on a different device than signup, where
+// the PKCE code verifier doesn't exist).
+const VERIFIED_SIGN_IN = {
+  title: "Email verified",
+  message: "Your email is verified. Please sign in to continue.",
+  isError: false,
+};
+
+// Link rejected by Supabase (already used or expired) or malformed. The email
+// may or may not be verified; signing in either succeeds or offers a resend.
+const LINK_USED_OR_EXPIRED = {
+  title: "Email link problem",
+  message:
+    "This link has already been used or has expired. If your email is already verified, just sign in. Otherwise, sign in to request a new link.",
+  isError: true,
+};
+
+type ErrorContent = typeof VERIFIED_SIGN_IN;
+
 export default function EmailCallbackScreen() {
   const params = useLocalSearchParams<{
     code?: string;
@@ -21,111 +42,58 @@ export default function EmailCallbackScreen() {
     error_description?: string;
   }>();
 
-  const [status, setStatus] = useState<"verifying" | "error">("verifying");
-  const [message, setMessage] = useState<string>("");
+  const [error, setError] = useState<ErrorContent | null>(null);
 
   useEffect(() => {
     const handleCallback = async () => {
       if (params.error || params.error_code) {
-        const description =
-          (params.error_description as string | undefined) ||
-          (params.error_code as string | undefined) ||
-          "The verification link is invalid or has expired.";
-        logger.error("[Email Callback] Auth error", undefined, { description });
-        setStatus("error");
-        setMessage(description);
+        logger.error("[Email Callback] Auth error", undefined, {
+          error: params.error,
+          errorCode: params.error_code,
+          description: params.error_description,
+        });
+        setError(LINK_USED_OR_EXPIRED);
         return;
       }
 
       const code = params.code as string | undefined;
-      if (code) {
-        try {
-          const { data, error } =
-            await supabase.auth.exchangeCodeForSession(code);
-
-          if (data?.session) {
-            logger.info(
-              "[Email Callback] Email verified successfully via code",
-            );
-            router.replace("/(protected)/(tabs)");
-          } else if (error) {
-            logger.error(
-              "[Email Callback] Error exchanging code",
-              error as Error,
-            );
-            setStatus("error");
-            setMessage(
-              "We couldn't complete email verification. Please try again or request a new link.",
-            );
-          } else {
-            logger.error(
-              "[Email Callback] No session returned from exchangeCodeForSession",
-            );
-            setStatus("error");
-            setMessage(
-              "We couldn't complete email verification. Please try again or request a new link.",
-            );
-          }
-        } catch (err: any) {
-          logger.error(
-            "[Email Callback] Unexpected error (code)",
-            err as Error,
-          );
-          setStatus("error");
-          setMessage(
-            "Unexpected error during verification. Please try again later.",
-          );
-        }
-        return;
-      }
-
       const accessToken = params.access_token as string | undefined;
       const refreshToken = params.refresh_token as string | undefined;
 
-      if (!accessToken || !refreshToken) {
-        setStatus("error");
-        setMessage("Missing token information in the verification link.");
+      if (!code && (!accessToken || !refreshToken)) {
+        logger.error("[Email Callback] Missing code/token params");
+        setError(LINK_USED_OR_EXPIRED);
         return;
       }
 
       try {
-        const { data, error } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
+        const { data, error: authError } = code
+          ? await supabase.auth.exchangeCodeForSession(code)
+          : await supabase.auth.setSession({
+              access_token: accessToken!,
+              refresh_token: refreshToken!,
+            });
 
         if (data?.session) {
           logger.info("[Email Callback] Email verified successfully");
           router.replace("/(protected)/(tabs)");
-        } else if (error) {
-          logger.error(
-            "[Email Callback] Error setting session",
-            error as Error,
-          );
-          setStatus("error");
-          setMessage(
-            "We couldn't complete email verification. Please try again or request a new link.",
-          );
-        } else {
-          logger.error("[Email Callback] No session returned from setSession");
-          setStatus("error");
-          setMessage(
-            "We couldn't complete email verification. Please try again or request a new link.",
-          );
+          return;
         }
-      } catch (err: any) {
-        logger.error("[Email Callback] Unexpected error", err as Error);
-        setStatus("error");
-        setMessage(
-          "Unexpected error during verification. Please try again later.",
+        logger.error(
+          "[Email Callback] No session after verification redirect",
+          authError ?? undefined,
+          { flow: code ? "pkce" : "tokens" },
         );
+      } catch (err: unknown) {
+        logger.error("[Email Callback] Unexpected error", err);
       }
+      setError(VERIFIED_SIGN_IN);
     };
 
     handleCallback();
   }, [params]);
 
-  if (status === "verifying") {
+  if (!error) {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" />
@@ -135,11 +103,12 @@ export default function EmailCallbackScreen() {
     );
   }
 
-  // Error state (no alerts; inline message + Back to sign in)
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Email link problem</Text>
-      <Text style={styles.errorText}>{message}</Text>
+      <Text style={styles.title}>{error.title}</Text>
+      <Text style={error.isError ? styles.errorText : styles.subtitle}>
+        {error.message}
+      </Text>
       <Pressable
         style={styles.backButton}
         onPress={() => router.replace("/(auth)")}
