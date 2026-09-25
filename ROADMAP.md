@@ -14,6 +14,9 @@ _Last updated: 2026-09-25_
 - [~] **Profile posts vanish after commenting until the screen is reopened.** Cause:
   `removeClippedSubviews` on tab lists that update while hidden (Profile refetches after a
   comment). Removed from the Profile, Lost & Found and Chats tab lists, matching the feed.
+  Follow-up: the Profile list then stayed "dragged down" after commenting — its pull-to-refresh
+  spinner was bound to background refetches. Shared `usePullToRefresh` (spinner only for user
+  pulls) now used by Profile, Lost & Found and Chats.
   Branch `fix/tab-lists-blank-after-background-update` — awaiting on-device check.
 
 ## ✨ Features

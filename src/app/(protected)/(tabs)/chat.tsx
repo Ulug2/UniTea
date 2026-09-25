@@ -7,7 +7,7 @@ import { Database } from "../../../types/database.types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
-import { useMemo, useEffect, useRef, useCallback, useState } from "react";
+import { useMemo, useEffect, useRef, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { logger } from "../../../utils/logger";
 import {
@@ -22,6 +22,7 @@ import {
   resolveOtherParticipant,
 } from "../../../features/chat/utils/getChatIdentity";
 import { getCurrentViewedChatId } from "../../../hooks/usePushNotifications";
+import { usePullToRefresh } from "../../../hooks/usePullToRefresh";
 import { prefetchChatMessages } from "../../../features/chat/hooks/useChatMessagesInfinite";
 
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
@@ -109,19 +110,9 @@ export default function ChatScreen() {
     },
   });
 
-  // Drive the pull-to-refresh spinner ONLY from user-initiated pulls. Binding it
-  // to `isRefetchingChats` (any background refetch, e.g. refetch-on-mount after a
-  // new chat invalidates the query) shows a programmatic RefreshControl that the
-  // user never pulled — on iOS that spinner can get stuck and shift the list down.
-  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
-  const onManualRefresh = useCallback(async () => {
-    setIsManualRefreshing(true);
-    try {
-      await refetchChats();
-    } finally {
-      setIsManualRefreshing(false);
-    }
-  }, [refetchChats]);
+  // Spinner only for user pulls, never background refetches — see usePullToRefresh.
+  const { refreshing: isManualRefreshing, onRefresh: onManualRefresh } =
+    usePullToRefresh(refetchChats);
 
   // Anonymous chats: postgres_changes on `chats` no longer fires for them
   // once the RLS-driven identity redaction is active (Realtime respects

@@ -25,7 +25,6 @@ export function useMyPosts(userId: string | undefined, activeTab: ProfileTab) {
     hasNextPage,
     isFetchingNextPage,
     refetch: refetchPosts,
-    isRefetching,
     isLoading: isLoadingUserPosts,
   } = useInfiniteQuery<PostSummary[]>({
     queryKey: ["user-posts", userId],
@@ -188,7 +187,6 @@ export function useMyPosts(userId: string | undefined, activeTab: ProfileTab) {
     hasNextPage,
     isFetchingNextPage,
     refetchPosts,
-    isRefetching,
     // Exposed so the profile screen can fold these into its own initial
     // loading gate (Phase 7.2) — without this, the screen showed as
     // "loaded" (via isLoadingProfile alone) while these two independent

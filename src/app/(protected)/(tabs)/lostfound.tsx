@@ -34,6 +34,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { saveLostFoundToStorage } from "../../../utils/feedPersistence";
+import { usePullToRefresh } from "../../../hooks/usePullToRefresh";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -83,7 +84,6 @@ export default function LostFoundScreen() {
     isFetchingNextPage,
     isPending,
     refetch,
-    isRefetching,
   } = useInfiniteQuery({
     queryKey: ["posts", "lost_found", universityId],
     queryFn: async ({ pageParam = 0 }) => {
@@ -126,6 +126,9 @@ export default function LostFoundScreen() {
     // gate on Campus Feed's useFeedPosts (src/hooks/useFeedPosts.ts).
     enabled: !!universityId,
   });
+
+  // Spinner only for user pulls, never background refetches — see usePullToRefresh.
+  const pullToRefresh = usePullToRefresh(refetch);
 
   // Flatten pages into single array, remove duplicates, and filter blocked users
   const lostFoundPosts = useMemo(() => {
@@ -359,8 +362,8 @@ export default function LostFoundScreen() {
           }
           refreshControl={
             <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={refetch}
+              refreshing={pullToRefresh.refreshing}
+              onRefresh={pullToRefresh.onRefresh}
               tintColor={theme.primary}
             />
           }

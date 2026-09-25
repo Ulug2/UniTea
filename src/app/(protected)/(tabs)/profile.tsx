@@ -25,6 +25,7 @@ import { TERMS_URL, PRIVACY_URL } from "../../../constants/links";
 import { openExternalLink } from "../../../utils/links";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { useMyPosts } from "../../../features/profile/hooks/useMyPosts";
+import { usePullToRefresh } from "../../../hooks/usePullToRefresh";
 import { useUnblockAll } from "../../../features/blocks/hooks/useUnblockAll";
 import { useUpdateProfile } from "../../../features/profile/hooks/useUpdateProfile";
 import { useUpdatePassword } from "../../../features/profile/hooks/useUpdatePassword";
@@ -104,10 +105,17 @@ export default function ProfileScreen() {
     hasNextPage,
     isFetchingNextPage,
     refetchPosts,
-    isRefetching,
     isLoadingUserPosts,
     isLoadingTotalVotes,
   } = useMyPosts(session?.user?.id, activeTab);
+
+  // Spinner only for user pulls, never background refetches (e.g. after
+  // commenting elsewhere) — see usePullToRefresh.
+  const refreshProfileAndPosts = useCallback(
+    () => Promise.all([refetchProfile(), refetchPosts()]),
+    [refetchProfile, refetchPosts],
+  );
+  const pullToRefresh = usePullToRefresh(refreshProfileAndPosts);
 
   // Get current user data
   const userDisplayName = currentUser?.username || "User";
@@ -332,11 +340,8 @@ export default function ProfileScreen() {
         posts={filteredPosts}
         postScoresMap={postScoresMap}
         commentCountsMap={commentCountsMap}
-        isRefetching={isRefetching}
-        onRefresh={() => {
-          refetchProfile();
-          refetchPosts();
-        }}
+        refreshing={pullToRefresh.refreshing}
+        onRefresh={pullToRefresh.onRefresh}
         hasNextPage={activeTab !== "bookmarked" ? hasNextPage : false}
         isFetchingNextPage={isFetchingNextPage}
         onEndReached={fetchNextPage}

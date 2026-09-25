@@ -13,7 +13,8 @@ type ProfilePostsListProps = {
   posts: (PostSummary | Post)[];
   postScoresMap: Map<string, number>;
   commentCountsMap: Map<string, number>;
-  isRefetching: boolean;
+  /** True only for a user-initiated pull (see usePullToRefresh). */
+  refreshing: boolean;
   onRefresh: () => void;
   hasNextPage: boolean | undefined;
   isFetchingNextPage: boolean;
@@ -25,7 +26,7 @@ export function ProfilePostsList({
   posts,
   postScoresMap,
   commentCountsMap,
-  isRefetching,
+  refreshing,
   onRefresh,
   hasNextPage,
   isFetchingNextPage,
@@ -69,7 +70,7 @@ export function ProfilePostsList({
       windowSize={5}
       refreshControl={
         <RefreshControl
-          refreshing={isRefetching}
+          refreshing={refreshing}
           onRefresh={onRefresh}
           tintColor={theme.primary}
         />
