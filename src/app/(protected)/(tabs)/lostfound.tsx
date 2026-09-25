@@ -337,7 +337,8 @@ export default function LostFoundScreen() {
           renderItem={renderItem}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
-          removeClippedSubviews={true}
+          // No removeClippedSubviews — see ProfilePostsList: tab lists that
+          // update while hidden can otherwise render blank until remount.
           maxToRenderPerBatch={6}
           updateCellsBatchingPeriod={150}
           initialNumToRender={6}

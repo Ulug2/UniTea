@@ -814,7 +814,8 @@ export default function ChatScreen() {
             filteredChatSummaries.length === 0 ? { flexGrow: 1 } : undefined
           }
           contentInsetAdjustmentBehavior="automatic"
-          removeClippedSubviews={true}
+          // No removeClippedSubviews — this list updates in realtime while
+          // hidden (e.g. while a chat is open); see ProfilePostsList.
         />
       </View>
       {!shouldReveal && (

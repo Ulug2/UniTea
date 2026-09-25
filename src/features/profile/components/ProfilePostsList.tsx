@@ -57,7 +57,12 @@ export function ProfilePostsList({
         const id = "post_id" in item ? item.post_id : item.id;
         return id ? `${id}` : `post-${index}`;
       }}
-      removeClippedSubviews
+      // No removeClippedSubviews: the Profile tab stays mounted while hidden
+      // and this list refetches in the background (e.g. after commenting).
+      // removeClippedSubviews detaches offscreen cells natively and can
+      // leave the list blank after an update made while hidden, until the
+      // screen remounts — same reason the feed leaves it off (see
+      // (tabs)/index.tsx). windowSize/batching below still bound rendering.
       maxToRenderPerBatch={5}
       updateCellsBatchingPeriod={50}
       initialNumToRender={5}
