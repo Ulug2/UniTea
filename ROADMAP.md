@@ -21,7 +21,8 @@ _No open bugs._
 ## 🚀 Waiting on a store build
 
 Committed and pushed, but only reaches users with the next App Store / Google Play release
-(no over-the-air updates are configured).
+(no over-the-air updates are configured). **Everything below ships in 1.2.0** (version bumped
+2026-09-25; 1.1.0 is live). Check these off once 1.2.0 is released.
 
 - [ ] SDU branding shows "Suleiman Demirel" for `sdu.edu.kz` (`daf72ac`)
 - [ ] Clear "This university is not supported yet." message at signup (`daf72ac`)
