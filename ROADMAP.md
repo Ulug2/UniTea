@@ -19,10 +19,6 @@ _No open bugs._
   into announcements and advertisements.
 - [ ] **Community header layout.** Make the community avatar smaller so the description has
   room to display properly.
-- [~] **Optimistic commenting.** Show a new comment immediately, before the server confirms it.
-  Branch `feat/optimistic-comments` — awaiting on-device check before merge. AI moderation kept
-  (App Store safety plan); `create-comment` now runs both OpenAI checks in parallel (deployed
-  2026-09-25).
 
 ## 🚀 Waiting on a store build
 
@@ -36,6 +32,7 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 - [ ] Chat images compressed + cached by path, full-screen loading/error state (`04e24d7`)
 - [ ] Chat: up to 3 images per message as rounded post-style tiles (`2e2c34c`, `d454f02`, `c9ed6cb`)
 - [ ] Swipeable full-screen gallery for chat and posts (`2e2c34c`)
+- [ ] Optimistic commenting: comments appear instantly while moderation runs (`2c8be1e`)
 
 ## 🔭 Later
 
@@ -58,3 +55,4 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 - [x] 2026-09-24 · Stale push notifications stopped (1-hour cutoff, skipped users marked handled) — deployed · `fe7f927`
 - [x] 2026-09-24 · Chat images: compressed uploads, path-based caching, full-screen spinner/error/retry · `04e24d7`
 - [x] 2026-09-25 · Chat: up to 3 images per message (migration `20260925000000` live) + swipeable full-screen gallery for chat and posts · `2e2c34c`, `d454f02`, `c9ed6cb`
+- [x] 2026-09-25 · Optimistic commenting + `create-comment` runs both AI checks in parallel (deployed) · `2c8be1e`
