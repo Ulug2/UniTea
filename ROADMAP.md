@@ -11,20 +11,12 @@ _Last updated: 2026-09-25_
 
 ## 🐞 Bugs
 
-- [~] **Profile posts vanish after commenting until the screen is reopened.** Cause:
-  `removeClippedSubviews` on tab lists that update while hidden (Profile refetches after a
-  comment). Removed from the Profile, Lost & Found and Chats tab lists, matching the feed.
-  Follow-up: the Profile list then stayed "dragged down" after commenting — its pull-to-refresh
-  spinner was bound to background refetches. Shared `usePullToRefresh` (spinner only for user
-  pulls) now used by Profile, Lost & Found and Chats.
-  Branch `fix/tab-lists-blank-after-background-update` — awaiting on-device check.
+_No open bugs._
 
 ## ✨ Features
 
 - [ ] **Lost & Found → Announcements & Advertisements.** Transform the Lost & Found section
   into announcements and advertisements.
-- [~] **Community header layout.** Avatar (64 px, was 150 px) and name on one row; description
-  below at full width. Branch `feat/community-header-layout` — awaiting on-device check.
 
 ## 🚀 Waiting on a store build
 
@@ -39,6 +31,8 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 - [ ] Chat: up to 3 images per message as rounded post-style tiles (`2e2c34c`, `d454f02`, `c9ed6cb`)
 - [ ] Swipeable full-screen gallery for chat and posts (`2e2c34c`)
 - [ ] Optimistic commenting: comments appear instantly while moderation runs (`2c8be1e`)
+- [ ] Tab lists no longer blank / stuck "dragged down" after background updates (`ccb4133`, `15b5d5c`)
+- [ ] Community header: avatar + name on one row, full-width description (`af20799`)
 
 ## 🔭 Later
 
@@ -62,3 +56,5 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 - [x] 2026-09-24 · Chat images: compressed uploads, path-based caching, full-screen spinner/error/retry · `04e24d7`
 - [x] 2026-09-25 · Chat: up to 3 images per message (migration `20260925000000` live) + swipeable full-screen gallery for chat and posts · `2e2c34c`, `d454f02`, `c9ed6cb`
 - [x] 2026-09-25 · Optimistic commenting + `create-comment` runs both AI checks in parallel (deployed) · `2c8be1e`
+- [x] 2026-09-25 · Profile/Lost & Found/Chats lists: no blank list or stuck pull-to-refresh after background updates · `ccb4133`, `15b5d5c`
+- [x] 2026-09-25 · Community header: avatar + name on one row, full-width description · `af20799`
