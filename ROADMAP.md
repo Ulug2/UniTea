@@ -23,8 +23,8 @@ _Last updated: 2026-09-25_
 
 - [ ] **Lost & Found → Announcements & Advertisements.** Transform the Lost & Found section
   into announcements and advertisements.
-- [ ] **Community header layout.** Make the community avatar smaller so the description has
-  room to display properly.
+- [~] **Community header layout.** Avatar (64 px, was 150 px) and name on one row; description
+  below at full width. Branch `feat/community-header-layout` — awaiting on-device check.
 
 ## 🚀 Waiting on a store build
 

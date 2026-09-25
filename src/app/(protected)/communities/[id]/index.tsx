@@ -297,28 +297,9 @@ export default function CommunityViewScreen() {
   const headerSection = (
     <View style={{ opacity: isHeaderReady ? 1 : 0 }}>
       <View style={[styles.communityCard, { backgroundColor: theme.card }]}>
+        {/* Avatar + name on one row; the description gets the card's full
+            width below instead of being squeezed beside a large avatar. */}
         <View testID="community-profile-top-row" style={styles.profileTopRow}>
-          <View style={styles.profileTextColumn}>
-            <Text style={[styles.communityName, { color: theme.text }]}>
-              {community.name}
-            </Text>
-
-            <Text style={[styles.communityMemberCount, { color: theme.secondaryText }]}>
-              {formatMemberCount(community.member_count)}
-            </Text>
-
-            {community.description ? (
-              <Text
-                style={[
-                  styles.communityDescription,
-                  { color: theme.secondaryText },
-                ]}
-              >
-                {community.description}
-              </Text>
-            ) : null}
-          </View>
-
           <View style={[styles.avatar, { backgroundColor: theme.background }]}>
             {community.avatar_url ? (
               <SupabaseImage
@@ -339,7 +320,29 @@ export default function CommunityViewScreen() {
               />
             )}
           </View>
+
+          <View style={styles.profileTextColumn}>
+            <Text style={[styles.communityName, { color: theme.text }]}>
+              {community.name}
+            </Text>
+
+            <Text style={[styles.communityMemberCount, { color: theme.secondaryText }]}>
+              {formatMemberCount(community.member_count)}
+            </Text>
+          </View>
         </View>
+
+        {community.description ? (
+          <Text
+            testID="community-description"
+            style={[
+              styles.communityDescription,
+              { color: theme.secondaryText },
+            ]}
+          >
+            {community.description}
+          </Text>
+        ) : null}
 
         <Pressable
           testID="community-join-leave-button"
@@ -551,18 +554,17 @@ const styles = StyleSheet.create({
   },
   profileTopRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
   },
   profileTextColumn: {
     flex: 1,
     flexShrink: 1,
-    marginRight: scale(16),
+    marginLeft: scale(14),
   },
   avatar: {
-    width: scale(150),
-    height: scale(150),
-    borderRadius: moderateScale(75),
+    width: scale(64),
+    height: scale(64),
+    borderRadius: scale(32),
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
@@ -587,7 +589,7 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontFamily: "Poppins_400Regular",
     textAlign: "left",
-    marginTop: verticalScale(6),
+    marginTop: verticalScale(14),
     lineHeight: moderateScale(20),
   },
   joinButton: {

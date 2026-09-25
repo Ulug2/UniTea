@@ -172,9 +172,9 @@ jest.mock('../../features/communities/hooks/useReportCommunity', () => ({
 }));
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-import { verticalScale } from '../../utils/scaling';
+import { scale, verticalScale } from '../../utils/scaling';
 import CommunityViewScreen from '../../app/(protected)/communities/[id]/index';
 
 /** Resolves StyleSheet.create's numeric ids (not just plain inline objects
@@ -470,11 +470,36 @@ describe('Community View screen (Phase 3.1A)', () => {
   // with — real pixel/layout rendering isn't something Jest/RNTL can
   // verify, so this is a structural regression guard, not a substitute for
   // looking at the screen.
-  it('the profile top row centers the name/description column against the avatar (alignItems: center)', async () => {
+  it('the profile top row puts the avatar and name side by side, vertically centered', async () => {
     render(<CommunityViewScreen />);
     await waitFor(() => screen.getByTestId('community-profile-top-row'));
     const row = screen.getByTestId('community-profile-top-row');
-    expect(flattenStyle(row.props.style).alignItems).toBe('center');
+    const rowStyle = flattenStyle(row.props.style);
+    expect(rowStyle.flexDirection).toBe('row');
+    expect(rowStyle.alignItems).toBe('center');
+    expect(within(row).getByText('Chess Club')).toBeTruthy();
+  });
+
+  it('renders the description below the avatar/name row so it spans the full card width', async () => {
+    render(<CommunityViewScreen />);
+    await waitFor(() => screen.getByTestId('community-profile-top-row'));
+    const row = screen.getByTestId('community-profile-top-row');
+    const description = screen.getByTestId('community-description');
+
+    // The name lives in the avatar row; the description does not, so it
+    // isn't limited to the space beside the avatar.
+    expect(within(row).getByText('Chess Club')).toBeTruthy();
+    expect(within(row).queryByTestId('community-description')).toBeNull();
+    expect(description.props.children).toBe('A place for chess lovers.');
+  });
+
+  it('uses a compact avatar (64px) instead of the old 150px one', async () => {
+    render(<CommunityViewScreen />);
+    await waitFor(() => screen.getByTestId('community-profile-top-row'));
+    const avatar = screen.getByTestId('community-profile-top-row').children[0] as any;
+    const avatarStyle = flattenStyle(avatar.props.style);
+    expect(avatarStyle.width).toBe(scale(64));
+    expect(avatarStyle.height).toBe(scale(64));
   });
 
   it('the post list has no outer horizontal padding, so the divider and post rows reach both screen edges', async () => {
