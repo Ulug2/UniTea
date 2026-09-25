@@ -44,6 +44,8 @@ type CommentWithReplies = Comment & {
   /** Current viewer's own vote on this comment — seeds useVote (Phase 7.2). */
   user_vote?: "upvote" | "downvote" | null;
   post_specific_anon_id?: number | null;
+  /** Optimistic comment still being created — see CommentVM._pending. */
+  _pending?: boolean;
 };
 
 type ParentInfo = {
@@ -288,6 +290,7 @@ const CommentListItem = ({
         {
           backgroundColor: theme.card,
         },
+        comment._pending && styles.pending,
       ]}
     >
       {/* User Info */}
@@ -370,13 +373,16 @@ const CommentListItem = ({
             </Text>
           </View>
         </View>
-        <Pressable style={styles.threeDots} onPress={() => setShowMenu(true)}>
-          <Entypo
-            name="dots-three-horizontal"
-            size={threeDotsIconSize}
-            color={theme.secondaryText}
-          />
-        </Pressable>
+        {/* No menu while posting: report/delete/block need the server row. */}
+        {!comment._pending && (
+          <Pressable style={styles.threeDots} onPress={() => setShowMenu(true)}>
+            <Entypo
+              name="dots-three-horizontal"
+              size={threeDotsIconSize}
+              color={theme.secondaryText}
+            />
+          </Pressable>
+        )}
       </View>
 
       {/* Menu Modal */}
@@ -457,7 +463,13 @@ const CommentListItem = ({
         {comment.content}
       </Text>
 
-      {/* Comment Actions */}
+      {/* Comment Actions — replaced by a status line while posting, since
+          replies and votes need the comment to exist server-side. */}
+      {comment._pending ? (
+        <Text style={[styles.pendingText, { color: theme.secondaryText }]}>
+          Posting…
+        </Text>
+      ) : (
       <View style={styles.actions}>
         <Pressable
           onPress={() => handleReplyPress(comment.id)}
@@ -504,6 +516,7 @@ const CommentListItem = ({
           </Pressable>
         </View>
       </View>
+      )}
 
       {/* Show Replies Button - only show if more than 3 replies */}
       {hasReplies && !showReplies && replyCount > 3 && (
@@ -663,6 +676,14 @@ const styles = StyleSheet.create({
     lineHeight: moderateScale(22),
     marginRight: scale(15),
   },
+  pending: {
+    opacity: 0.6,
+  },
+  pendingText: {
+    fontSize: moderateScale(12),
+    fontFamily: "Poppins_400Regular",
+    marginTop: verticalScale(6),
+  },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-start",
@@ -770,6 +791,8 @@ function arePropsEqual(
     prev.comment.user_vote === next.comment.user_vote &&
     prev.comment.is_deleted === next.comment.is_deleted &&
     prev.comment.is_anonymous === next.comment.is_anonymous &&
+    prev.comment._pending === next.comment._pending &&
+    prev.comment.post_specific_anon_id === next.comment.post_specific_anon_id &&
     (prev.comment.replies?.length ?? 0) ===
       (next.comment.replies?.length ?? 0) &&
     prev.handleReplyPress === next.handleReplyPress &&

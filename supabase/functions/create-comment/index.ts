@@ -144,22 +144,9 @@ serve(async (req: Request) => {
     // 4. Text Moderation: Context-aware name drops & sexual content
     const textToModerate = content.trim();
 
-    // 4a. Hard safety checks (illegal/severe harm) using OpenAI Moderation API
-    const moderation = await openai.moderations.create({ input: textToModerate });
-    const modResults = moderation.results?.[0];
-
-    if (modResults) {
-      if (
-        modResults.categories["sexual/minors"] ||
-        modResults.categories["self-harm/intent"] ||
-        modResults.categories["self-harm/instructions"] ||
-        modResults.categories["violence/graphic"]
-      ) {
-        throw new Error("Comment violates severe safety guidelines (harm, minors, graphic violence)");
-      }
-    }
-
-    // 4b. Smart Contextual Moderation using GPT-4o-mini
+    // 4a (hard safety checks, OpenAI Moderation API) and 4b (contextual
+    // check, GPT-4o-mini) are independent, so both requests run in parallel;
+    // their results are still applied in the same order as before.
     const systemPrompt = `You are an AI moderator for an anonymous social app for Nazarbayev University students. 
 Analyze the user's text. The text may be in English, Russian, Kazakh, or Latin-transliterated Russian/Kazakh (e.g., "krasavchik", "zhasap", "pizdec").
 
@@ -173,16 +160,34 @@ Evaluate for two violations:
 
 Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
 
-    const contextCheck = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: textToModerate.slice(0, 2000) }
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 50,
-    });
+    const [moderation, contextCheck] = await Promise.all([
+      openai.moderations.create({ input: textToModerate }),
+      openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: textToModerate.slice(0, 2000) }
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 50,
+      }),
+    ]);
 
+    // 4a. Hard safety checks (illegal/severe harm)
+    const modResults = moderation.results?.[0];
+
+    if (modResults) {
+      if (
+        modResults.categories["sexual/minors"] ||
+        modResults.categories["self-harm/intent"] ||
+        modResults.categories["self-harm/instructions"] ||
+        modResults.categories["violence/graphic"]
+      ) {
+        throw new Error("Comment violates severe safety guidelines (harm, minors, graphic violence)");
+      }
+    }
+
+    // 4b. Smart contextual moderation (private names, explicit sexual content)
     const aiResponseText = contextCheck.choices[0]?.message?.content || "{}";
     let aiResponse: { private_name?: boolean; explicit_sexual?: boolean } = {};
 

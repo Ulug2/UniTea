@@ -19,7 +19,10 @@ _No open bugs._
   into announcements and advertisements.
 - [ ] **Community header layout.** Make the community avatar smaller so the description has
   room to display properly.
-- [ ] **Optimistic commenting.** Show a new comment immediately, before the server confirms it.
+- [~] **Optimistic commenting.** Show a new comment immediately, before the server confirms it.
+  Branch `feat/optimistic-comments` — awaiting on-device check before merge. AI moderation kept
+  (App Store safety plan); `create-comment` now runs both OpenAI checks in parallel (deployed
+  2026-09-25).
 
 ## 🚀 Waiting on a store build
 

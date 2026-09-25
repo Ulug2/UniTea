@@ -19,6 +19,11 @@ export type CommentVM = Comment & {
    * Populated for anonymous comments when available.
    */
   post_specific_anon_id?: number | null;
+  /**
+   * Client-only: true while an optimistically-shown comment is still being
+   * created (moderation + insert). Never set on server data.
+   */
+  _pending?: boolean;
 };
 
 export type CommentNode = CommentVM & {

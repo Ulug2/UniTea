@@ -1,8 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import type { Database } from "../../../types/database.types";
 import { buildCommentTree, CommentVM, CommentNode } from "../utils/tree";
 import type { BlockRecord } from "../../../hooks/useBlocks";
+import { commentKeys } from "../data/queryKeys";
 
 type Comment = Database["public"]["Tables"]["comments"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -81,6 +82,7 @@ export function usePostComments(
   refetch: () => void;
   isRefetching: boolean;
 } {
+  const queryClient = useQueryClient();
   const {
     data: flatComments = [],
     isLoading,
@@ -88,11 +90,20 @@ export function usePostComments(
     refetch,
     isRefetching,
   } = useQuery<CommentVM[]>({
-    queryKey: ["comments", postId, viewerId],
+    queryKey: commentKeys.list(postId, viewerId),
     enabled: Boolean(postId),
     queryFn: async () => {
       if (!postId) return [];
-      return fetchCommentsWithMeta(postId, viewerId);
+      const fetched = await fetchCommentsWithMeta(postId, viewerId);
+      // Keep optimistic comments that are still being created (see
+      // useCreateComment) — the server doesn't have them yet, so a refetch
+      // mid-send (pull-to-refresh, stale refresh) would otherwise drop them
+      // until the send resolves.
+      const fetchedIds = new Set(fetched.map((c) => c.id));
+      const stillPending = (
+        queryClient.getQueryData<CommentVM[]>(commentKeys.list(postId, viewerId)) ?? []
+      ).filter((c) => c._pending && !fetchedIds.has(c.id));
+      return stillPending.length > 0 ? [...fetched, ...stillPending] : fetched;
     },
     staleTime: 1000 * 30, // show cached comments immediately; silently refresh after 30 s
     gcTime: 1000 * 60 * 15,

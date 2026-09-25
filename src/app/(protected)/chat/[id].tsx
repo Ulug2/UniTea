@@ -68,6 +68,7 @@ import { ChatHeader } from "../../../features/chat/components/ChatHeader";
 import { ChatComposer } from "../../../features/chat/components/ChatComposer";
 import { ChatMessageList } from "../../../features/chat/components/ChatMessageList";
 import { ChatMessageRow } from "../../../features/chat/components/ChatMessageRow";
+import { commentKeys } from "../../../features/comments/data/queryKeys";
 
 type Chat = Database["public"]["Tables"]["chats"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -883,7 +884,7 @@ export default function ChatDetailScreen() {
         refetchType: "none",
       });
       queryClient.invalidateQueries({
-        queryKey: ["comments"],
+        queryKey: commentKeys.all,
         refetchType: "none",
       });
       queryClient.invalidateQueries({

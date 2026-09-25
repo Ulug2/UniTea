@@ -45,6 +45,7 @@ import type { PostsSummaryViewRow } from "../../../types/posts";
 import { usePostComments } from "../../../features/comments/hooks/usePostComments";
 import type { CommentNode } from "../../../features/comments/utils/tree";
 import { useCreateComment } from "../../../features/comments/hooks/useCreateComment";
+import { commentKeys } from "../../../features/comments/data/queryKeys";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { useBookmarkToggle } from "../../../features/posts/hooks/useBookmarkToggle";
 import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
@@ -82,7 +83,15 @@ export default function PostDetailed() {
   const { session } = useAuth();
   const queryClient = useQueryClient();
 
-  const [commentText, setCommentText] = useState<string>("");
+  const [commentText, setCommentTextState] = useState<string>("");
+  // Latest composer text, updated synchronously with every change (not at
+  // render time) so a failed optimistic send can tell whether the user typed
+  // something new — even when the send fails before the next render.
+  const commentTextRef = useRef("");
+  const setCommentText = useCallback((text: string) => {
+    commentTextRef.current = text;
+    setCommentTextState(text);
+  }, []);
   const [parentCommentId, setParentCommentId] = useState<string | null>(null);
   const [replyingToUsername, setReplyingToUsername] = useState<string | null>(
     null,
@@ -602,28 +611,30 @@ export default function PostDetailed() {
       lastCommentAttemptRef.current = { signature: attemptSignature, id: commentId };
     }
 
+    // Optimistic: the comment appears in the list immediately (see
+    // useCreateComment's onMutate) and the composer clears right away,
+    // while moderation + insert run in the background.
+    setCommentText("");
+    setParentCommentId(null);
+    setReplyingToUsername(null);
+    const replyingToLabel = replyingToUsername;
+
     try {
-      // Awaited (not fire-and-forget) so the input/reply state below is only
-      // cleared once the server has actually confirmed the comment was
-      // created — previously the input was cleared immediately, so any
-      // failure (network/server/rate-limit/session-expired) silently lost
-      // whatever the user had typed. mutateAsync rejects instead of
-      // resolving on failure; the existing overlay (createCommentMutation.
-      // isPending, see commentsScreenBody above) already covers the screen
-      // for this whole awaited window, so there's no responsiveness cost to
-      // waiting instead of clearing eagerly.
       await createCommentMutation.mutateAsync({ id: commentId, content, parentId, isAnonymous });
-      // Confirmed success — clear the retry memory so this screen instance
-      // never reuses a spent id if it somehow submits again.
-      lastCommentAttemptRef.current = null;
-      setCommentText("");
-      setParentCommentId(null);
-      setReplyingToUsername(null);
-    } catch (error) {
-      // Errors are already surfaced via the mutation's own onError (Alert).
-      // Intentionally leave commentText/parentCommentId/replyingToUsername
-      // untouched so the user's draft and reply target survive a failure —
-      // they can just retry.
+      // Confirmed — never reuse this spent id for a later submission.
+      if (lastCommentAttemptRef.current?.id === commentId) {
+        lastCommentAttemptRef.current = null;
+      }
+    } catch {
+      // The mutation already removed the optimistic comment and alerted the
+      // reason. Put the draft (and reply target) back so the user can edit
+      // or resend it — resending unchanged reuses the same id — unless they
+      // have already started typing something new.
+      if (!commentTextRef.current.trim()) {
+        setCommentText(content);
+        setParentCommentId(parentId);
+        setReplyingToUsername(replyingToLabel);
+      }
     }
   };
 
@@ -795,9 +806,7 @@ export default function PostDetailed() {
 
   const commentsScreenBody = (
     <View style={{ flex: 1 }}>
-      {(createCommentMutation.isPending ||
-        deletingCommentId ||
-        deletePostMutation.isPending) && (
+      {(deletingCommentId || deletePostMutation.isPending) && (
         <View
           style={[
             StyleSheet.absoluteFill,
@@ -839,7 +848,6 @@ export default function PostDetailed() {
         isAnonymousMode={isAnonymousMode}
         onToggleAnonymous={() => setIsAnonymousMode((prev) => !prev)}
         replyingToUsername={replyingToUsername}
-        isSubmitting={createCommentMutation.isPending}
         currentUserLabel={session?.user?.user_metadata?.username || "You"}
         anonymousPreview={anonymousCommentPreview}
       />
@@ -996,7 +1004,7 @@ export default function PostDetailed() {
       onReset={() => {
         queryClient.invalidateQueries({ queryKey: ["post", postId] });
         queryClient.invalidateQueries({
-          queryKey: ["comments", postId, currentUserId],
+          queryKey: commentKeys.list(postId, currentUserId),
         });
       }}
     >

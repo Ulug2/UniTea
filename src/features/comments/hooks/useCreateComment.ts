@@ -4,7 +4,11 @@ import { supabase } from "../../../lib/supabase";
 import { logger } from "../../../utils/logger";
 import { logActivity } from "../../../utils/activityLogger";
 import { feedKeys } from "../../communities/data/queryKeys";
-import type { CommentNode } from "../utils/tree";
+import { commentKeys } from "../data/queryKeys";
+import type { Database } from "../../../types/database.types";
+import type { CommentNode, CommentVM } from "../utils/tree";
+
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 type CreateCommentInput = {
   content: string;
@@ -37,6 +41,21 @@ export function useCreateComment({
   communityId,
 }: UseCreateCommentOptions) {
   const queryClient = useQueryClient();
+  const listKey = commentKeys.list(postId, viewerId);
+
+  // The viewer's profile is almost always cached (useMyProfile); only fall
+  // back to a network read if it isn't.
+  const getViewerProfile = async (): Promise<Profile | undefined> => {
+    if (!viewerId) return undefined;
+    const cached = queryClient.getQueryData<Profile | null>(["current-user-profile", viewerId]);
+    if (cached) return cached;
+    const { data } = await supabase.from("profiles").select("*").eq("id", viewerId).single();
+    return data ?? undefined;
+  };
+
+  const removeComment = (id: string) => {
+    queryClient.setQueryData<CommentVM[]>(listKey, (old) => old?.filter((c) => c.id !== id));
+  };
 
   return useMutation({
     mutationFn: async ({ content, parentId, isAnonymous, id }: CreateCommentInput) => {
@@ -107,7 +126,46 @@ export function useCreateComment({
 
       return responseData as CommentNode;
     },
-    onError: (error: unknown) => {
+    onMutate: async ({ content, parentId, isAnonymous, id }: CreateCommentInput) => {
+      if (!viewerId || !postId) return;
+      // Stop an in-flight fetch from overwriting the optimistic entry.
+      await queryClient.cancelQueries({ queryKey: listKey });
+
+      const existing = queryClient.getQueryData<CommentVM[]>(listKey) ?? [];
+      // post_specific_anon_id is assigned server-side and is stable per
+      // (post, user) — reuse the viewer's existing number on this post so the
+      // optimistic comment already shows the right "User N".
+      const knownAnonId = isAnonymous
+        ? existing.find((c) => c.user_id === viewerId && c.is_anonymous && c.post_specific_anon_id)
+            ?.post_specific_anon_id ?? null
+        : null;
+      const now = new Date().toISOString();
+
+      const optimistic: CommentVM = {
+        id,
+        post_id: postId,
+        user_id: viewerId,
+        content: content.trim(),
+        parent_comment_id: parentId && !parentId.startsWith("temp-") ? parentId : null,
+        is_anonymous: isAnonymous,
+        is_deleted: false,
+        created_at: now,
+        updated_at: now,
+        post_specific_anon_id: knownAnonId,
+        user: queryClient.getQueryData<Profile | null>(["current-user-profile", viewerId]) ?? undefined,
+        score: 0,
+        user_vote: null,
+        _pending: true,
+      };
+
+      // Filter by id first: a retry of the same submission reuses its id.
+      queryClient.setQueryData<CommentVM[]>(listKey, (old) => [
+        ...(old ?? []).filter((c) => c.id !== id),
+        optimistic,
+      ]);
+    },
+    onError: (error: unknown, variables: CreateCommentInput) => {
+      removeComment(variables.id);
       logger.error("Error posting comment", error as Error);
       const message =
         error instanceof Error
@@ -126,31 +184,26 @@ export function useCreateComment({
     onSuccess: async (newComment: CommentNode) => {
       if (!viewerId || !postId) return;
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", viewerId)
-        .single();
-
+      const profile = await getViewerProfile();
       if (profile?.university_id) {
         logActivity("comment_created", profile.university_id, viewerId);
       }
 
-      // Preserve post_specific_anon_id from server so anonymous comments show "User #" immediately.
-      // Requires: DB column post_specific_anon_id and create-comment edge function that sets it.
-      const entry: CommentNode = {
+      // Swap the optimistic entry for the server row (which carries the
+      // server-assigned post_specific_anon_id). No refetch needed.
+      const confirmed: CommentVM = {
         ...newComment,
-        user: profile ?? undefined,
+        user: profile,
         score: 0,
-        replies: [],
-        post_specific_anon_id:
-          newComment.post_specific_anon_id ?? (newComment as any).post_specific_anon_id,
+        user_vote: null,
+        _pending: false,
       };
-
-      queryClient.setQueryData<CommentNode[]>(
-        ["comments", postId, viewerId],
-        (old) => [...(old ?? []), entry]
-      );
+      queryClient.setQueryData<CommentVM[]>(listKey, (old) => {
+        const list = old ?? [];
+        return list.some((c) => c.id === confirmed.id)
+          ? list.map((c) => (c.id === confirmed.id ? confirmed : c))
+          : [...list, confirmed];
+      });
 
       queryClient.invalidateQueries({ queryKey: ["post", postId] });
       if (communityId !== undefined) {
@@ -170,10 +223,6 @@ export function useCreateComment({
       // session once Profile had already been opened once (Phase 7.2).
       queryClient.invalidateQueries({
         queryKey: ["user-posts", viewerId],
-      });
-
-      queryClient.refetchQueries({
-        queryKey: ["comments", postId, viewerId],
       });
     },
   });

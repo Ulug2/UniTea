@@ -1,6 +1,5 @@
 import React, { forwardRef } from "react";
 import {
-  ActivityIndicator,
   PixelRatio,
   Pressable,
   StyleSheet,
@@ -26,7 +25,6 @@ type CommentComposerProps = {
   isAnonymousMode: boolean;
   onToggleAnonymous: () => void;
   replyingToUsername: string | null;
-  isSubmitting: boolean;
   currentUserLabel: string;
   anonymousPreview?: PostAuthorDisplay | null;
 };
@@ -48,7 +46,6 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
       isAnonymousMode,
       onToggleAnonymous,
       replyingToUsername,
-      isSubmitting,
       currentUserLabel,
       anonymousPreview,
     },
@@ -58,7 +55,7 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
     const inlineIconSize = moderateScale(20) * fontScale;
     const closeIconSize = moderateScale(16) * fontScale;
 
-    const disabled = !commentText.trim() || isSubmitting;
+    const disabled = !commentText.trim();
 
     return (
       <View
@@ -144,15 +141,11 @@ export const CommentComposer = forwardRef<TextInput, CommentComposerProps>(
               },
             ]}
           >
-            {isSubmitting ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <MaterialCommunityIcons
-                name="send"
-                size={inlineIconSize}
-                color="#fff"
-              />
-            )}
+            <MaterialCommunityIcons
+              name="send"
+              size={inlineIconSize}
+              color="#fff"
+            />
           </Pressable>
         </View>
       </View>

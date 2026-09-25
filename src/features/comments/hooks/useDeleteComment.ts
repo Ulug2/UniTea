@@ -2,6 +2,7 @@ import { Alert } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { feedKeys } from "../../communities/data/queryKeys";
+import { commentKeys } from "../data/queryKeys";
 
 type Options = {
   postId?: string | null;
@@ -49,13 +50,13 @@ export function useDeleteComment(commentId: string, options?: Options) {
     onSuccess: async () => {
       if (postId && currentUserId) {
         await queryClient.refetchQueries({
-          queryKey: ["comments", postId, currentUserId],
+          queryKey: commentKeys.list(postId, currentUserId),
         });
       }
       // Scoped to this post's own thread (any viewer) when postId is known;
       // falls back to every thread only if a caller genuinely can't supply it.
       queryClient.invalidateQueries({
-        queryKey: postId ? ["comments", postId] : ["comments"],
+        queryKey: postId ? commentKeys.post(postId) : commentKeys.all,
       });
       queryClient.invalidateQueries({ queryKey: ["post", postId] });
       // Lazy (refetchType: "none") to match useCreateComment's established

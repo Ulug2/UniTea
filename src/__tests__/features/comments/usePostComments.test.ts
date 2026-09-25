@@ -7,7 +7,7 @@ jest.mock('../../../lib/supabase', () => ({
 }));
 
 import React from 'react';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase } from '../../../lib/supabase';
 import { usePostComments } from '../../../features/comments/hooks/usePostComments';
@@ -151,5 +151,42 @@ describe('usePostComments', () => {
     });
 
     await waitFor(() => expect(result.current.error).toBeTruthy());
+  });
+
+  it('keeps optimistic (pending) comments through a refetch until the server has them', async () => {
+    const pending = { ...fakeComment, id: 'pending-1', content: 'posting…', _pending: true, user: fakeProfile, score: 0, user_vote: null };
+    const serverRows = () => {
+      mockFrom
+        .mockReturnValueOnce(buildListChain([fakeComment]))
+        .mockReturnValueOnce(buildListChain([fakeProfile]))
+        .mockReturnValueOnce(buildListChain([]));
+    };
+    serverRows();
+    const { result } = renderHook(() => usePostComments('p1', 'u1', []), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // A send adds the optimistic entry, then a refetch runs mid-send.
+    act(() => {
+      queryClient.setQueryData(['comments', 'p1', 'u1'], (old: any[]) => [...old, pending]);
+    });
+    serverRows();
+    await act(async () => {
+      await result.current.refetch();
+    });
+    await waitFor(() =>
+      expect(result.current.flatComments.map((c) => c.id)).toEqual(['c1', 'pending-1']),
+    );
+    expect(mockFrom).toHaveBeenCalledTimes(6); // the refetch really ran
+
+    // Once the server returns it, the server row wins (no duplicate, not pending).
+    mockFrom
+      .mockReturnValueOnce(buildListChain([fakeComment, { ...fakeComment, id: 'pending-1', content: 'posting…' }]))
+      .mockReturnValueOnce(buildListChain([fakeProfile]))
+      .mockReturnValueOnce(buildListChain([]));
+    await act(async () => {
+      await result.current.refetch();
+    });
+    await waitFor(() => expect(result.current.flatComments[1]._pending).toBeUndefined());
+    expect(result.current.flatComments.map((c) => c.id)).toEqual(['c1', 'pending-1']);
   });
 });

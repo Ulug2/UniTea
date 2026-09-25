@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { getUserVote, vote, getPostScore, getCommentScore } from '../utils/votes';
+import { commentKeys } from '../features/comments/data/queryKeys';
 
 type VoteType = 'upvote' | 'downvote' | null;
 
@@ -132,7 +133,7 @@ export function useVote({
             }
             if (commentId) {
                 queryClient.invalidateQueries({
-                    queryKey: ['comments'],
+                    queryKey: commentKeys.all,
                     refetchType: 'none'
                 });
             }

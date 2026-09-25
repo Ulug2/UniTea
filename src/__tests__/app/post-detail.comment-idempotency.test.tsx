@@ -259,10 +259,12 @@ describe('post/[id] comment idempotency id (Phase 4)', () => {
     });
     await waitFor(() => expect(mockCreateCommentMutateAsync).toHaveBeenCalledTimes(1));
 
-    // Draft preserved on failure (existing, unchanged behavior) — the same
-    // text is still in the input, so pressing Send again is the normal
-    // "just retry" recovery path, with no edit in between.
-    expect(screen.getByTestId('comment-text-input').props.value).toBe('Great post!');
+    // Optimistic send clears the input immediately; on failure the draft is
+    // restored, so pressing Send again is the normal "just retry" recovery
+    // path, with no edit in between.
+    await waitFor(() =>
+      expect(screen.getByTestId('comment-text-input').props.value).toBe('Great post!'),
+    );
 
     await act(async () => {
       pressSend();
@@ -297,8 +299,13 @@ describe('post/[id] comment idempotency id (Phase 4)', () => {
     expect(secondId).not.toBe(firstId);
   });
 
-  it('a failed submission keeps the draft intact (existing behavior, unaffected by the id change)', async () => {
-    mockCreateCommentMutateAsync.mockRejectedValue(new Error('Failed to post comment'));
+  it('clears the input immediately and restores the draft when the submission fails', async () => {
+    let rejectSend!: (e: Error) => void;
+    mockCreateCommentMutateAsync.mockReturnValue(
+      new Promise((_, reject) => {
+        rejectSend = reject;
+      }),
+    );
 
     render(<PostDetailed />);
     typeComment('Great post!');
@@ -306,7 +313,35 @@ describe('post/[id] comment idempotency id (Phase 4)', () => {
       pressSend();
     });
 
-    await waitFor(() => expect(mockCreateCommentMutateAsync).toHaveBeenCalledTimes(1));
-    expect(screen.getByTestId('comment-text-input').props.value).toBe('Great post!');
+    // Optimistic: cleared while the send is still in flight.
+    expect(screen.getByTestId('comment-text-input').props.value).toBe('');
+
+    await act(async () => {
+      rejectSend(new Error('Failed to post comment'));
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('comment-text-input').props.value).toBe('Great post!'),
+    );
+  });
+
+  it('does not overwrite a new draft typed while the failed submission was in flight', async () => {
+    let rejectSend!: (e: Error) => void;
+    mockCreateCommentMutateAsync.mockReturnValue(
+      new Promise((_, reject) => {
+        rejectSend = reject;
+      }),
+    );
+
+    render(<PostDetailed />);
+    typeComment('First comment');
+    await act(async () => {
+      pressSend();
+    });
+    typeComment('Second, still typing');
+
+    await act(async () => {
+      rejectSend(new Error('Failed to post comment'));
+    });
+    expect(screen.getByTestId('comment-text-input').props.value).toBe('Second, still typing');
   });
 });

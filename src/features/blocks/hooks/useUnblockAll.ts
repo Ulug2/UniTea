@@ -2,6 +2,7 @@ import { Alert } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../context/AuthContext";
+import { commentKeys } from "../../comments/data/queryKeys";
 
 export function useUnblockAll() {
   const { session } = useAuth();
@@ -29,7 +30,7 @@ export function useUnblockAll() {
       // scope to), but lazy: don't force every mounted feed to refetch
       // immediately. Matches useBlockUser's established pattern.
       queryClient.invalidateQueries({ queryKey: ["posts"], refetchType: "none" });
-      queryClient.invalidateQueries({ queryKey: ["comments"] });
+      queryClient.invalidateQueries({ queryKey: commentKeys.all });
       queryClient.invalidateQueries({ queryKey: ["chat-messages"] });
       queryClient.invalidateQueries({ queryKey: ["chat-summaries", currentUserId] });
       queryClient.invalidateQueries({ queryKey: ["global-unread-count", currentUserId] });

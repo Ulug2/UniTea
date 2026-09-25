@@ -456,3 +456,124 @@ describe('useCreateComment', () => {
     });
   });
 });
+
+describe('useCreateComment — optimistic comments', () => {
+  const POST = 'post-1';
+  const VIEWER = 'user-abc';
+  const key = ['comments', POST, VIEWER];
+  const profile = { id: VIEWER, username: 'BlueFalcon482', university_id: 'uni-1' };
+
+  function deferredFetch() {
+    let resolve!: (v: unknown) => void;
+    (global.fetch as jest.Mock).mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    return (body: object, ok = true) => resolve({ ok, json: async () => body });
+  }
+
+  function renderCreate() {
+    return renderHook(() => useCreateComment({ postId: POST, viewerId: VIEWER }), {
+      wrapper: createWrapper(),
+    });
+  }
+
+  beforeEach(() => {
+    // No component observes these entries in a hook test, so the suite's
+    // gcTime: 0 would evict them immediately; keep them for assertions.
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } },
+    });
+    queryClient.setQueryData(['current-user-profile', VIEWER], profile);
+    queryClient.setQueryData(key, []);
+  });
+
+  it('shows the comment immediately as pending, before the server responds', async () => {
+    const respond = deferredFetch();
+    const { result } = renderCreate();
+
+    act(() => {
+      result.current.mutate({ id: 'c-new', content: '  Nice!  ', parentId: null, isAnonymous: false });
+    });
+
+    await waitFor(() => expect(queryClient.getQueryData<any[]>(key)).toHaveLength(1));
+    const [pending] = queryClient.getQueryData<any[]>(key)!;
+    expect(pending).toEqual(
+      expect.objectContaining({
+        id: 'c-new',
+        content: 'Nice!',
+        user_id: VIEWER,
+        user: profile,
+        _pending: true,
+        score: 0,
+      }),
+    );
+
+    await act(async () => respond({ id: 'c-new', content: 'Nice!', post_id: POST, user_id: VIEWER }));
+  });
+
+  it('replaces the pending comment with the server row (no duplicate, server anon id kept)', async () => {
+    const respond = deferredFetch();
+    const { result } = renderCreate();
+
+    act(() => {
+      result.current.mutate({ id: 'c-new', content: 'Hi', parentId: null, isAnonymous: true });
+    });
+    await waitFor(() => expect(queryClient.getQueryData<any[]>(key)).toHaveLength(1));
+
+    await act(async () =>
+      respond({ id: 'c-new', content: 'Hi', post_id: POST, user_id: VIEWER, is_anonymous: true, post_specific_anon_id: 4 }),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const list = queryClient.getQueryData<any[]>(key)!;
+    expect(list).toHaveLength(1);
+    expect(list[0]).toEqual(expect.objectContaining({ id: 'c-new', _pending: false, post_specific_anon_id: 4 }));
+    // Uses the cached profile — no profiles query.
+    expect(mockFrom).not.toHaveBeenCalledWith('profiles');
+  });
+
+  it('removes the pending comment and alerts the reason when the server rejects it', async () => {
+    const respond = deferredFetch();
+    const { result } = renderCreate();
+
+    act(() => {
+      result.current.mutate({ id: 'c-bad', content: 'bad', parentId: null, isAnonymous: false });
+    });
+    await waitFor(() => expect(queryClient.getQueryData<any[]>(key)).toHaveLength(1));
+
+    await act(async () => respond({ error: 'Comment contains sexually explicit content' }, false));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(queryClient.getQueryData<any[]>(key)).toEqual([]);
+    expect(Alert.alert).toHaveBeenCalledWith('Error', 'Comment contains sexually explicit content');
+  });
+
+  it("reuses the viewer's existing anonymous number on this post for the pending comment", async () => {
+    queryClient.setQueryData(key, [
+      { id: 'old', user_id: VIEWER, is_anonymous: true, post_specific_anon_id: 7, content: 'earlier' },
+    ]);
+    deferredFetch();
+    const { result } = renderCreate();
+
+    act(() => {
+      result.current.mutate({ id: 'c-anon', content: 'again', parentId: null, isAnonymous: true });
+    });
+    await waitFor(() => expect(queryClient.getQueryData<any[]>(key)).toHaveLength(2));
+    const pending = queryClient.getQueryData<any[]>(key)!.find((c) => c.id === 'c-anon');
+    expect(pending.post_specific_anon_id).toBe(7);
+  });
+
+  it('a retry of the same submission (same id) never shows the comment twice', async () => {
+    deferredFetch();
+    deferredFetch();
+    const { result } = renderCreate();
+
+    act(() => {
+      result.current.mutate({ id: 'c-same', content: 'Hello', parentId: null, isAnonymous: false });
+    });
+    await waitFor(() => expect(queryClient.getQueryData<any[]>(key)).toHaveLength(1));
+    act(() => {
+      result.current.mutate({ id: 'c-same', content: 'Hello', parentId: null, isAnonymous: false });
+    });
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    expect(queryClient.getQueryData<any[]>(key)!.filter((c) => c.id === 'c-same')).toHaveLength(1);
+  });
+});

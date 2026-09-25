@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { checkClientRateLimit, isRateLimitError } from "../../../utils/clientRateLimit";
 import type { BlockScope } from "../../../hooks/useBlocks";
+import { commentKeys } from "../../comments/data/queryKeys";
 
 type BlockUserParams = {
   targetUserId: string;
@@ -38,7 +39,7 @@ export function useBlockUser(viewerId: string | null) {
       // Mark posts/comments as stale but don't refetch immediately —
       // this avoids triggering heavy re-renders during navigation animations
       queryClient.invalidateQueries({ queryKey: ["posts"], refetchType: "none" });
-      queryClient.invalidateQueries({ queryKey: ["comments"], refetchType: "none" });
+      queryClient.invalidateQueries({ queryKey: commentKeys.all, refetchType: "none" });
       queryClient.invalidateQueries({ queryKey: ["post"], refetchType: "none" });
 
       // Chat-related: refetch so blocked chats disappear promptly
