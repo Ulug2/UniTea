@@ -24,7 +24,7 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 (no over-the-air updates are configured). **Everything below ships in 1.2.0** (version bumped
 2026-09-25; 1.1.0 is live). Check these off once 1.2.0 is released.
 
-- [ ] Signup: "Too many attempts" lock now expires, real wait time shown, clear message for breached/common passwords (`HASH_AUTH`) — after release, re-enable Supabase leaked-password protection (turned off 2026-09-29)
+- [ ] Signup: "Too many attempts" lock now expires, real wait time shown, clear message for breached/common passwords (`345b4fb`) — after release, re-enable Supabase leaked-password protection (turned off 2026-09-29)
 - [ ] SDU branding shows "Suleiman Demirel" for `sdu.edu.kz` (`daf72ac`)
 - [ ] Clear "This university is not supported yet." message at signup (`daf72ac`)
 - [ ] Email-link screen tells verified users to sign in instead of showing an error (`a486933`)
@@ -51,7 +51,7 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 
 ## ✅ Done
 
-- [x] 2026-09-29 · Signup rush: raised Supabase email cap to 1000/h; auth rate-limit lockout + weak-password message fixed in app · `HASH_AUTH`
+- [x] 2026-09-29 · Signup rush: raised Supabase email cap to 1000/h; auth rate-limit lockout + weak-password message fixed in app · `345b4fb`
 - [x] 2026-09-29 · Website user count (unitea.app) counts email-verified students only — deployed · `e2f07d2`
 - [x] 2026-09-24 · SDU signup domain fixed (`sdu.edu.kz`) + working pre-signup domain check · `daf72ac`
 - [x] 2026-09-24 · Email-link callback: clear messages for used/expired links and other-device opens · `a486933`
