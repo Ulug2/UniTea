@@ -61,6 +61,7 @@ import { useOriginalPostForRepost } from "../../hooks/useOriginalPostForRepost";
 import { useImagePipeline } from "../../hooks/useImagePipeline";
 import { useCreatePostFormState } from "../../hooks/useCreatePostFormState";
 import { useCreatePostMutation } from "../../hooks/useCreatePostMutation";
+import { useFollowGrowingInput } from "../../hooks/useFollowGrowingInput";
 import {
   FullscreenImageModal,
   resolvePostImageUri,
@@ -175,6 +176,7 @@ export default function CreatePostScreen() {
     reset,
     canSubmit,
   } = useCreatePostFormState({ type, repostId });
+  const followInput = useFollowGrowingInput(content.length);
 
   const { pickAndPrepareImages } = useImagePipeline({
     allowsMultipleSelection: true,
@@ -676,6 +678,8 @@ export default function CreatePostScreen() {
       >
         <View style={{ flex: 1, paddingBottom: androidKeyboardInset }}>
           <ScrollView
+            ref={followInput.scrollRef}
+            {...followInput.scrollViewProps}
             style={styles.scrollView}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -865,7 +869,7 @@ export default function CreatePostScreen() {
             )}
 
             {/* CONTENT INPUT */}
-            <View style={styles.contentSection}>
+            <View style={styles.contentSection} {...followInput.sectionProps}>
               <View style={styles.sectionLabelRow}>
                 {isLostFound ? (
                   <Text style={[styles.sectionLabelCompact, { color: theme.text }]}>
@@ -902,7 +906,11 @@ export default function CreatePostScreen() {
                 value={content}
                 multiline
                 autoFocus={isRepost}
-                scrollEnabled
+                // Grows with its content and lets the page scroll it: an
+                // internally-scrolling input nested in the page ScrollView
+                // couldn't be scrolled to the end of long/pasted posts.
+                scrollEnabled={false}
+                {...followInput.inputProps}
                 textAlignVertical="top"
                 maxLength={POST_BODY_MAX_LENGTH}
               />
@@ -1412,7 +1420,6 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins_400Regular",
     paddingVertical: verticalScale(10),
     minHeight: verticalScale(48),
-    maxHeight: verticalScale(420),
     textAlignVertical: "top",
   },
   imageGalleryContainer: {
