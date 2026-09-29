@@ -15,6 +15,12 @@ _No open bugs._
 
 ## ✨ Features
 
+- [~] **AI moderation: allow names unless the content targets the person.** Names of private
+  people are allowed in neutral/positive contexts; blocked when insulting, threatening, sexual,
+  spreading rumors/accusations, or exposing personal info. Public figures and professors can be
+  criticized freely. One shared rule in `_shared/moderation.ts` for posts, comments, image text and
+  communities; deterministic (temperature 0); 33/33 example texts behave as intended.
+  Branch `feat/moderation-allow-names`.
 - [ ] **Lost & Found → Announcements & Advertisements.** Transform the Lost & Found section
   into announcements and advertisements.
 

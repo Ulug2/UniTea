@@ -3,6 +3,15 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import OpenAI from "https://esm.sh/openai@4";
 import {
+  EXPLICIT_SEXUAL_RULE,
+  LANGUAGE_NOTE,
+  MODERATION_MODEL,
+  MODERATION_TEMPERATURE,
+  TARGETS_PRIVATE_PERSON_RULE,
+  parseModerationJson,
+  targetsPrivatePersonMessage,
+} from "../_shared/moderation.ts";
+import {
   checkRateLimit,
   rateLimitExceededResponse,
 } from "../_shared/rateLimit.ts";
@@ -120,29 +129,30 @@ serve(async (req: Request) => {
     }
 
     const contextCheck = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: MODERATION_MODEL,
       messages: [
         {
           role: "system",
-          content: `You are an AI moderator for a university social app. Evaluate the proposed community name and description.
-Reject if:
-1. private_name: true — explicitly names a private individual (not a public figure, celebrity, or generic role like "professors")
-2. explicit_sexual: true — contains highly graphic or pornographic content
-3. impersonation: true — impersonates an official university body (e.g. "NU Administration Official", "Dean's Office")
-Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean, "impersonation": boolean}`,
+          content: `You are an AI moderator for a university social app. Evaluate the proposed community name and description. ${LANGUAGE_NOTE}
+Evaluate for three violations:
+1. ${TARGETS_PRIVATE_PERSON_RULE}
+2. ${EXPLICIT_SEXUAL_RULE}
+3. impersonation: true if it impersonates an official university body (e.g. "NU Administration Official", "Dean's Office").
+Output JSON ONLY: {"targets_private_person": boolean, "explicit_sexual": boolean, "impersonation": boolean}`,
         },
         { role: "user", content: textToModerate.slice(0, 500) },
       ],
       response_format: { type: "json_object" },
       max_tokens: 60,
+      temperature: MODERATION_TEMPERATURE,
     });
 
-    let aiResponse: { private_name?: boolean; explicit_sexual?: boolean; impersonation?: boolean } = {};
-    try {
-      aiResponse = JSON.parse(contextCheck.choices[0]?.message?.content ?? "{}");
-    } catch {
-      // parse failure — allow through; false positive rejection is worse
-    }
+    // Parse failure allows through — a false rejection is worse.
+    const aiResponse = parseModerationJson<{
+      targets_private_person: boolean;
+      explicit_sexual: boolean;
+      impersonation: boolean;
+    }>(contextCheck.choices[0]?.message?.content);
 
     if (aiResponse.explicit_sexual) {
       return new Response(
@@ -150,9 +160,9 @@ Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean, "imperso
         { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    if (aiResponse.private_name) {
+    if (aiResponse.targets_private_person) {
       return new Response(
-        JSON.stringify({ error: "Community name mentions a private individual." }),
+        JSON.stringify({ error: targetsPrivatePersonMessage("Community name or description") }),
         { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }

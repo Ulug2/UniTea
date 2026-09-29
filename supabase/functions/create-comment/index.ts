@@ -5,6 +5,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import OpenAI from "https://esm.sh/openai@4";
+import { moderateText } from "../_shared/moderation.ts";
 import {
   checkRateLimit,
   rateLimitExceededResponse,
@@ -141,68 +142,9 @@ serve(async (req: Request) => {
       throw new Error("Post ID is required");
     }
 
-    // 4. Text Moderation: Context-aware name drops & sexual content
-    const textToModerate = content.trim();
-
-    // 4a (hard safety checks, OpenAI Moderation API) and 4b (contextual
-    // check, GPT-4o-mini) are independent, so both requests run in parallel;
-    // their results are still applied in the same order as before.
-    const systemPrompt = `You are an AI moderator for an anonymous social app for Nazarbayev University students. 
-Analyze the user's text. The text may be in English, Russian, Kazakh, or Latin-transliterated Russian/Kazakh (e.g., "krasavchik", "zhasap", "pizdec").
-
-Evaluate for two violations:
-1. private_name: true if the text explicitly names an everyday, private student or individual. 
-   - FALSE if it's a public figure, celebrity, athlete, actor (e.g., "Erkebulan Toktar"), influencer, or politician.
-   - FALSE for generic titles ("the dean", "my professor", "admin").
-   - FALSE if the context implies a public event, media, or internet drama. If unsure, err on the side of allowing (default to false).
-2. explicit_sexual: true ONLY if the text is highly graphic, pornographic, erotica, or describes sexual violence/non-consensual acts. 
-   - FALSE for normal discussions about relationships, sex, anatomy, or casual sexual slang (e.g., "fingering", "hooking up") used in a conversational, joking, or educational context.
-
-Output JSON ONLY: {"private_name": boolean, "explicit_sexual": boolean}`;
-
-    const [moderation, contextCheck] = await Promise.all([
-      openai.moderations.create({ input: textToModerate }),
-      openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: textToModerate.slice(0, 2000) }
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 50,
-      }),
-    ]);
-
-    // 4a. Hard safety checks (illegal/severe harm)
-    const modResults = moderation.results?.[0];
-
-    if (modResults) {
-      if (
-        modResults.categories["sexual/minors"] ||
-        modResults.categories["self-harm/intent"] ||
-        modResults.categories["self-harm/instructions"] ||
-        modResults.categories["violence/graphic"]
-      ) {
-        throw new Error("Comment violates severe safety guidelines (harm, minors, graphic violence)");
-      }
-    }
-
-    // 4b. Smart contextual moderation (private names, explicit sexual content)
-    const aiResponseText = contextCheck.choices[0]?.message?.content || "{}";
-    let aiResponse: { private_name?: boolean; explicit_sexual?: boolean } = {};
-
-    try {
-      aiResponse = JSON.parse(aiResponseText);
-    } catch (e) {
-      console.error("Failed to parse moderation JSON:", e);
-    }
-
-    if (aiResponse.explicit_sexual) {
-      throw new Error("Comment contains sexually explicit content");
-    }
-    if (aiResponse.private_name) {
-      throw new Error("Comment mentions a likely private student name");
-    }
+    // 4. Text moderation (severe harm, explicit sexual content, content
+    //    targeting a private person) — see _shared/moderation.ts.
+    await moderateText(openai, content.trim(), "Comment");
 
     // 5. Prepare comment data for database insertion
     const commentData: any = {
