@@ -208,10 +208,16 @@ function getStyles(theme: Theme) {
   return _styleCache.get(theme)!;
 }
 
-const READ_MORE_CHAR_THRESHOLD = 180;
-const READ_MORE_NEWLINE_THRESHOLD = 3;
-const READ_MORE_MEASURE_CHAR_THRESHOLD = 120;
-const READ_MORE_MEASURE_NEWLINE_THRESHOLD = 2;
+/** Collapsed post text shows this many lines, then "read more". */
+export const READ_MORE_MAX_LINES = 10;
+// "Certainly longer than READ_MORE_MAX_LINES" without measuring (~45 chars
+// per line on a phone): shows "read more" on first paint.
+const READ_MORE_CHAR_THRESHOLD = 550;
+const READ_MORE_NEWLINE_THRESHOLD = READ_MORE_MAX_LINES;
+// "Might be longer": below this, text can't reach READ_MORE_MAX_LINES, so
+// the layout isn't measured at all.
+const READ_MORE_MEASURE_CHAR_THRESHOLD = 200;
+const READ_MORE_MEASURE_NEWLINE_THRESHOLD = 4;
 
 function createTextCacheKey(
   postId: string,
@@ -650,10 +656,10 @@ const PostListItem = React.memo(function PostListItem({
     (event: NativeSyntheticEvent<TextLayoutEventData>) => {
       if (isDetailedPost) return;
       const lines = event.nativeEvent.lines ?? [];
-      const hasMoreThanMaxLines = lines.length > 4;
+      const hasMoreThanMaxLines = lines.length > READ_MORE_MAX_LINES;
       const lastRenderedLine = lines[Math.max(0, lines.length - 1)]?.text ?? "";
       const visuallyEllipsized =
-        lines.length === 4 &&
+        lines.length === READ_MORE_MAX_LINES &&
         (lastRenderedLine.endsWith("...") || lastRenderedLine.endsWith("…"));
       const nextValue = hasMoreThanMaxLines || visuallyEllipsized;
       const cachedValue = truncationCacheRef.current.get(cacheKey);
@@ -844,7 +850,7 @@ const PostListItem = React.memo(function PostListItem({
             <View>
               <Text
                 numberOfLines={
-                  isDetailedPost || repostCommentExpanded ? undefined : 4
+                  isDetailedPost || repostCommentExpanded ? undefined : READ_MORE_MAX_LINES
                 }
                 onTextLayout={
                   repostCommentKey &&
@@ -944,7 +950,7 @@ const PostListItem = React.memo(function PostListItem({
                 )}
                 <Text
                   numberOfLines={
-                    isDetailedPost || originalContentExpanded ? undefined : 4
+                    isDetailedPost || originalContentExpanded ? undefined : READ_MORE_MAX_LINES
                   }
                   onTextLayout={
                     originalContentKey &&
@@ -1066,7 +1072,7 @@ const PostListItem = React.memo(function PostListItem({
                   <View>
                     <Text
                       numberOfLines={
-                        isDetailedPost || contentExpanded ? undefined : 4
+                        isDetailedPost || contentExpanded ? undefined : READ_MORE_MAX_LINES
                       }
                       onTextLayout={
                         regularContentKey &&
