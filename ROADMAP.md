@@ -5,7 +5,7 @@ check it off, add the commit hash, and move it to **Done** once it is pushed.
 
 Status: `[ ]` not started · `[~]` in progress · `[x]` done
 
-_Last updated: 2026-09-25_
+_Last updated: 2026-09-29_
 
 ---
 
@@ -50,6 +50,7 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 
 ## ✅ Done
 
+- [x] 2026-09-29 · Website user count (unitea.app) counts email-verified students only — deployed · `HASH_COUNT`
 - [x] 2026-09-24 · SDU signup domain fixed (`sdu.edu.kz`) + working pre-signup domain check · `daf72ac`
 - [x] 2026-09-24 · Email-link callback: clear messages for used/expired links and other-device opens · `a486933`
 - [x] 2026-09-24 · Vote taps no longer fall through to the post card · `bfd5b45`

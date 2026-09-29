@@ -37,19 +37,19 @@ serve(async (req: Request) => {
       );
     }
 
-    // Public endpoint: only ever returns an aggregate profile count (no PII,
-    // no per-user data) for display on the public landing page, so it does
-    // not require caller authentication.
+    // Public endpoint: only ever returns an aggregate count of email-verified
+    // users (no PII, no per-user data) for display on the public landing
+    // page, so it does not require caller authentication.
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { count, error } = await supabaseAdmin
-      .from("profiles")
-      .select("id", { count: "exact", head: true });
+    const { data: count, error } = await supabaseAdmin.rpc(
+      "count_verified_users"
+    );
 
     if (error) {
-      console.error("Error counting profiles:", error);
+      console.error("Error counting verified users:", error);
       return new Response(
         JSON.stringify({ error: "Failed to fetch user count" }),
         {
