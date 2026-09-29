@@ -15,12 +15,6 @@ _No open bugs._
 
 ## ✨ Features
 
-- [~] **AI moderation: allow names unless the content targets the person.** Names of private
-  people are allowed in neutral/positive contexts; blocked when insulting, threatening, sexual,
-  spreading rumors/accusations, or exposing personal info. Public figures and professors can be
-  criticized freely. One shared rule in `_shared/moderation.ts` for posts, comments, image text and
-  communities; deterministic (temperature 0); 33/33 example texts behave as intended.
-  Branch `feat/moderation-allow-names`.
 - [ ] **Lost & Found → Announcements & Advertisements.** Transform the Lost & Found section
   into announcements and advertisements.
 
@@ -65,3 +59,4 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 - [x] 2026-09-25 · Optimistic commenting + `create-comment` runs both AI checks in parallel (deployed) · `2c8be1e`
 - [x] 2026-09-25 · Profile/Lost & Found/Chats lists: no blank list or stuck pull-to-refresh after background updates · `ccb4133`, `15b5d5c`
 - [x] 2026-09-25 · Community header: avatar + name on one row, full-width description · `af20799`
+- [x] 2026-09-29 · AI moderation allows names unless the content targets a private person (insults, threats, sexual comments, rumors, personal info); public figures can be criticized freely — deployed (server-side, all app versions) · `0c34450`
