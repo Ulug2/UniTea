@@ -408,6 +408,7 @@ export default function CreatePostScreen() {
     communityAvatarUrl: effectiveCommunity?.avatar_url ?? null,
     username: currentUser?.username,
     avatarUrl: currentUser?.avatar_url,
+    originalPost,
   });
 
   const handlePost = async () => {

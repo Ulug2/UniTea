@@ -693,3 +693,96 @@ describe('useCreatePostMutation', () => {
     });
   });
 });
+
+describe('useCreatePostMutation — repost shows its original immediately', () => {
+  const REPOST_ID = 'orig-1';
+  const original = {
+    post_id: REPOST_ID,
+    user_id: 'author-9',
+    username: 'GoldenOtter111',
+    avatar_url: 'author-9/avatar.jpg',
+    title: 'Original title',
+    content: 'Original body',
+    image_url: 'author-9/a.webp',
+    image_urls: ['author-9/a.webp', 'author-9/b.webp'],
+    image_aspect_ratio: 1.5,
+    is_anonymous: false,
+    created_at: '2026-09-01T10:00:00.000Z',
+    is_author_blocked_by_viewer: false,
+  } as any;
+
+  beforeEach(() => {
+    // Nothing observes the feed cache in a hook test, so the suite's
+    // gcTime: 0 would evict the inserted post before we can read it.
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } },
+    });
+  });
+
+  function insertedPost() {
+    const value: any = queryClient.getQueryData(DEFAULT_FEED_CACHE_KEY);
+    return value?.pages?.[0]?.[0];
+  }
+
+  it('fills the original_* fields from the loaded original post (the server response has none)', async () => {
+    mockFetchSuccess({ id: 'repost-1', reposted_from_post_id: REPOST_ID });
+    const { result } = renderHook(
+      () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID, repostId: REPOST_ID, originalPost: original }),
+      { wrapper: createWrapper() },
+    );
+
+    act(() => { result.current.mutate({ ...defaultVars, postContent: 'My take' }); });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(insertedPost()).toEqual(
+      expect.objectContaining({
+        post_id: 'repost-1',
+        repost_comment: 'My take',
+        original_post_id: REPOST_ID,
+        original_title: 'Original title',
+        original_content: 'Original body',
+        original_user_id: 'author-9',
+        original_author_username: 'GoldenOtter111',
+        original_author_avatar: 'author-9/avatar.jpg',
+        original_image_urls: ['author-9/a.webp', 'author-9/b.webp'],
+        original_is_anonymous: false,
+      }),
+    );
+  });
+
+  it('keeps an anonymous original anonymous (no author id/name/avatar), like the view', async () => {
+    mockFetchSuccess({ id: 'repost-2' });
+    const anonOriginal = { ...original, is_anonymous: true, user_id: null, username: null, avatar_url: null };
+    const { result } = renderHook(
+      () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID, repostId: REPOST_ID, originalPost: anonOriginal }),
+      { wrapper: createWrapper() },
+    );
+
+    act(() => { result.current.mutate({ ...defaultVars, postContent: '' }); });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(insertedPost()).toEqual(
+      expect.objectContaining({
+        original_content: 'Original body',
+        original_is_anonymous: true,
+        original_user_id: null,
+        original_author_username: null,
+        original_author_avatar: null,
+      }),
+    );
+  });
+
+  it('refetches the feed when the original post was not loaded, instead of leaving an empty card', async () => {
+    mockFetchSuccess({ id: 'repost-3' });
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(
+      () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID, repostId: REPOST_ID, originalPost: null }),
+      { wrapper: createWrapper() },
+    );
+
+    act(() => { result.current.mutate({ ...defaultVars, postContent: 'x' }); });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: DEFAULT_FEED_CACHE_KEY });
+  });
+});

@@ -12,6 +12,33 @@ import {
   normalizePostBody,
   normalizePostTitle,
 } from "../utils/postValidation";
+import type { PostsSummaryViewRow } from "../types/posts";
+
+/**
+ * The original_* columns posts_summary_view derives for a repost, built
+ * from the reposted post as the viewer already sees it (same anonymity
+ * redaction as the view: no author id/name/avatar for an anonymous
+ * original). The create-post response is the bare posts row, so without
+ * this a new repost showed its comment but an empty original until the
+ * feed was refreshed.
+ */
+function originalFieldsFor(original: PostsSummaryViewRow) {
+  const isAnon = original.is_anonymous ?? false;
+  return {
+    original_post_id: original.post_id,
+    original_title: original.title ?? null,
+    original_content: original.content ?? null,
+    original_user_id: isAnon ? null : original.user_id ?? null,
+    original_author_username: isAnon ? null : original.username ?? null,
+    original_author_avatar: isAnon ? null : original.avatar_url ?? null,
+    original_image_url: original.image_url ?? null,
+    original_image_urls: original.image_urls ?? null,
+    original_image_aspect_ratio: original.image_aspect_ratio ?? null,
+    original_is_anonymous: original.is_anonymous ?? null,
+    original_created_at: original.created_at ?? null,
+    is_original_author_blocked_by_viewer: original.is_author_blocked_by_viewer ?? false,
+  };
+}
 
 type CreatePostVariables = {
   imagePath: string | undefined;
@@ -47,6 +74,8 @@ type CreatePostOptions = {
   /** Current user's real profile, used for the optimistic post's author display. */
   username?: string | null;
   avatarUrl?: string | null;
+  /** The post being reposted, as loaded for the create-post preview. */
+  originalPost?: PostsSummaryViewRow | null;
 };
 
 export function useCreatePostMutation(options: CreatePostOptions): UseMutationResult<any, unknown, CreatePostVariables> {
@@ -61,6 +90,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
     communityId: defaultCommunityId,
     username,
     avatarUrl,
+    originalPost,
   } = options;
   const queryClient = useQueryClient();
 
@@ -270,6 +300,9 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
           original_author_avatar: null,
           original_is_anonymous: null,
           original_created_at: null,
+          ...(resolvedRepostId && originalPost?.post_id === resolvedRepostId
+            ? originalFieldsFor(originalPost)
+            : {}),
           ...data,
           post_id: data.id,
         };
@@ -292,6 +325,13 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
             pages: newPages,
           };
         });
+
+        // Original not loaded (e.g. its preview fetch failed): refetch the
+        // feed so the repost shows its original from the server row instead
+        // of an empty card.
+        if (resolvedRepostId && originalPost?.post_id !== resolvedRepostId) {
+          queryClient.invalidateQueries({ queryKey: feedCacheKey });
+        }
       }
       if (universityId && currentUserId) {
         logActivity("post_created", universityId, currentUserId);
