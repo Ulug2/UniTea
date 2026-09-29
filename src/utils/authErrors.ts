@@ -4,6 +4,7 @@ export type AuthErrorKind =
   | "invalid_credentials"
   | "user_already_registered"
   | "password_too_short"
+  | "weak_password"
   | "invalid_email"
   | "network"
   | "timeout"
@@ -13,6 +14,8 @@ export type NormalizedAuthError = {
   kind: AuthErrorKind;
   message: string;
   rawMessage: string;
+  /** Server-provided wait before retrying, when the error states one. */
+  retryAfterSeconds?: number;
 };
 
 function toMessage(err: unknown): string {
@@ -29,10 +32,34 @@ export function normalizeAuthError(err: unknown): NormalizedAuthError {
   const rawMessage = toMessage(err);
   const messageLower = rawMessage.toLowerCase();
 
+  // Per-user resend cooldown, e.g. "For security purposes, you can only
+  // request this after 5 seconds."
+  const retryAfter = messageLower.match(/request this after (\d+) seconds?/);
+  if (retryAfter) {
+    const retryAfterSeconds = Number(retryAfter[1]);
+    return {
+      kind: "rate_limit",
+      message: `Please wait ${retryAfterSeconds} second${retryAfterSeconds === 1 ? "" : "s"} and try again.`,
+      rawMessage,
+      retryAfterSeconds,
+    };
+  }
+
   if (messageLower.includes("too many") || messageLower.includes("rate limit")) {
     return {
       kind: "rate_limit",
-      message: "Too many attempts. Please try again in 5 minutes.",
+      message: "Too many attempts right now. Please wait a minute and try again.",
+      rawMessage,
+    };
+  }
+
+  // Leaked-password protection: "Password is known to be weak and easy to
+  // guess, please choose a different one."
+  if (messageLower.includes("known to be weak") || messageLower.includes("easy to guess")) {
+    return {
+      kind: "weak_password",
+      message:
+        "This password is too common or has appeared in a data breach. Please choose a different one.",
       rawMessage,
     };
   }

@@ -33,7 +33,11 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
     config;
   const { race } = useTimeoutRace();
   const splash = useSplashDuring();
-  const rateLimit = useRateLimit({ cooldownMs: rateLimitCooldownMs });
+  const {
+    isLimited: isRateLimited,
+    remainingSeconds: rateLimitSecondsRemaining,
+    trigger: triggerRateLimit,
+  } = useRateLimit({ cooldownMs: rateLimitCooldownMs });
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -132,15 +136,16 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
   }, [isEmailRequestCooldownActive, emailRequestCooldownSecondsRemaining]);
 
   const checkRateLimitOrAlert = useCallback((): boolean => {
-    if (!rateLimit.isLimited) return true;
-    Alert.alert(
-      "Too Many Attempts",
-      `Please wait ${rateLimit.remainingMinutes} minute${rateLimit.remainingMinutes > 1 ? "s" : ""
-      } before trying again.`
-    );
-    logAuthEvent("rate_limit_hit", { remainingMinutes: rateLimit.remainingMinutes });
+    if (!isRateLimited) return true;
+    const seconds = rateLimitSecondsRemaining;
+    const wait =
+      seconds < 60
+        ? `${seconds} second${seconds === 1 ? "" : "s"}`
+        : `${Math.ceil(seconds / 60)} minute${Math.ceil(seconds / 60) === 1 ? "" : "s"}`;
+    Alert.alert("Too Many Attempts", `Please wait ${wait} before trying again.`);
+    logAuthEvent("rate_limit_hit", { remainingSeconds: seconds });
     return false;
-  }, [rateLimit.isLimited, rateLimit.remainingMinutes, logAuthEvent]);
+  }, [isRateLimited, rateLimitSecondsRemaining, logAuthEvent]);
 
   const getEmailRegistrationStatus = useCallback(
     async (sanitizedEmail: string): Promise<EmailRegistrationStatus | null> => {
@@ -195,8 +200,14 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
       const normalized = normalizeAuthError(err);
 
       if (normalized.kind === "rate_limit") {
-        rateLimit.trigger();
-        logAuthEvent("rate_limit_triggered");
+        triggerRateLimit(
+          normalized.retryAfterSeconds != null
+            ? normalized.retryAfterSeconds * 1000
+            : undefined
+        );
+        logAuthEvent("rate_limit_triggered", {
+          retryAfterSeconds: normalized.retryAfterSeconds ?? null,
+        });
       }
       if (normalized.kind === "email_not_confirmed") {
         setShowResendOption(true);
@@ -208,7 +219,7 @@ export function useAuthFlow(config: UseAuthFlowConfig) {
 
       return { message: normalized.message, kind: normalized.kind };
     },
-    [rateLimit, logAuthEvent]
+    [triggerRateLimit, logAuthEvent]
   );
 
   const resendVerificationEmail = useCallback(async () => {

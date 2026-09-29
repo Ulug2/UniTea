@@ -23,7 +23,7 @@ describe('useRateLimit', () => {
 
     expect(result.current.isLimited).toBe(false);
     expect(result.current.remainingMs).toBe(0);
-    expect(result.current.remainingMinutes).toBe(0);
+    expect(result.current.remainingSeconds).toBe(0);
   });
 
   // ── trigger ─────────────────────────────────────────────────────────────────
@@ -51,33 +51,55 @@ describe('useRateLimit', () => {
     expect(result.current.remainingMs).toBeLessThanOrEqual(cooldownMs);
   });
 
-  it('remainingMinutes rounds up correctly', () => {
-    // 90 seconds → ceil(90000 / 60000) = 2 minutes
-    const { result } = renderHook(() => useRateLimit({ cooldownMs: 90_000 }));
+  it('remainingSeconds rounds up correctly', () => {
+    const { result } = renderHook(() => useRateLimit({ cooldownMs: 1_500 }));
 
     act(() => {
       result.current.trigger();
     });
 
-    expect(result.current.remainingMinutes).toBe(2);
+    expect(result.current.remainingSeconds).toBe(2);
   });
 
-  it('isLimited becomes false after cooldown expires', () => {
-    // NOTE: useMemo([rateLimitUntil]) only re-evaluates when rateLimitUntil
-    // state changes. Advancing Date.now() alone won't trigger a re-render or
-    // a useMemo cache-bust. This behaviour is correct for production — any
-    // user interaction that causes a re-render will re-evaluate the memo.
-    // To make auto-expiry testable here the hook would need a useEffect /
-    // setTimeout that clears rateLimitUntil state on expiry.
-    //
-    // We instead verify the correct memo value is computed on a FRESH render
-    // after the time window has passed.
-    const cooldownMs = 1_000;
-    jest.setSystemTime(Date.now() + 2_000); // advance 2 s into the future
-    const { result } = renderHook(() => useRateLimit({ cooldownMs }));
-    // A brand-new hook instance has no pending limit — isLimited is false.
+  it('trigger(durationMs) overrides the default cooldown', () => {
+    const { result } = renderHook(() => useRateLimit({ cooldownMs: 60_000 }));
+
+    act(() => {
+      result.current.trigger(5_000);
+    });
+
+    expect(result.current.remainingSeconds).toBe(5);
+  });
+
+  it('unlocks on its own once the cooldown expires (no other re-render)', () => {
+    const { result } = renderHook(() => useRateLimit({ cooldownMs: 60_000 }));
+
+    act(() => {
+      result.current.trigger();
+    });
+    expect(result.current.isLimited).toBe(true);
+
+    act(() => {
+      jest.advanceTimersByTime(60_000);
+    });
+
     expect(result.current.isLimited).toBe(false);
     expect(result.current.remainingMs).toBe(0);
+    expect(result.current.remainingSeconds).toBe(0);
+  });
+
+  it('is unlocked on the next render when the clock passed expiry before the timer fired', () => {
+    const { result, rerender } = renderHook(() => useRateLimit({ cooldownMs: 60_000 }));
+
+    act(() => {
+      result.current.trigger();
+    });
+
+    // Simulates an app resumed from background: wall clock moved, timer not yet run.
+    jest.setSystemTime(Date.now() + 120_000);
+    rerender({});
+
+    expect(result.current.isLimited).toBe(false);
   });
 
   // ── clear ───────────────────────────────────────────────────────────────────
@@ -97,7 +119,7 @@ describe('useRateLimit', () => {
 
     expect(result.current.isLimited).toBe(false);
     expect(result.current.remainingMs).toBe(0);
-    expect(result.current.remainingMinutes).toBe(0);
+    expect(result.current.remainingSeconds).toBe(0);
   });
 
   // ── re-trigger ──────────────────────────────────────────────────────────────
@@ -139,9 +161,6 @@ describe('useRateLimit', () => {
   });
 
   it('works with very short cooldown (100ms)', () => {
-    // Verify trigger() works correctly with minimal cooldown.
-    // (For the same memo-caching reason above, we test the initial and
-    // triggered states rather than time-based expiry.)
     const { result } = renderHook(() => useRateLimit({ cooldownMs: 100 }));
 
     expect(result.current.isLimited).toBe(false);

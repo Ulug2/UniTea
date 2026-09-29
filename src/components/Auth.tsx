@@ -54,7 +54,7 @@ const BORDER_RADIUS = {
 
 const AUTH_CONFIG = {
   TIMEOUT_MS: 30000, // 30 seconds
-  RATE_LIMIT_COOLDOWN_MS: 300000, // 5 minutes
+  RATE_LIMIT_COOLDOWN_MS: 60000, // 1 minute
   EMAIL_REQUEST_COOLDOWN_SECONDS: 60,
 } as const;
 

@@ -68,7 +68,7 @@ describe('useAuthFlow', () => {
     mockRateLimitTrigger = jest.fn();
     mockUseRateLimit.mockReturnValue({
       isLimited: false,
-      remainingMinutes: 0,
+      remainingSeconds: 0,
       trigger: mockRateLimitTrigger,
     });
 
@@ -199,13 +199,13 @@ describe('useAuthFlow', () => {
     });
 
     it('shows alert and does NOT call supabase when rate limited', async () => {
-      mockUseRateLimit.mockReturnValue({ isLimited: true, remainingMinutes: 2, trigger: mockRateLimitTrigger });
+      mockUseRateLimit.mockReturnValue({ isLimited: true, remainingSeconds: 90, trigger: mockRateLimitTrigger });
       const { result } = renderHook(() => useAuthFlow(CONFIG));
       act(() => { result.current.setEmail('a@nu.edu.kz'); result.current.setPassword('pass'); });
 
       await act(async () => { await result.current.signInWithEmail(); });
 
-      expect(alertSpy).toHaveBeenCalledWith('Too Many Attempts', expect.any(String));
+      expect(alertSpy).toHaveBeenCalledWith('Too Many Attempts', 'Please wait 2 minutes before trying again.');
       expect(mockSignIn).not.toHaveBeenCalled();
     });
 
@@ -526,7 +526,24 @@ describe('useAuthFlow', () => {
 
       await act(async () => { await result.current.signInWithEmail(); });
 
-      expect(mockRateLimitTrigger).toHaveBeenCalled();
+      expect(mockRateLimitTrigger).toHaveBeenCalledWith(undefined);
+    });
+
+    it('passes the server retry-after to rateLimit.trigger()', async () => {
+      mockNormalizeAuthError.mockReturnValue({
+        message: 'Please wait 5 seconds and try again.',
+        kind: 'rate_limit',
+        rawMessage: 'For security purposes, you can only request this after 5 seconds.',
+        retryAfterSeconds: 5,
+      });
+      mockSignIn.mockResolvedValue({ error: new Error('rate_limit') });
+
+      const { result } = renderHook(() => useAuthFlow(CONFIG));
+      act(() => { result.current.setEmail('a@nu.edu.kz'); result.current.setPassword('pass'); });
+
+      await act(async () => { await result.current.signInWithEmail(); });
+
+      expect(mockRateLimitTrigger).toHaveBeenCalledWith(5000);
     });
   });
 

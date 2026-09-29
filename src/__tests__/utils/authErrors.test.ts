@@ -67,6 +67,38 @@ describe('normalizeAuthError', () => {
     });
   });
 
+  describe('kind: rate_limit with server retry-after', () => {
+    it('parses the per-user resend cooldown', () => {
+      const raw = 'For security purposes, you can only request this after 5 seconds.';
+      const result = normalizeAuthError(new Error(raw));
+      expectResult(result, 'rate_limit', 'Please wait 5 seconds', raw);
+      expect(result.retryAfterSeconds).toBe(5);
+    });
+
+    it('uses singular for 1 second', () => {
+      const result = normalizeAuthError(new Error('you can only request this after 1 second.'));
+      expect(result.message).toBe('Please wait 1 second and try again.');
+      expect(result.retryAfterSeconds).toBe(1);
+    });
+
+    it('has no retryAfterSeconds for the generic rate limit', () => {
+      expect(normalizeAuthError(new Error('email rate limit exceeded')).retryAfterSeconds).toBeUndefined();
+    });
+  });
+
+  // ── weak_password ────────────────────────────────────────────────────────────
+  describe('kind: weak_password', () => {
+    it('matches the leaked-password rejection', () => {
+      const raw = 'Password is known to be weak and easy to guess, please choose a different one.';
+      expectResult(normalizeAuthError(new Error(raw)), 'weak_password', 'choose a different one', raw);
+    });
+
+    it('message does not mention "email" or "account" (so signup shows it under the password field)', () => {
+      const { message } = normalizeAuthError(new Error('Password is known to be weak'));
+      expect(message.toLowerCase()).not.toMatch(/email|account/);
+    });
+  });
+
   // ── invalid_credentials ──────────────────────────────────────────────────────
   describe('kind: invalid_credentials', () => {
     it('matches "invalid login credentials"', () => {
