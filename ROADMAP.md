@@ -11,7 +11,11 @@ _Last updated: 2026-09-25_
 
 ## 🐞 Bugs
 
-_No open bugs._
+- [~] **Batch (branch `fix/links-readmore-repost-longposts`) — awaiting on-device check:**
+  - Terms/Privacy links not opening on some Android phones (`canOpenURL` pre-check removed).
+  - "Read more" after 10 lines instead of 4.
+  - New repost showed an empty original until refresh (original fields now filled on insert).
+  - Long/pasted posts couldn't be scrolled to the end in Create Post (input grows; page scrolls).
 
 ## ✨ Features
 
