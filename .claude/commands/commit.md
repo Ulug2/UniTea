@@ -18,7 +18,7 @@ Tasks:
 - Push all commits to the correct remote branch.
 
 2. Database
-- Verify there are pending migrations.
+- Check whether there are pending migrations.
 - Run all pending Supabase migrations against the linked project.
 - Confirm every migration completed successfully.
 - Verify local and remote migration history match.
@@ -30,20 +30,20 @@ Tasks:
 - Do not redeploy unchanged functions unnecessarily.
 
 4. Database Verification
-After migrations complete:
-- Verify new username generation exists.
-- Verify existing usernames were migrated.
-- Verify unique username constraint exists.
-- Verify username validation constraint exists.
-- Verify anonymous chat privacy migrations are present.
-- Confirm all expected migrations are now live.
+For each migration applied in this run (skip this step if none were):
+- Verify every object it creates or changes exists live (tables, columns, constraints, indexes, functions, triggers, policies, views) — query the catalog read-only.
+- For any new or replaced `SECURITY DEFINER` function: confirm `search_path` is set and EXECUTE is revoked from `PUBLIC`/`anon`/`authenticated` unless a grant is intended.
+- For any new or changed RLS policy on a write table: confirm it uses `auth.uid()` and never `USING (true)` / `WITH CHECK (true)`.
+- For data backfills: spot-check that existing rows were migrated.
+- Confirm nothing an installed app build still uses was renamed or dropped.
+- For an Edge Function that depends on a new migration, deploy the migration first, then call the function once to confirm it responds correctly.
 
 5. Smoke Test
 Run appropriate verification commands:
 - Ensure TypeScript still passes.
 - Ensure there are no pending migrations.
-- Ensure git working tree is clean.
-- Ensure no files remain uncommitted.
+- Ensure tests still pass.
+- Ensure git working tree is clean, except files the user explicitly excluded (list them in the report).
 
 6. Final Report
 
