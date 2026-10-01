@@ -18,6 +18,7 @@ import {
 import { Feather, FontAwesome, Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import PostListItem from "../../../components/PostListItem";
+import { toPostListItemProps } from "../../../features/posts/utils/postListItemProps";
 import PostListSkeleton from "../../../components/PostListSkeleton";
 import CommunityFilterBarSkeleton from "../../../components/CommunityFilterBarSkeleton";
 import CustomInput from "../../../components/CustomInput";
@@ -215,45 +216,7 @@ function FeedPageContent({
   const renderItem = useCallback(
     ({ item, index }: { item: PostSummary; index: number }) => (
       <PostListItem
-        postId={item.post_id}
-        userId={item.user_id}
-        content={item.content}
-        title={item.title}
-        imageUrl={item.image_url}
-        imageUrls={item.image_urls ?? null}
-        imageAspectRatio={item.image_aspect_ratio}
-        category={item.category}
-        location={item.location}
-        postType={item.post_type}
-        isAnonymous={item.is_anonymous}
-        isEdited={item.is_edited}
-        createdAt={item.created_at}
-        updatedAt={item.updated_at}
-        editedAt={item.edited_at}
-        viewCount={item.view_count}
-        username={item.username}
-        avatarUrl={item.avatar_url}
-        universityDomain={item.university_domain}
-        communityId={item.community_id}
-        communityName={item.community_name}
-        communityAvatarUrl={item.community_avatar_url}
-        isVerified={item.is_verified}
-        commentCount={item.comment_count}
-        voteScore={item.vote_score}
-        userVote={item.user_vote}
-        repostCount={item.repost_count}
-        repostedFromPostId={item.reposted_from_post_id}
-        repostComment={item.repost_comment}
-        originalContent={item.original_content}
-        originalTitle={item.original_title}
-        originalImageUrl={item.original_image_url}
-        originalImageUrls={item.original_image_urls ?? null}
-        originalImageAspectRatio={item.original_image_aspect_ratio}
-        originalUserId={item.original_user_id}
-        originalAuthorUsername={item.original_author_username}
-        originalAuthorAvatar={item.original_author_avatar}
-        originalIsAnonymous={item.original_is_anonymous}
-        originalCreatedAt={item.original_created_at}
+        {...toPostListItemProps(item)}
         onImagePress={openGallery}
         onImageLoad={index < 5 ? onItemReady : undefined}
         isAdmin={isAdmin}

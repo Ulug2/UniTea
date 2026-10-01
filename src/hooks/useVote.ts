@@ -13,6 +13,11 @@ interface UseVoteOptions {
     // Optional: provide initial values to avoid fetching
     initialUserVote?: VoteType;
     initialScore?: number;
+    /**
+     * Display-only (post card preview): never refetch the score/vote and
+     * never write a vote — the initial values are rendered as-is.
+     */
+    readOnly?: boolean;
 }
 
 export function useVote({ 
@@ -21,6 +26,7 @@ export function useVote({
     onVoteSuccess,
     initialUserVote,
     initialScore,
+    readOnly = false,
 }: UseVoteOptions) {
     const { session } = useAuth();
     const userId = session?.user?.id;
@@ -34,7 +40,7 @@ export function useVote({
             const result = await getUserVote(userId, postId, commentId);
             return result.voteType;
         },
-        enabled: !!userId && (!!postId || !!commentId),
+        enabled: !readOnly && !!userId && (!!postId || !!commentId),
         staleTime: 1000 * 30, // 30 seconds
         gcTime: 1000 * 60 * 5, // 5 minutes
         initialData: initialUserVote,
@@ -51,7 +57,7 @@ export function useVote({
             }
             return 0;
         },
-        enabled: !!postId || !!commentId,
+        enabled: !readOnly && (!!postId || !!commentId),
         staleTime: 1000 * 10, // 10 seconds
         gcTime: 1000 * 60 * 5, // 5 minutes
         initialData: initialScore,
@@ -146,11 +152,11 @@ export function useVote({
     // a disabled Pressable doesn't claim the touch, so it falls through to the
     // parent (e.g. the post card's Link) and navigates.
     const handleUpvote = () => {
-        if (!voteMutation.isPending) voteMutation.mutate('upvote');
+        if (!readOnly && !voteMutation.isPending) voteMutation.mutate('upvote');
     };
 
     const handleDownvote = () => {
-        if (!voteMutation.isPending) voteMutation.mutate('downvote');
+        if (!readOnly && !voteMutation.isPending) voteMutation.mutate('downvote');
     };
 
     return {

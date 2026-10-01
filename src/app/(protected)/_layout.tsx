@@ -15,6 +15,7 @@ import {
 } from "../../hooks/usePushNotifications";
 import { useGlobalUnreadCount } from "../../hooks/useGlobalUnreadCount";
 import { setPendingDeepLink } from "../../utils/pendingDeepLink";
+import { isProfileBanned } from "../../utils/banStatus";
 
 export default function AppLayout() {
   const { theme } = useTheme();
@@ -24,11 +25,7 @@ export default function AppLayout() {
   const { data: profile, isLoading: profileLoading } = useMyProfile(
     session?.user?.id,
   );
-  const isBanned =
-    profile &&
-    (profile.is_permanently_banned === true ||
-      (profile.banned_until != null &&
-        new Date(profile.banned_until) > new Date()));
+  const isBanned = isProfileBanned(profile);
 
   // Ensure notification permission + Expo push token registration + handler
   // setup runs whenever the user is authenticated.

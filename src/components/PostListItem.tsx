@@ -224,7 +224,7 @@ function createTextCacheKey(
   return `${postId}:${variant}:${trimmed.length}:${prefix}:${suffix}`;
 }
 
-type PostListItemProps = {
+export type PostListItemProps = {
   // Post data from view
   postId: string;
   userId: string | null | undefined;
@@ -304,6 +304,15 @@ type PostListItemProps = {
    * row (its label, its non-anonymous/profile-press behavior) is unchanged.
    */
   disableCommunityNavigation?: boolean;
+  /**
+   * Display-only rendering for the web post card preview
+   * (src/app/preview/post-card.tsx): same layout and content, but no
+   * navigation and no side effects — voting, poll voting, comment/repost
+   * navigation, sharing, anonymous chat, profile/community taps and the
+   * card's own link are all inert, and the vote score is never refetched.
+   * Expanding "read more" stays enabled since it is purely local UI state.
+   */
+  readOnly?: boolean;
 };
 
 function normalizeImagePaths(
@@ -453,6 +462,26 @@ const stylesForAdaptiveSingleImage = {
   marginBottom: 6,
 };
 
+/** The whole card links to Post Detail, except in read-only previews. */
+function PostCardLink({
+  postId,
+  readOnly,
+  style,
+  children,
+}: {
+  postId: string;
+  readOnly: boolean;
+  style: React.ComponentProps<typeof Link>["style"];
+  children: React.ReactElement;
+}) {
+  if (readOnly) return children;
+  return (
+    <Link href={`/post/${postId}`} asChild style={style}>
+      {children}
+    </Link>
+  );
+}
+
 // Custom comparison function for better memoization (prevents unnecessary re-renders)
 const arePropsEqual = (
   prevProps: PostListItemProps,
@@ -506,7 +535,8 @@ const arePropsEqual = (
     prevProps.onImagePress === nextProps.onImagePress &&
     prevProps.isAdmin === nextProps.isAdmin &&
     prevProps.imagesAssumeCached === nextProps.imagesAssumeCached &&
-    prevProps.userVote === nextProps.userVote
+    prevProps.userVote === nextProps.userVote &&
+    prevProps.readOnly === nextProps.readOnly
   );
 };
 
@@ -553,6 +583,7 @@ const PostListItem = React.memo(function PostListItem({
   isAdmin = false,
   imagesAssumeCached = false,
   disableCommunityNavigation = false,
+  readOnly = false,
 }: PostListItemProps) {
   const { theme } = useTheme();
   const { session } = useAuth();
@@ -741,6 +772,7 @@ const PostListItem = React.memo(function PostListItem({
     postId,
     initialScore: voteScore,
     initialUserVote,
+    readOnly,
   });
 
   const anonChatMutation = useInitiateAnonymousChat();
@@ -793,8 +825,8 @@ const PostListItem = React.memo(function PostListItem({
 
   return (
     <>
-      <Link href={`/post/${postId}`} asChild style={styles.link}>
-        <Pressable style={styles.card}>
+      <PostCardLink postId={postId} readOnly={readOnly} style={styles.link}>
+        <Pressable style={styles.card} disabled={readOnly}>
           {/* REPOST HEADER - intentionally removed; reposter identity shown in avatar/username row */}
 
           {/* HEADER */}
@@ -814,8 +846,9 @@ const PostListItem = React.memo(function PostListItem({
                 }
               }}
               disabled={
-                !isCommunityIdentity &&
-                (isAnonymous || !userId || userId === currentUserId)
+                readOnly ||
+                (!isCommunityIdentity &&
+                  (isAnonymous || !userId || userId === currentUserId))
               }
             >
               <EntityAvatar
@@ -925,6 +958,7 @@ const PostListItem = React.memo(function PostListItem({
               // Show original post content in a card — tap to navigate to original post
               <Pressable
                 style={styles.originalPostCard}
+                disabled={readOnly}
                 onPress={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -1017,7 +1051,9 @@ const PostListItem = React.memo(function PostListItem({
                     />
                   ))}
                 {/* Original post poll (Poll renders null if the post has no poll) */}
-                {repostedFromPostId && <Poll postId={repostedFromPostId} />}
+                {repostedFromPostId && (
+                  <Poll postId={repostedFromPostId} readOnly={readOnly} />
+                )}
                 {originalCreatedAt && (
                   <Text style={styles.originalDate}>
                     Original post:{" "}
@@ -1112,7 +1148,7 @@ const PostListItem = React.memo(function PostListItem({
                   </View>
                 )}
                 {/* POLL (only for original feed posts, not repost wrappers) */}
-                {!isRepost && <Poll postId={postId} />}
+                {!isRepost && <Poll postId={postId} readOnly={readOnly} />}
               </>
             )}
           </View>
@@ -1130,6 +1166,7 @@ const PostListItem = React.memo(function PostListItem({
                     handleUpvote();
                   }}
                   hitSlop={upvoteHitSlop}
+                  disabled={readOnly}
                 >
                   <MaterialCommunityIcons
                     name={
@@ -1150,6 +1187,7 @@ const PostListItem = React.memo(function PostListItem({
                     handleDownvote();
                   }}
                   hitSlop={downvoteHitSlop}
+                  disabled={readOnly}
                 >
                   <MaterialCommunityIcons
                     name={
@@ -1173,7 +1211,7 @@ const PostListItem = React.memo(function PostListItem({
                   }
                 }}
                 style={styles.iconBox}
-                disabled={disableCommentInteraction || isDetailedPost}
+                disabled={readOnly || disableCommentInteraction || isDetailedPost}
               >
                 <MaterialCommunityIcons
                   name="comment-outline"
@@ -1189,6 +1227,7 @@ const PostListItem = React.memo(function PostListItem({
                   handleRepostClick(e);
                 }}
                 style={styles.iconBox}
+                disabled={readOnly}
               >
                 <Ionicons
                   name="repeat-outline"
@@ -1204,6 +1243,7 @@ const PostListItem = React.memo(function PostListItem({
                   handleShareClick(e);
                 }}
                 style={styles.iconBox}
+                disabled={readOnly}
               >
                 <Ionicons
                   name="share-outline"
@@ -1218,7 +1258,7 @@ const PostListItem = React.memo(function PostListItem({
                     styles.iconBox,
                     anonChatMutation.isPending && { opacity: 0.5 },
                   ]}
-                  disabled={anonChatMutation.isPending}
+                  disabled={readOnly || anonChatMutation.isPending}
                 >
                   {anonChatMutation.isPending ? (
                     <ActivityIndicator
@@ -1234,7 +1274,7 @@ const PostListItem = React.memo(function PostListItem({
                   )}
                 </Pressable>
               )}
-              {isDetailedPost && onBookmarkPress && (
+              {isDetailedPost && onBookmarkPress && !readOnly && (
                 <Pressable
                   onPress={(e) => {
                     e.preventDefault();
@@ -1253,7 +1293,7 @@ const PostListItem = React.memo(function PostListItem({
             </View>
           </View>
         </Pressable>
-      </Link>
+      </PostCardLink>
 
       {/* User Profile Modal */}
       {selectedUserId && (

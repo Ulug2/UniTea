@@ -11,9 +11,11 @@ import { moderateScale, scale, verticalScale } from "../utils/scaling";
 
 type PollProps = {
   postId: string;
+  /** Display-only (post card preview): options can't be voted on and nothing is persisted. */
+  readOnly?: boolean;
 };
 
-const Poll: React.FC<PollProps> = ({ postId }) => {
+const Poll: React.FC<PollProps> = ({ postId, readOnly = false }) => {
   const { theme } = useTheme();
   const { session } = useAuth();
   const queryClient = useQueryClient();
@@ -28,10 +30,10 @@ const Poll: React.FC<PollProps> = ({ postId }) => {
   // the feed seed, but its poll still popped in only once this component's
   // own query resolved fresh, every cold start.
   useEffect(() => {
-    if (poll) {
+    if (poll && !readOnly) {
       savePollToStorage(postId, poll);
     }
-  }, [poll, postId]);
+  }, [poll, postId, readOnly]);
 
   const { options, totalVotes, votesByOptionId, userSelectedOptionId, isExpired } =
     useMemo(() => {
@@ -209,7 +211,9 @@ const Poll: React.FC<PollProps> = ({ postId }) => {
                 borderColor: isSelected ? theme.primary : theme.border,
               },
             ]}
-            disabled={isExpired || !currentUserId || voteMutation.isPending}
+            disabled={
+              readOnly || isExpired || !currentUserId || voteMutation.isPending
+            }
             onPress={() => voteMutation.mutate(option.id)}
           >
             <View style={styles.optionLeft}>

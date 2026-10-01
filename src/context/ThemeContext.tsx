@@ -3,6 +3,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useMemo,
   ReactNode,
 } from "react";
 import { useColorScheme } from "react-native";
@@ -87,6 +88,36 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     >
       {children}
     </ThemeContext.Provider>
+  );
+}
+
+const noop = () => {};
+
+/**
+ * Provides a fixed theme to a subtree without reading or persisting the
+ * user's saved preference (nesting a second ThemeProvider would rewrite
+ * THEME_STORAGE_KEY on mount). Used by the post card preview, whose capture
+ * card is always rendered in the light theme.
+ */
+export function StaticThemeProvider({
+  isDark,
+  children,
+}: {
+  isDark: boolean;
+  children: ReactNode;
+}) {
+  const value = useMemo(
+    () => ({
+      theme: isDark ? darkTheme : lightTheme,
+      isDark,
+      isManualDark: false,
+      toggleTheme: noop,
+      setTheme: noop,
+    }),
+    [isDark],
+  );
+  return (
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
   );
 }
 

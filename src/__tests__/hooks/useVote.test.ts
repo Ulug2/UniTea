@@ -234,3 +234,60 @@ describe('useVote — comment voting', () => {
     expect(mockedGetCommentScore).toHaveBeenCalledWith('comment-1');
   });
 });
+
+describe('useVote — readOnly (web post card preview)', () => {
+  it('renders the initial values without fetching the vote or the score', async () => {
+    const { result } = renderHook(
+      () =>
+        useVote({
+          postId: 'post-1',
+          initialUserVote: 'upvote',
+          initialScore: 10,
+          readOnly: true,
+        }),
+      { wrapper: createWrapper() }
+    );
+
+    expect(result.current.userVote).toBe('upvote');
+    expect(result.current.score).toBe(10);
+
+    // Stale initial data would normally refetch on invalidation; readOnly never does.
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(mockedGetUserVote).not.toHaveBeenCalled();
+    expect(mockedGetPostScore).not.toHaveBeenCalled();
+  });
+
+  it('upvote and downvote never write or change local state', async () => {
+    const { result } = renderHook(
+      () => useVote({ postId: 'post-1', initialUserVote: null, initialScore: 3, readOnly: true }),
+      { wrapper: createWrapper() }
+    );
+
+    act(() => {
+      result.current.handleUpvote();
+      result.current.handleDownvote();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 150));
+    });
+
+    expect(mockedVote).not.toHaveBeenCalled();
+    expect(result.current.userVote).toBeNull();
+    expect(result.current.score).toBe(3);
+  });
+
+  it('defaults to writable: the same press votes when readOnly is not set (control)', async () => {
+    const { result } = renderHook(
+      () => useVote({ postId: 'post-1', initialUserVote: null, initialScore: 3 }),
+      { wrapper: createWrapper() }
+    );
+
+    act(() => {
+      result.current.handleUpvote();
+    });
+
+    await waitFor(() => expect(mockedVote).toHaveBeenCalledWith('test-user-id', 'upvote', 'post-1', undefined));
+  });
+});
