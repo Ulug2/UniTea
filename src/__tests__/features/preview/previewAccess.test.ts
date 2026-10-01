@@ -59,7 +59,7 @@ describe('isProfileBanned', () => {
 
 describe('preview fixtures', () => {
   it('are clearly sample content with reserved ids, and anonymous ones carry no identity', () => {
-    for (const name of ['text', 'anonymous', 'long']) {
+    for (const name of ['text', 'anonymous', 'anonymous-sdu', 'long']) {
       const row = getPreviewFixture(name)!;
       expect(row.post_id.startsWith('00000000-0000-4000-8000-')).toBe(true);
       expect(row.content).toMatch(/sample|fixture/i);

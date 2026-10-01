@@ -1,0 +1,12 @@
+{
+  "description": "Posts already captured for Instagram. scripts/capture/capture-campus-posts.js skips these and appends every new capture. Match by post_id, or by content_prefix for posts captured before this list existed.",
+  "posts": [
+    {
+      "post_id": null,
+      "campus": null,
+      "content_prefix": "Читая тут посты понимаю насколько скучная и невинная у меня жизнь",
+      "captured_at": null,
+      "note": "Reference capture, already published."
+    }
+  ]
+}

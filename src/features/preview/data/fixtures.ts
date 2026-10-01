@@ -7,7 +7,12 @@ import type { PostsSummaryViewRow } from "../../../types/posts";
  * real users or posts, and their ids use a reserved all-zero prefix that no
  * real post has.
  */
-export const PREVIEW_FIXTURE_NAMES = ["text", "anonymous", "long"] as const;
+export const PREVIEW_FIXTURE_NAMES = [
+  "text",
+  "anonymous",
+  "anonymous-sdu",
+  "long",
+] as const;
 export type PreviewFixtureName = (typeof PREVIEW_FIXTURE_NAMES)[number];
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -28,7 +33,9 @@ function baseRow(
     location: null,
     post_type: "feed",
     university_id: "00000000-0000-4000-8000-0000000000b1",
-    university_domain: "example.edu",
+    // A real campus domain so the card shows that campus's actual branding
+    // (UNIVERSITY_BRANDING) exactly as the app does.
+    university_domain: "nu.edu.kz",
     community_id: null,
     community_name: null,
     community_avatar_url: null,
@@ -87,6 +94,22 @@ export function getPreviewFixture(
           "Sample anonymous post for testing the preview layout. Fixture text, not a real post.",
         comment_count: 9,
         vote_score: 27,
+      };
+    case "anonymous-sdu":
+      return {
+        ...baseRow(
+          "00000000-0000-4000-8000-000000000004",
+          new Date(now - 3 * HOUR_MS).toISOString(),
+        ),
+        university_id: "00000000-0000-4000-8000-0000000000b2",
+        university_domain: "sdu.edu.kz",
+        user_id: null,
+        username: null,
+        is_anonymous: true,
+        content:
+          "Sample anonymous SDU post for testing the preview layout. Fixture text, not a real post.",
+        comment_count: 6,
+        vote_score: 18,
       };
     case "long":
       return {

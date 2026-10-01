@@ -42,7 +42,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
  * read-only mode, as a white rounded card on plain turquoise with the UniTee
  * wordmark below, laid out on a 430×537.5pt (4:5) artboard
  * (testID "preview-artboard") for screenshotting. Live posts (?postId=<uuid>) load only through the signed-in
- * viewer's own session; sample fixtures (?fixture=text|anonymous|long) are
+ * viewer's own session; sample fixtures (?fixture=text|anonymous|anonymous-sdu|long) are
  * served in __DEV__ builds only.
  */
 export default function PostCardPreviewScreen() {

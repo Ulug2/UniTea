@@ -46,3 +46,6 @@ db_backups/
 
 # Claude Code local permissions (may contain machine-specific secrets)
 .claude/settings.local.json
+
+# Instagram post captures (real user content; never commit)
+captures/
