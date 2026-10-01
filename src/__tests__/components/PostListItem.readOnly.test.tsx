@@ -160,18 +160,15 @@ function pressByText(text: string) {
   fireEvent.press(screen.getByText(text), pressEvent);
 }
 
-const FOOTER_ACTIONS = [
-  'icon:arrow-up-bold-outline',
-  'icon:arrow-down-bold-outline',
-  'icon:comment-outline',
-  'icon:repeat-outline',
-  'icon:share-outline',
-];
-
-function pressAllFooterActions({ includeChat }: { includeChat: boolean }) {
-  [...FOOTER_ACTIONS, ...(includeChat ? ['icon:paper-plane-outline'] : [])].forEach(
-    pressByText,
-  );
+function pressAllFooterActions() {
+  [
+    'icon:arrow-up-bold-outline',
+    'icon:arrow-down-bold-outline',
+    'icon:comment-outline',
+    'icon:repeat-outline',
+    'icon:share-outline',
+    'icon:paper-plane-outline',
+  ].forEach(pressByText);
 }
 
 function expectNoSideEffects() {
@@ -192,7 +189,7 @@ describe('PostListItem readOnly (web post card preview)', () => {
 
   it('default mode: footer actions, author tap and card link all work (control)', () => {
     render(<PostListItem {...BASE_PROPS} />);
-    pressAllFooterActions({ includeChat: true });
+    pressAllFooterActions();
     pressByText('author_user');
 
     expect(mockHandleUpvote).toHaveBeenCalledTimes(1);
@@ -216,23 +213,15 @@ describe('PostListItem readOnly (web post card preview)', () => {
     expect(screen.getByText('Hello world')).toBeTruthy();
     expect(screen.getByText('7')).toBeTruthy();
     expect(screen.getByText('3')).toBeTruthy();
+    // Nothing from the current design is hidden, including the chat button.
+    expect(screen.getByText('icon:paper-plane-outline')).toBeTruthy();
 
-    pressAllFooterActions({ includeChat: false });
+    pressAllFooterActions();
     pressByText('author_user');
     pressByText('Hello world');
 
     expectNoSideEffects();
     expect(mockLinkRendered).not.toHaveBeenCalled();
-  });
-
-  it('readOnly: the anonymous-chat button is not rendered at all', () => {
-    const normal = render(<PostListItem {...BASE_PROPS} />);
-    expect(normal.getByText('icon:paper-plane-outline')).toBeTruthy();
-    normal.unmount();
-
-    const preview = render(<PostListItem {...BASE_PROPS} readOnly />);
-    expect(preview.getByText('icon:share-outline')).toBeTruthy();
-    expect(preview.queryByText('icon:paper-plane-outline')).toBeNull();
   });
 
   it('readOnly: puts useVote and Poll in their read-only modes', () => {
@@ -288,16 +277,20 @@ describe('PostListItem readOnly (web post card preview)', () => {
     expectNoSideEffects();
   });
 
-  it('readOnly detail-style props: bookmark button is never rendered', () => {
+  it('detail-style props: bookmark is shown in both modes but only works outside readOnly', () => {
     const onBookmarkPress = jest.fn();
-    render(
-      <PostListItem
-        {...BASE_PROPS}
-        isDetailedPost
-        onBookmarkPress={onBookmarkPress}
-        readOnly
-      />,
+    const normal = render(
+      <PostListItem {...BASE_PROPS} isDetailedPost onBookmarkPress={onBookmarkPress} />,
     );
-    expect(screen.queryByText('icon:bookmark-outline')).toBeNull();
+    fireEvent.press(normal.getByText('icon:bookmark-outline'), pressEvent);
+    expect(onBookmarkPress).toHaveBeenCalledTimes(1);
+    normal.unmount();
+
+    onBookmarkPress.mockClear();
+    const preview = render(
+      <PostListItem {...BASE_PROPS} isDetailedPost onBookmarkPress={onBookmarkPress} readOnly />,
+    );
+    fireEvent.press(preview.getByText('icon:bookmark-outline'), pressEvent);
+    expect(onBookmarkPress).not.toHaveBeenCalled();
   });
 });
