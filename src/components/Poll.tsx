@@ -8,6 +8,7 @@ import { savePollToStorage } from "../utils/feedPersistence";
 import { usePoll, type PollOption, type PollVote, type PollData } from "../hooks/usePoll";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
+import { fonts } from "../constants/fonts";
 
 type PollProps = {
   postId: string;
@@ -291,7 +292,7 @@ const styles = StyleSheet.create({
   },
   optionText: {
     fontSize: moderateScale(14),
-    fontFamily: "Poppins_400Regular",
+    fontFamily: fonts.regular,
     flexShrink: 1,
   },
   optionRight: {
@@ -301,11 +302,11 @@ const styles = StyleSheet.create({
   },
   percentageText: {
     fontSize: moderateScale(13),
-    fontFamily: "Poppins_500Medium",
+    fontFamily: fonts.medium,
   },
   votesText: {
     fontSize: moderateScale(12),
-    fontFamily: "Poppins_400Regular",
+    fontFamily: fonts.regular,
   },
   footerRow: {
     flexDirection: "row",
@@ -314,7 +315,7 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: moderateScale(12),
-    fontFamily: "Poppins_400Regular",
+    fontFamily: fonts.regular,
   },
 });
 

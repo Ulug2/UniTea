@@ -34,6 +34,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { prefetchPostDetail } from "../features/posts/data/postDetailQuery";
 import { prefetchCommunityDetail } from "../features/communities/data/communityDetailQuery";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
+import { fonts } from "../constants/fonts";
 // Shared style cache — all PostListItem instances with the same theme object reuse one StyleSheet.
 // This eliminates calling StyleSheet.create N times when the feed has N visible items.
 const _styleCache = new WeakMap<Theme, ReturnType<typeof _buildStyles>>();
@@ -57,12 +58,12 @@ function _buildStyles(theme: Theme) {
     repostText: {
       fontSize: moderateScale(13),
       color: theme.secondaryText,
-      fontFamily: "Poppins_400Regular",
+      fontFamily: fonts.regular,
     },
     repostComment: {
       fontSize: moderateScale(15),
       color: theme.text,
-      fontFamily: "Poppins_400Regular",
+      fontFamily: fonts.regular,
       marginTop: verticalScale(8),
       marginBottom: verticalScale(10),
     },
@@ -77,19 +78,19 @@ function _buildStyles(theme: Theme) {
     originalAuthor: {
       fontSize: moderateScale(14),
       color: theme.text,
-      fontFamily: "Poppins_500Medium",
+      fontFamily: fonts.medium,
       marginBottom: verticalScale(6),
     },
     originalContent: {
       fontSize: moderateScale(15),
       color: theme.text,
-      fontFamily: "Poppins_400Regular",
+      fontFamily: fonts.regular,
       marginBottom: verticalScale(6),
     },
     originalTitleText: {
       fontSize: moderateScale(17),
       color: theme.text,
-      fontFamily: "Poppins_700Bold",
+      fontFamily: fonts.bold,
       marginBottom: verticalScale(8),
     },
     originalDate: {
@@ -119,7 +120,7 @@ function _buildStyles(theme: Theme) {
     username: {
       fontSize: moderateScale(15),
       color: theme.text,
-      fontFamily: "Poppins_500Medium",
+      fontFamily: fonts.medium,
       flexShrink: 1,
     },
     timeContainer: {
@@ -137,13 +138,13 @@ function _buildStyles(theme: Theme) {
     contentText: {
       fontSize: moderateScale(16),
       marginTop: verticalScale(6),
-      fontFamily: "Poppins_400Regular",
+      fontFamily: fonts.regular,
       color: theme.text,
     },
     titleText: {
       fontSize: moderateScale(19),
       marginTop: verticalScale(8),
-      fontFamily: "Poppins_700Bold",
+      fontFamily: fonts.bold,
       color: theme.text,
     },
     footer: {
@@ -181,7 +182,7 @@ function _buildStyles(theme: Theme) {
     iconText: {
       fontWeight: "500",
       marginLeft: scale(5),
-      fontFamily: "Poppins_400Regular",
+      fontFamily: fonts.regular,
       color: theme.text,
     },
     divider: {
@@ -913,7 +914,7 @@ const PostListItem = React.memo(function PostListItem({
                     <Text
                       style={{
                         fontSize: 15,
-                        fontFamily: "Poppins_500Medium",
+                        fontFamily: fonts.medium,
                         color: theme.primary,
                       }}
                     >
@@ -1016,7 +1017,7 @@ const PostListItem = React.memo(function PostListItem({
                       <Text
                         style={{
                           fontSize: 14,
-                          fontFamily: "Poppins_500Medium",
+                          fontFamily: fonts.medium,
                           color: theme.primary,
                         }}
                       >
@@ -1138,7 +1139,7 @@ const PostListItem = React.memo(function PostListItem({
                           <Text
                             style={{
                               fontSize: 15,
-                              fontFamily: "Poppins_500Medium",
+                              fontFamily: fonts.medium,
                               color: theme.primary,
                             }}
                           >

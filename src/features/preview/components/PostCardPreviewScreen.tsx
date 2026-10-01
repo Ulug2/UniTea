@@ -1,7 +1,6 @@
 import React, { useEffect } from "react";
 import {
   ActivityIndicator,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,7 +16,6 @@ import { setPendingDeepLink } from "../../../utils/pendingDeepLink";
 import { toPostListItemProps } from "../../posts/utils/postListItemProps";
 import { getPreviewFixture } from "../data/fixtures";
 import { usePreviewPost } from "../hooks/usePreviewPost";
-import { installCyrillicFontFallback } from "../utils/cyrillicFontFallback";
 import { UniTeeWordmark } from "./UniTeeWordmark";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 
@@ -54,10 +52,6 @@ export default function PostCardPreviewScreen() {
   const fixture = __DEV__ ? getPreviewFixture(firstParam(params.fixture)) : null;
 
   const { session, loading: authLoading } = useAuth();
-
-  useEffect(() => {
-    if (Platform.OS === "web") installCyrillicFontFallback();
-  }, []);
   const live = usePreviewPost(fixture ? null : postId, session?.user?.id);
 
   // Same hand-off the protected layout uses for deep links: send signed-out

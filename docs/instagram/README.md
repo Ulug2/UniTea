@@ -3,7 +3,15 @@
 `npm run capture:posts` turns the best anonymous campus posts into 1290×1612 (4:5)
 PNGs using the read-only web post card preview (`/preview/post-card`).
 
-## One-time setup (on your own machine)
+## Fonts: run captures on a Mac
+
+The card uses the app's font, Poppins. Poppins has no Cyrillic, so in the app
+Russian/Kazakh text (and the time label) use the phone's system font — SF Pro
+on iPhone. The preview does the same through the browser's system font, which
+is SF Pro only on macOS (Apple's license doesn't allow bundling it). Captures
+made on Windows/Linux fall back to Segoe UI/Arial for that text.
+
+## One-time setup (on your Mac)
 
 1. `npm install` and `npx playwright install chromium`.
 2. Create an untracked `.env.local` in the repo root (already gitignored):

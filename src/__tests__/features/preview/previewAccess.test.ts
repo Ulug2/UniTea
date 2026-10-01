@@ -73,16 +73,22 @@ describe('preview fixtures', () => {
   });
 });
 
-describe('Cyrillic font fallback', () => {
-  const { buildCyrillicFallbackCss } = require('../../../features/preview/utils/cyrillicFontFallback');
+describe('card fonts', () => {
+  const native = require('../../../constants/fonts').fonts;
+  const web = require('../../../constants/fonts.web').fonts;
 
-  it('adds a sans-serif face for every Poppins family, limited to Cyrillic ranges', () => {
-    const css: string = buildCyrillicFallbackCss();
-    for (const family of ['Poppins_400Regular', 'Poppins_500Medium', 'Poppins_600SemiBold', 'Poppins_700Bold']) {
-      expect(css).toContain(`font-family:"${family}"`);
+  it('mobile keeps the exact Poppins family names', () => {
+    expect(native).toEqual({
+      regular: 'Poppins_400Regular',
+      medium: 'Poppins_500Medium',
+      semiBold: 'Poppins_600SemiBold',
+      bold: 'Poppins_700Bold',
+    });
+  });
+
+  it('web uses the same Poppins family first, then the system font (SF Pro on Apple) like a phone', () => {
+    for (const key of Object.keys(native)) {
+      expect(web[key]).toBe(`${native[key]}, System`);
     }
-    expect(css.match(/unicode-range:U\+0400-052F/g)).toHaveLength(4);
-    expect(css).toContain('local("Helvetica Neue")');
-    expect(css).not.toMatch(/serif"\)/);
   });
 });
