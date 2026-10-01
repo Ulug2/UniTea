@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import {
   ActivityIndicator,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +17,7 @@ import { setPendingDeepLink } from "../../../utils/pendingDeepLink";
 import { toPostListItemProps } from "../../posts/utils/postListItemProps";
 import { getPreviewFixture } from "../data/fixtures";
 import { usePreviewPost } from "../hooks/usePreviewPost";
+import { installCyrillicFontFallback } from "../utils/cyrillicFontFallback";
 import { UniTeeWordmark } from "./UniTeeWordmark";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 
@@ -41,9 +43,10 @@ function firstParam(value: string | string[] | undefined): string | undefined {
  * Clean capture view for a single post card: the real PostListItem in
  * read-only mode, as a white rounded card on plain turquoise with the UniTee
  * wordmark below, laid out on a 430×537.5pt (4:5) artboard
- * (testID "preview-artboard") for screenshotting. Live posts (?postId=<uuid>) load only through the signed-in
- * viewer's own session; sample fixtures (?fixture=text|anonymous|anonymous-sdu|long) are
- * served in __DEV__ builds only.
+ * (testID "preview-artboard") for screenshotting. Live posts
+ * (?postId=<uuid>) load only through the signed-in viewer's own session;
+ * sample fixtures (?fixture=text|anonymous|anonymous-sdu|long) are served in
+ * __DEV__ builds only.
  */
 export default function PostCardPreviewScreen() {
   const params = useLocalSearchParams<{ postId?: string; fixture?: string }>();
@@ -51,6 +54,10 @@ export default function PostCardPreviewScreen() {
   const fixture = __DEV__ ? getPreviewFixture(firstParam(params.fixture)) : null;
 
   const { session, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (Platform.OS === "web") installCyrillicFontFallback();
+  }, []);
   const live = usePreviewPost(fixture ? null : postId, session?.user?.id);
 
   // Same hand-off the protected layout uses for deep links: send signed-out

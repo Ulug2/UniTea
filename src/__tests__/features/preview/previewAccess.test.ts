@@ -72,3 +72,17 @@ describe('preview fixtures', () => {
     expect(getPreviewFixture(undefined)).toBeNull();
   });
 });
+
+describe('Cyrillic font fallback', () => {
+  const { buildCyrillicFallbackCss } = require('../../../features/preview/utils/cyrillicFontFallback');
+
+  it('adds a sans-serif face for every Poppins family, limited to Cyrillic ranges', () => {
+    const css: string = buildCyrillicFallbackCss();
+    for (const family of ['Poppins_400Regular', 'Poppins_500Medium', 'Poppins_600SemiBold', 'Poppins_700Bold']) {
+      expect(css).toContain(`font-family:"${family}"`);
+    }
+    expect(css.match(/unicode-range:U\+0400-052F/g)).toHaveLength(4);
+    expect(css).toContain('local("Helvetica Neue")');
+    expect(css).not.toMatch(/serif"\)/);
+  });
+});

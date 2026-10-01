@@ -45,5 +45,5 @@ names or details that identify someone.
 ## Used posts
 
 `used-posts.json` lists every post already captured; runs skip them and append
-new captures automatically. Add posts published by other means with a
+new captures automatically (by id only, so no post text is committed). Add posts published by other means with a
 `content_prefix` (as the first entry does) or their `post_id`.

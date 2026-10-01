@@ -202,7 +202,6 @@ async function main() {
       picks.map((post, i) => ({
         post_id: post.post_id,
         campus: args.campus,
-        content_prefix: String(post.content).slice(0, 60),
         captured_at: capturedAt,
         file: path.relative(ROOT, files[i]),
       })),
