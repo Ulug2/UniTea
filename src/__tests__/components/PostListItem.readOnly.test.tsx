@@ -160,15 +160,18 @@ function pressByText(text: string) {
   fireEvent.press(screen.getByText(text), pressEvent);
 }
 
-function pressAllFooterActions() {
-  [
-    'icon:arrow-up-bold-outline',
-    'icon:arrow-down-bold-outline',
-    'icon:comment-outline',
-    'icon:repeat-outline',
-    'icon:share-outline',
-    'icon:paper-plane-outline',
-  ].forEach(pressByText);
+const FOOTER_ACTIONS = [
+  'icon:arrow-up-bold-outline',
+  'icon:arrow-down-bold-outline',
+  'icon:comment-outline',
+  'icon:repeat-outline',
+  'icon:share-outline',
+];
+
+function pressAllFooterActions({ includeChat }: { includeChat: boolean }) {
+  [...FOOTER_ACTIONS, ...(includeChat ? ['icon:paper-plane-outline'] : [])].forEach(
+    pressByText,
+  );
 }
 
 function expectNoSideEffects() {
@@ -189,7 +192,7 @@ describe('PostListItem readOnly (web post card preview)', () => {
 
   it('default mode: footer actions, author tap and card link all work (control)', () => {
     render(<PostListItem {...BASE_PROPS} />);
-    pressAllFooterActions();
+    pressAllFooterActions({ includeChat: true });
     pressByText('author_user');
 
     expect(mockHandleUpvote).toHaveBeenCalledTimes(1);
@@ -214,12 +217,22 @@ describe('PostListItem readOnly (web post card preview)', () => {
     expect(screen.getByText('7')).toBeTruthy();
     expect(screen.getByText('3')).toBeTruthy();
 
-    pressAllFooterActions();
+    pressAllFooterActions({ includeChat: false });
     pressByText('author_user');
     pressByText('Hello world');
 
     expectNoSideEffects();
     expect(mockLinkRendered).not.toHaveBeenCalled();
+  });
+
+  it('readOnly: the anonymous-chat button is not rendered at all', () => {
+    const normal = render(<PostListItem {...BASE_PROPS} />);
+    expect(normal.getByText('icon:paper-plane-outline')).toBeTruthy();
+    normal.unmount();
+
+    const preview = render(<PostListItem {...BASE_PROPS} readOnly />);
+    expect(preview.getByText('icon:share-outline')).toBeTruthy();
+    expect(preview.queryByText('icon:paper-plane-outline')).toBeNull();
   });
 
   it('readOnly: puts useVote and Poll in their read-only modes', () => {

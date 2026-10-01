@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Head from "expo-router/head";
@@ -20,8 +19,19 @@ import { usePreviewPost } from "../hooks/usePreviewPost";
 import { UniTeeWordmark } from "./UniTeeWordmark";
 import type { PostsSummaryViewRow } from "../../../types/posts";
 
-/** Native baseline width the app's scaling is designed against (scaling.ts). */
-const CARD_MAX_WIDTH = 430;
+// Capture artboard, in points, measured from the reference capture (a 3x
+// screenshot at the 430pt native baseline scaling.ts designs against): a 4:5
+// portrait frame, the card inset 15pt and centred vertically, the wordmark
+// ~100pt wide sitting 32pt above the bottom edge.
+const ARTBOARD_WIDTH = 430;
+const ARTBOARD_MIN_HEIGHT = (ARTBOARD_WIDTH * 5) / 4;
+const CARD_INSET = 15;
+const CARD_RADIUS = 9;
+const WORDMARK_WIDTH = 103;
+const WORDMARK_BOTTOM = 32;
+// Keeps a tall card clear of the wordmark; applied top and bottom so the
+// card stays centred and the frame grows evenly instead of overlapping.
+const CARD_VERTICAL_CLEARANCE = 100;
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -30,7 +40,8 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 /**
  * Clean capture view for a single post card: the real PostListItem in
  * read-only mode, as a white rounded card on plain turquoise with the UniTee
- * wordmark below. Live posts (?postId=<uuid>) load only through the signed-in
+ * wordmark below, laid out on a 430×537.5pt (4:5) artboard
+ * (testID "preview-artboard") for screenshotting. Live posts (?postId=<uuid>) load only through the signed-in
  * viewer's own session; sample fixtures (?fixture=text|anonymous|long) are
  * served in __DEV__ builds only.
  */
@@ -84,18 +95,13 @@ export default function PostCardPreviewScreen() {
 }
 
 function PreviewFrame({ children }: { children: React.ReactNode }) {
-  const { height } = useWindowDimensions();
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={[
-        styles.pageContent,
-        { paddingTop: Math.max(96, Math.round(height * 0.16)) },
-      ]}
-    >
-      <View style={styles.column}>{children}</View>
-      <View style={styles.wordmark}>
-        <UniTeeWordmark width={220} />
+    <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
+      <View style={styles.artboard} testID="preview-artboard">
+        {children}
+        <View style={styles.wordmark}>
+          <UniTeeWordmark width={WORDMARK_WIDTH} />
+        </View>
       </View>
     </ScrollView>
   );
@@ -133,17 +139,21 @@ const styles = StyleSheet.create({
   pageContent: {
     flexGrow: 1,
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingBottom: 64,
+    justifyContent: "center",
   },
-  column: {
+  artboard: {
     width: "100%",
-    maxWidth: CARD_MAX_WIDTH,
+    maxWidth: ARTBOARD_WIDTH,
+    minHeight: ARTBOARD_MIN_HEIGHT,
+    justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: CARD_INSET,
+    paddingVertical: CARD_VERTICAL_CLEARANCE,
+    backgroundColor: lightTheme.primary,
   },
   card: {
     width: "100%",
-    borderRadius: 24,
+    borderRadius: CARD_RADIUS,
     overflow: "hidden",
     backgroundColor: lightTheme.card,
   },
@@ -157,6 +167,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   wordmark: {
-    marginTop: 48,
+    position: "absolute",
+    bottom: WORDMARK_BOTTOM,
+    left: 0,
+    right: 0,
+    alignItems: "center",
   },
 });

@@ -48,6 +48,8 @@ function _buildStyles(theme: Theme) {
       borderBottomColor: theme.border,
       gap: 1,
     },
+    // Read-only preview card: shown on its own, not as a list row.
+    cardStandalone: { borderBottomWidth: 0 },
     repostHeader: {
       flexDirection: "row",
       alignItems: "center",
@@ -308,9 +310,10 @@ export type PostListItemProps = {
    * Display-only rendering for the web post card preview
    * (src/app/preview/post-card.tsx): same layout and content, but no
    * navigation and no side effects — voting, poll voting, comment/repost
-   * navigation, sharing, anonymous chat, profile/community taps and the
-   * card's own link are all inert, and the vote score is never refetched.
-   * Expanding "read more" stays enabled since it is purely local UI state.
+   * navigation, sharing, profile/community taps and the card's own link are
+   * all inert, the vote score is never refetched, and the anonymous-chat
+   * button and the feed's list-divider border are not rendered. Expanding
+   * "read more" stays enabled since it is purely local UI state.
    */
   readOnly?: boolean;
 };
@@ -826,7 +829,10 @@ const PostListItem = React.memo(function PostListItem({
   return (
     <>
       <PostCardLink postId={postId} readOnly={readOnly} style={styles.link}>
-        <Pressable style={styles.card} disabled={readOnly}>
+        <Pressable
+          style={[styles.card, readOnly && styles.cardStandalone]}
+          disabled={readOnly}
+        >
           {/* REPOST HEADER - intentionally removed; reposter identity shown in avatar/username row */}
 
           {/* HEADER */}
@@ -1251,14 +1257,14 @@ const PostListItem = React.memo(function PostListItem({
                   color={theme.text}
                 />
               </Pressable>
-              {userId !== currentUserId && (
+              {!readOnly && userId !== currentUserId && (
                 <Pressable
                   onPress={handleAnonChatPress}
                   style={[
                     styles.iconBox,
                     anonChatMutation.isPending && { opacity: 0.5 },
                   ]}
-                  disabled={readOnly || anonChatMutation.isPending}
+                  disabled={anonChatMutation.isPending}
                 >
                   {anonChatMutation.isPending ? (
                     <ActivityIndicator
