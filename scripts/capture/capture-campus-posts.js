@@ -9,7 +9,7 @@
  * Options:
  *   --campus nu|sdu      required
  *   --count 5            how many posts to capture
- *   --days 90            only consider posts from the last N days
+ *   --days 14            only posts from the last N days (applies to --pick too)
  *   --pick id,id,...     capture these post ids instead of auto-picking
  *   --dry-run            list the picks without capturing or recording them
  *   --base-url http://localhost:8081
@@ -26,7 +26,7 @@
 const fs = require("fs");
 const path = require("path");
 const { createClient } = require("@supabase/supabase-js");
-const { CAMPUSES, selectPosts } = require("./selectPosts");
+const { CAMPUSES, DEFAULT_MAX_AGE_DAYS, selectPosts } = require("./selectPosts");
 
 const ROOT = path.resolve(__dirname, "../..");
 const REGISTRY_PATH = path.join(ROOT, "docs/instagram/used-posts.json");
@@ -34,7 +34,7 @@ const OUTPUT_DIR = path.join(ROOT, "captures");
 const CANDIDATE_LIMIT = 200;
 
 function parseArgs(argv) {
-  const args = { count: 5, days: 90, baseUrl: "http://localhost:8081" };
+  const args = { count: 5, days: DEFAULT_MAX_AGE_DAYS, baseUrl: "http://localhost:8081" };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     const next = () => argv[++i];
@@ -178,6 +178,7 @@ async function main() {
       campus: args.campus,
       count: args.pick ? args.pick.length : args.count,
       usedEntries,
+      maxAgeDays: args.days,
     });
 
     console.log(`${CAMPUSES[args.campus].label}: ${picks.length} post(s) picked from ${rows.length} candidate(s)`);
@@ -186,7 +187,7 @@ async function main() {
       console.log(`  ${String(post.content).replace(/\n/g, "\n  ")}`);
     }
     if (args.pick && picks.length < args.pick.length) {
-      console.warn("\nSome --pick ids were skipped (used already, not anonymous, has images, or doesn't fit the card).");
+      console.warn("\nSome --pick ids were skipped (used already, too old, not anonymous, has images, or doesn't fit the card).");
     }
     if (args.dryRun || picks.length === 0) return;
 

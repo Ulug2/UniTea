@@ -39,11 +39,12 @@ npm run capture:posts -- --campus sdu
 ```
 
 Images land in `captures/<campus>/` (gitignored). Use `--pick id,id,...` to
-choose posts yourself, `--count`/`--days` to widen the search.
+choose posts yourself, or `--count` for more picks.
 
 ## Picking rules
 
-Anonymous, text-only campus feed posts (no community posts, reposts or images)
+Anonymous, text-only campus feed posts from the **last 14 days** (`--days` to
+change; applies to `--pick` too), with no community posts, reposts or images,
 that fit the card without "read more", ranked by score, then comments, then
 recency. Posts by authors the account has blocked are skipped.
 

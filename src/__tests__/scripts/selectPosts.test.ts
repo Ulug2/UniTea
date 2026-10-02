@@ -22,7 +22,8 @@ function row(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const NU = { domain: 'nu.edu.kz', usedEntries: [] };
+const NOW = Date.parse('2026-10-01T00:00:00Z');
+const NU = { domain: 'nu.edu.kz', usedEntries: [], now: NOW };
 
 describe('capture post selection', () => {
   it('accepts an anonymous, text-only campus feed post that fits the card', () => {
@@ -42,6 +43,8 @@ describe('capture post selection', () => {
     ['too long for the card', { content: 'x'.repeat(181) }],
     ['too many lines', { content: 'line one is here\nline two\nline three\nline four' }],
     ['title too long', { title: 't'.repeat(81) }],
+    ['too old', { created_at: '2026-09-16T23:59:59Z' }],
+    ['too old', { created_at: null }],
   ])('rejects: %s', (reason, overrides) => {
     expect(rejectionReason(row(overrides), NU)).toBe(reason);
   });
@@ -66,16 +69,28 @@ describe('capture post selection', () => {
       row({ post_id: 'top', vote_score: 50 }),
       row({ post_id: 'tie-more-comments', vote_score: 20, comment_count: 9 }),
       row({ post_id: 'tie-newer', vote_score: 20, comment_count: 1, created_at: '2026-09-30T00:00:00Z' }),
-      row({ post_id: 'tie-older', vote_score: 20, comment_count: 1, created_at: '2026-09-01T00:00:00Z' }),
+      row({ post_id: 'tie-older', vote_score: 20, comment_count: 1, created_at: '2026-09-18T00:00:00Z' }),
+      row({ post_id: 'popular-but-old', vote_score: 500, created_at: '2026-04-01T00:00:00Z' }),
       row({ post_id: 'sdu', vote_score: 99, university_domain: 'sdu.edu.kz' }),
     ];
-    expect(selectPosts(rows, { campus: 'nu', count: 4 }).map((r: { post_id: string }) => r.post_id)).toEqual([
+    expect(selectPosts(rows, { campus: 'nu', count: 4, now: NOW }).map((r: { post_id: string }) => r.post_id)).toEqual([
       'top',
       'tie-more-comments',
       'tie-newer',
       'tie-older',
     ]);
-    expect(selectPosts(rows, { campus: 'sdu', count: 5 }).map((r: { post_id: string }) => r.post_id)).toEqual(['sdu']);
+    expect(selectPosts(rows, { campus: 'sdu', count: 5, now: NOW }).map((r: { post_id: string }) => r.post_id)).toEqual(['sdu']);
+  });
+
+  it('only takes posts from the last 14 days by default; maxAgeDays widens it', () => {
+    const rows = [
+      row({ post_id: 'fresh', created_at: '2026-09-17T00:00:01Z' }),
+      row({ post_id: 'stale', created_at: '2026-09-16T00:00:00Z' }),
+    ];
+    const ids = (opts: object) =>
+      selectPosts(rows, { campus: 'nu', count: 5, now: NOW, ...opts }).map((r: { post_id: string }) => r.post_id);
+    expect(ids({})).toEqual(['fresh']);
+    expect(ids({ maxAgeDays: 30 }).sort()).toEqual(['fresh', 'stale']);
   });
 
   it('rejects an unknown campus', () => {

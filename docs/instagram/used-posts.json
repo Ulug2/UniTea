@@ -9,64 +9,64 @@
       "note": "Reference capture, already published."
     },
     {
-      "post_id": "499fdb92-209a-4f49-9747-1efca0ab5a48",
-      "campus": "nu",
-      "captured_at": "2026-10-01T23:50:06.355Z",
-      "file": "captures/nu/2026-10-01-1-499fdb92.png"
-    },
-    {
-      "post_id": "66e27017-8cad-4108-8f6f-c3a7047f629d",
-      "campus": "nu",
-      "captured_at": "2026-10-01T23:50:06.355Z",
-      "file": "captures/nu/2026-10-01-2-66e27017.png"
-    },
-    {
-      "post_id": "d89f10cf-d3a4-4a44-bd05-2989b245805a",
-      "campus": "nu",
-      "captured_at": "2026-10-01T23:50:06.355Z",
-      "file": "captures/nu/2026-10-01-3-d89f10cf.png"
-    },
-    {
-      "post_id": "d2cac49c-99f6-40e7-890a-52eefe2dbbce",
-      "campus": "nu",
-      "captured_at": "2026-10-01T23:50:06.355Z",
-      "file": "captures/nu/2026-10-01-4-d2cac49c.png"
-    },
-    {
-      "post_id": "d275cc67-8eea-4f65-bb9e-9f85d062584e",
-      "campus": "nu",
-      "captured_at": "2026-10-01T23:50:06.355Z",
-      "file": "captures/nu/2026-10-01-5-d275cc67.png"
-    },
-    {
       "post_id": "64e20b09-d442-4d54-99c2-176aadbcc07a",
       "campus": "sdu",
-      "captured_at": "2026-10-01T23:50:16.781Z",
+      "captured_at": "2026-10-01T23:59:07.465Z",
       "file": "captures/sdu/2026-10-01-1-64e20b09.png"
     },
     {
       "post_id": "605beb48-20cf-49f3-8657-121d9a299ee9",
       "campus": "sdu",
-      "captured_at": "2026-10-01T23:50:16.781Z",
+      "captured_at": "2026-10-01T23:59:07.465Z",
       "file": "captures/sdu/2026-10-01-2-605beb48.png"
     },
     {
       "post_id": "46b16b20-c592-483c-b43c-9d0db993c193",
       "campus": "sdu",
-      "captured_at": "2026-10-01T23:50:16.781Z",
+      "captured_at": "2026-10-01T23:59:07.465Z",
       "file": "captures/sdu/2026-10-01-3-46b16b20.png"
     },
     {
       "post_id": "20170c02-30f0-4de7-ab82-a9652ca2df3a",
       "campus": "sdu",
-      "captured_at": "2026-10-01T23:50:16.781Z",
+      "captured_at": "2026-10-01T23:59:07.465Z",
       "file": "captures/sdu/2026-10-01-4-20170c02.png"
     },
     {
       "post_id": "77f59ecc-9bbd-4a3a-a23d-b5a97ae71744",
       "campus": "sdu",
-      "captured_at": "2026-10-01T23:50:16.781Z",
+      "captured_at": "2026-10-01T23:59:07.465Z",
       "file": "captures/sdu/2026-10-01-5-77f59ecc.png"
+    },
+    {
+      "post_id": "472fdb6a-df86-4cb4-bda6-513d5de5ab2a",
+      "campus": "nu",
+      "captured_at": "2026-10-01T23:59:43.818Z",
+      "file": "captures/nu/2026-10-01-1-472fdb6a.png"
+    },
+    {
+      "post_id": "259772f2-0e66-46cb-ad1b-3904e9c2af8b",
+      "campus": "nu",
+      "captured_at": "2026-10-01T23:59:43.818Z",
+      "file": "captures/nu/2026-10-01-2-259772f2.png"
+    },
+    {
+      "post_id": "70fb34f2-c2b1-4414-919c-9f3a2a6de824",
+      "campus": "nu",
+      "captured_at": "2026-10-01T23:59:43.818Z",
+      "file": "captures/nu/2026-10-01-3-70fb34f2.png"
+    },
+    {
+      "post_id": "5858d5e3-6aa2-468d-be92-eea415f03e6a",
+      "campus": "nu",
+      "captured_at": "2026-10-01T23:59:43.818Z",
+      "file": "captures/nu/2026-10-01-4-5858d5e3.png"
+    },
+    {
+      "post_id": "dfb8b41c-61f3-4d61-b9e3-79a978632bcc",
+      "campus": "nu",
+      "captured_at": "2026-10-01T23:59:43.818Z",
+      "file": "captures/nu/2026-10-01-5-dfb8b41c.png"
     }
   ]
 }

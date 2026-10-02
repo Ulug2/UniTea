@@ -16,6 +16,9 @@ const MAX_CONTENT_CHARS = 180;
 const MAX_NEWLINES = 2;
 const MIN_CONTENT_CHARS = 25;
 const MAX_TITLE_CHARS = 80;
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Captures should feel current: only posts from the last two weeks. */
+const DEFAULT_MAX_AGE_DAYS = 14;
 
 function normalize(text) {
   return String(text ?? "").replace(/\s+/g, " ").trim().toLowerCase();
@@ -39,8 +42,12 @@ function isUsed(row, usedEntries) {
 }
 
 /** Why a row can't be used, or null when it is a candidate. */
-function rejectionReason(row, { domain, usedEntries }) {
+function rejectionReason(
+  row,
+  { domain, usedEntries, maxAgeDays = DEFAULT_MAX_AGE_DAYS, now = Date.now() },
+) {
   const content = String(row.content ?? "").trim();
+  const createdAt = Date.parse(row.created_at ?? "");
   if (row.university_domain !== domain) return "other campus";
   if (row.post_type !== "feed") return "not a feed post";
   if (row.is_anonymous !== true) return "not anonymous";
@@ -48,6 +55,7 @@ function rejectionReason(row, { domain, usedEntries }) {
   if (row.reposted_from_post_id) return "repost";
   if (row.is_deleted === true || row.is_banned === true) return "removed";
   if (row.is_author_blocked_by_viewer === true) return "blocked author";
+  if (!(createdAt >= now - maxAgeDays * DAY_MS)) return "too old";
   if (hasImages(row)) return "has images";
   if (content.length < MIN_CONTENT_CHARS) return "too short";
   if (content.length > MAX_CONTENT_CHARS) return "too long for the card";
@@ -66,13 +74,17 @@ function compareRows(a, b) {
   );
 }
 
-function selectPosts(rows, { campus, count, usedEntries = [] }) {
+function selectPosts(
+  rows,
+  { campus, count, usedEntries = [], maxAgeDays = DEFAULT_MAX_AGE_DAYS, now = Date.now() },
+) {
   const config = CAMPUSES[campus];
   if (!config) throw new Error(`Unknown campus "${campus}" (use nu or sdu)`);
+  const rules = { domain: config.domain, usedEntries, maxAgeDays, now };
   return rows
-    .filter((row) => rejectionReason(row, { domain: config.domain, usedEntries }) === null)
+    .filter((row) => rejectionReason(row, rules) === null)
     .sort(compareRows)
     .slice(0, count);
 }
 
-module.exports = { CAMPUSES, rejectionReason, selectPosts };
+module.exports = { CAMPUSES, DEFAULT_MAX_AGE_DAYS, rejectionReason, selectPosts };
