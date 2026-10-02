@@ -152,9 +152,20 @@ async function capture(picks, { campus, session, supabaseUrl, baseUrl }) {
         waitUntil: "networkidle",
         timeout: 120000,
       });
-      await page.getByTestId("preview-card").waitFor({ timeout: 60000 });
+      const card = page.getByTestId("preview-card");
+      await card.waitFor({ timeout: 60000 });
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(500);
+      // Capture the whole post: press every "... read more" (post text, repost
+      // comment, reposted original), as a reader would in the app.
+      const readMore = card.getByText("... read more", { exact: true });
+      for (let i = 0; i < 5 && (await readMore.count()) > 0; i++) {
+        await readMore.first().click();
+        await page.waitForTimeout(200);
+      }
+      if ((await readMore.count()) > 0) {
+        throw new Error(`Post ${post.post_id}: "read more" did not expand`);
+      }
       const file = path.join(dir, `${stamp}-${index + 1}-${post.post_id.slice(0, 8)}.png`);
       await page.getByTestId("preview-artboard").screenshot({ path: file });
       files.push(file);

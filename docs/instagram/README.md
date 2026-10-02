@@ -47,7 +47,7 @@ The top 3 anonymous campus feed posts from the **last 14 days** (`--days` to
 change; applies to `--pick` too), ranked by score, then comments, then
 recency. No content filtering. Named posts are skipped (they'd show a
 student's username), as are posts by authors the account has blocked.
-Long posts show "... read more", exactly as in the feed.
+Long posts are captured in full: the script presses "... read more" first (the card then shows "show less", as in the app).
 
 **Always read each pick before publishing**: anonymous posts can still contain
 names or details that identify someone.
