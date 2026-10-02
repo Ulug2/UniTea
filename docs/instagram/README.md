@@ -32,7 +32,7 @@ made on Windows/Linux fall back to Segoe UI/Arial for that text.
 
 ```
 npx expo start --web                          # terminal 1
-npm run capture:posts -- --campus nu --dry-run   # review the 5 picks
+npm run capture:posts -- --campus nu --dry-run   # review the 3 picks
 npm run capture:posts -- --campus nu
 npm run capture:posts -- --campus sdu --dry-run
 npm run capture:posts -- --campus sdu
@@ -43,10 +43,11 @@ choose posts yourself, or `--count` for more picks.
 
 ## Picking rules
 
-Anonymous, text-only campus feed posts from the **last 14 days** (`--days` to
-change; applies to `--pick` too), with no community posts, reposts or images,
-that fit the card without "read more", ranked by score, then comments, then
-recency. Posts by authors the account has blocked are skipped.
+The top 3 anonymous campus feed posts from the **last 14 days** (`--days` to
+change; applies to `--pick` too), ranked by score, then comments, then
+recency. No content filtering. Named posts are skipped (they'd show a
+student's username), as are posts by authors the account has blocked.
+Long posts show "... read more", exactly as in the feed.
 
 **Always read each pick before publishing**: anonymous posts can still contain
 names or details that identify someone.

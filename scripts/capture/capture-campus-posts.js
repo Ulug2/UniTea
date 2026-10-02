@@ -8,7 +8,7 @@
  *
  * Options:
  *   --campus nu|sdu      required
- *   --count 5            how many posts to capture
+ *   --count 3            how many posts to capture
  *   --days 14            only posts from the last N days (applies to --pick too)
  *   --pick id,id,...     capture these post ids instead of auto-picking
  *   --dry-run            list the picks without capturing or recording them
@@ -34,7 +34,7 @@ const OUTPUT_DIR = path.join(ROOT, "captures");
 const CANDIDATE_LIMIT = 200;
 
 function parseArgs(argv) {
-  const args = { count: 5, days: DEFAULT_MAX_AGE_DAYS, baseUrl: "http://localhost:8081" };
+  const args = { count: 3, days: DEFAULT_MAX_AGE_DAYS, baseUrl: "http://localhost:8081" };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     const next = () => argv[++i];
@@ -117,7 +117,6 @@ async function fetchCandidates(supabase, universityId, { days, pick }) {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     query = query
       .eq("is_anonymous", true)
-      .is("community_id", null)
       .gte("created_at", since)
       .order("vote_score", { ascending: false })
       .limit(CANDIDATE_LIMIT);
@@ -187,7 +186,7 @@ async function main() {
       console.log(`  ${String(post.content).replace(/\n/g, "\n  ")}`);
     }
     if (args.pick && picks.length < args.pick.length) {
-      console.warn("\nSome --pick ids were skipped (used already, too old, not anonymous, has images, or doesn't fit the card).");
+      console.warn("\nSome --pick ids were skipped (used already, too old, or not anonymous).");
     }
     if (args.dryRun || picks.length === 0) return;
 

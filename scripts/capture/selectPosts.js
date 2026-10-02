@@ -9,26 +9,12 @@ const CAMPUSES = {
   sdu: { domain: "sdu.edu.kz", label: "Suleiman Demirel" },
 };
 
-// Mirrors PostListItem's READ_MORE_CHAR_THRESHOLD / READ_MORE_NEWLINE_THRESHOLD
-// and its 3-line title clamp: a post past these shows "... read more" or a
-// clipped title on the card, which doesn't make a clean capture.
-const MAX_CONTENT_CHARS = 180;
-const MAX_NEWLINES = 2;
-const MIN_CONTENT_CHARS = 25;
-const MAX_TITLE_CHARS = 80;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Captures should feel current: only posts from the last two weeks. */
 const DEFAULT_MAX_AGE_DAYS = 14;
 
 function normalize(text) {
   return String(text ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-function hasImages(row) {
-  return (
-    Boolean(row.image_url) ||
-    (Array.isArray(row.image_urls) && row.image_urls.length > 0)
-  );
 }
 
 function isUsed(row, usedEntries) {
@@ -41,26 +27,23 @@ function isUsed(row, usedEntries) {
   );
 }
 
-/** Why a row can't be used, or null when it is a candidate. */
+/**
+ * Why a row can't be used, or null when it is a candidate. Picks are purely
+ * the most-voted posts; the only rules are access (campus, removed, blocked),
+ * anonymity (a named post would put a student's username on Instagram),
+ * recency and not reusing a post.
+ */
 function rejectionReason(
   row,
   { domain, usedEntries, maxAgeDays = DEFAULT_MAX_AGE_DAYS, now = Date.now() },
 ) {
-  const content = String(row.content ?? "").trim();
   const createdAt = Date.parse(row.created_at ?? "");
   if (row.university_domain !== domain) return "other campus";
   if (row.post_type !== "feed") return "not a feed post";
   if (row.is_anonymous !== true) return "not anonymous";
-  if (row.community_id) return "community post";
-  if (row.reposted_from_post_id) return "repost";
   if (row.is_deleted === true || row.is_banned === true) return "removed";
   if (row.is_author_blocked_by_viewer === true) return "blocked author";
   if (!(createdAt >= now - maxAgeDays * DAY_MS)) return "too old";
-  if (hasImages(row)) return "has images";
-  if (content.length < MIN_CONTENT_CHARS) return "too short";
-  if (content.length > MAX_CONTENT_CHARS) return "too long for the card";
-  if ((content.match(/\n/g) ?? []).length > MAX_NEWLINES) return "too many lines";
-  if (String(row.title ?? "").trim().length > MAX_TITLE_CHARS) return "title too long";
   if (isUsed(row, usedEntries)) return "already used";
   return null;
 }

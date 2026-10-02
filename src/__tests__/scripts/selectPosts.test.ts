@@ -26,23 +26,28 @@ const NOW = Date.parse('2026-10-01T00:00:00Z');
 const NU = { domain: 'nu.edu.kz', usedEntries: [], now: NOW };
 
 describe('capture post selection', () => {
-  it('accepts an anonymous, text-only campus feed post that fits the card', () => {
+  it('accepts an anonymous campus feed post from the last 14 days', () => {
     expect(rejectionReason(row(), NU)).toBeNull();
+  });
+
+  it.each([
+    ['images', { image_urls: ['a.jpg'] }],
+    ['very short text', { content: 'lol' }],
+    ['long text (shows "read more")', { content: 'x'.repeat(400) }],
+    ['many lines', { content: 'a\nb\nc\nd\ne' }],
+    ['a long title', { title: 't'.repeat(120) }],
+    ['a community post', { community_id: 'c-1' }],
+    ['a repost', { reposted_from_post_id: 'p-0' }],
+  ])('does not filter out %s — picks are purely the most-voted posts', (_label, overrides) => {
+    expect(rejectionReason(row(overrides), NU)).toBeNull();
   });
 
   it.each([
     ['other campus', { university_domain: 'sdu.edu.kz' }],
     ['not a feed post', { post_type: 'lost_found' }],
     ['not anonymous', { is_anonymous: false }],
-    ['community post', { community_id: 'c-1' }],
-    ['repost', { reposted_from_post_id: 'p-0' }],
     ['removed', { is_banned: true }],
     ['blocked author', { is_author_blocked_by_viewer: true }],
-    ['has images', { image_urls: ['a.jpg'] }],
-    ['too short', { content: 'lol' }],
-    ['too long for the card', { content: 'x'.repeat(181) }],
-    ['too many lines', { content: 'line one is here\nline two\nline three\nline four' }],
-    ['title too long', { title: 't'.repeat(81) }],
     ['too old', { created_at: '2026-09-16T23:59:59Z' }],
     ['too old', { created_at: null }],
   ])('rejects: %s', (reason, overrides) => {
