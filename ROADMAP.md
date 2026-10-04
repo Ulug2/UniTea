@@ -45,7 +45,7 @@ Committed after the 1.2.0 list above was checked off — ships in whichever buil
 - [ ] Auth email placeholder reads `you@university.edu` (`09526aa`)
 - [ ] Settings: Website (unitea.app) and Instagram (`unitee.ig`) links (`09526aa`)
 - [ ] Settings: Dark Mode row says "Following system appearance" instead of naming iPhone on Android (`09526aa`)
-- [ ] Copy post and comment text on detail screens: press-and-select on Android, long-press → Copy (whole text) on iOS (`HASH`) — verify on real iOS + Android devices
+- [ ] Copy post and comment text on detail screens: press-and-select on Android, long-press → Copy (whole text) on iOS (`6f8e744`) — verify on real iOS + Android devices
 
 ## 🔭 Later
 
@@ -75,4 +75,4 @@ Committed after the 1.2.0 list above was checked off — ships in whichever buil
 - [x] 2026-09-25 · Community header: avatar + name on one row, full-width description · `af20799`
 - [x] 2026-09-29 · AI moderation allows names unless the content targets a private person (insults, threats, sexual comments, rumors, personal info); public figures can be criticized freely — deployed (server-side, all app versions) · `0c34450`
 - [x] 2026-10-03 · Auth email placeholder `you@university.edu`; Website + Instagram links in Settings; Dark Mode label no longer says "iPhone" on Android · `09526aa`
-- [x] 2026-10-03 · Post, comment and Lost & Found detail text can be copied (selectable on detail screens only, so feed taps still open the post) · `HASH`
+- [x] 2026-10-03 · Post, comment and Lost & Found detail text can be copied (selectable on detail screens only, so feed taps still open the post) · `6f8e744`
