@@ -15,13 +15,7 @@ _No open bugs._
 
 ## ✨ Features
 
-Ordered by effort, easiest first.
-
-1. [~] **Lost & Found tab → Market.** The tab is renamed "Market" with two segments: Market
-   (things for sale: title, description, photos, optional price in ₸, Chat button) and Lost & Found
-   (unchanged). Announcements dropped. Implemented on `feat/market-tab`; needs migration
-   `20261003000000_market_posts.sql` + `create-post` Edge Function deployed (both additive — old
-   builds keep seeing only Lost & Found), then a store build.
+_No open features._
 
 ## 🚀 Waiting on a store build
 
@@ -47,6 +41,7 @@ Committed after the 1.2.0 list above was checked off — ships in whichever buil
 - [ ] Settings: Website (unitea.app) and Instagram (`unitee.ig`) links (`09526aa`)
 - [ ] Settings: Dark Mode row says "Following system appearance" instead of naming iPhone on Android (`09526aa`)
 - [ ] Copy post and comment text on detail screens: press-and-select on Android, long-press → Copy (whole text) on iOS (`6f8e744`) — verify on real iOS + Android devices
+- [ ] Market tab: Lost & Found tab renamed "Market" with Market (for sale, optional ₸ price, Chat) and Lost & Found segments (`521c05d`) — server side already live; verify segments, price field and ₸ sign on real iOS + Android devices
 
 ## 🔭 Later
 
@@ -77,3 +72,4 @@ Committed after the 1.2.0 list above was checked off — ships in whichever buil
 - [x] 2026-09-29 · AI moderation allows names unless the content targets a private person (insults, threats, sexual comments, rumors, personal info); public figures can be criticized freely — deployed (server-side, all app versions) · `0c34450`
 - [x] 2026-10-03 · Auth email placeholder `you@university.edu`; Website + Instagram links in Settings; Dark Mode label no longer says "iPhone" on Android · `09526aa`
 - [x] 2026-10-03 · Post, comment and Lost & Found detail text can be copied (selectable on detail screens only, so feed taps still open the post) · `6f8e744`
+- [x] 2026-10-03 · Market tab (sell items next to Lost & Found): migration `20261003000000` + `create-post` deployed (additive, old builds unaffected); app side waits for a store build · `521c05d`
