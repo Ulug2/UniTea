@@ -51,10 +51,15 @@ const FOUND_COLOR = "#16A34A";
 const FOUND_BG = "#DCFCE7";
 const TEAL = "#5DBEBC";
 
-const SAFETY_REMINDER =
+const LOST_FOUND_SAFETY_REMINDER =
   "Please meet in public places on campus when exchanging items. " +
   "If you find an item that appears to be valuable or contains identification, " +
   "consider turning it in to campus security or the student center.";
+
+const MARKET_SAFETY_REMINDER =
+  "Meet in a public place on campus and check the item before you pay. " +
+  "Avoid paying in advance or sharing bank card details, " +
+  "and report any post that looks like a scam.";
 
 // ─── Style factory ────────────────────────────────────────────────────────────
 
@@ -983,7 +988,9 @@ export default function LostFoundPostDetailed() {
             {/* ── Safety reminder card ── */}
             <View style={styles.safetyCard}>
               <Text style={styles.safetyTitle}>Safety Reminder</Text>
-              <Text style={styles.safetyText}>{SAFETY_REMINDER}</Text>
+              <Text style={styles.safetyText}>
+                {isMarket ? MARKET_SAFETY_REMINDER : LOST_FOUND_SAFETY_REMINDER}
+              </Text>
             </View>
           </ScrollView>
         </View>
