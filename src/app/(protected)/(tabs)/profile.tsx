@@ -21,7 +21,12 @@ import { ProfileTabs } from "../../../features/profile/components/ProfileTabs";
 import { ProfilePostsList } from "../../../features/profile/components/ProfilePostsList";
 import { ProfileSettingsModal } from "../../../features/profile/components/ProfileSettingsModal";
 import { AvatarPreviewModal } from "../../../features/profile/components/AvatarPreviewModal";
-import { TERMS_URL, PRIVACY_URL } from "../../../constants/links";
+import {
+  TERMS_URL,
+  PRIVACY_URL,
+  WEBSITE_URL,
+  INSTAGRAM_URL,
+} from "../../../constants/links";
 import { openExternalLink } from "../../../utils/links";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { useMyPosts } from "../../../features/profile/hooks/useMyPosts";
@@ -52,25 +57,15 @@ export default function ProfileScreen() {
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [textSizeVisible, setTextSizeVisible] = useState(false);
 
-  const handleOpenTerms = useCallback(() => {
-    openExternalLink(TERMS_URL).catch((error: unknown) => {
+  const handleOpenLink = useCallback((url: string) => {
+    openExternalLink(url).catch((error: unknown) => {
       const message =
         error instanceof Error
           ? error.message
           : "Unable to open link. Please try again later.";
       Alert.alert("Unable to open link", message);
     });
-  }, [openExternalLink]);
-
-  const handleOpenPrivacy = useCallback(() => {
-    openExternalLink(PRIVACY_URL).catch((error: unknown) => {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to open link. Please try again later.";
-      Alert.alert("Unable to open link", message);
-    });
-  }, [openExternalLink]);
+  }, []);
 
   const handleContactSupport = useCallback(() => {
     const subject = encodeURIComponent(
@@ -362,8 +357,10 @@ export default function ProfileScreen() {
           setSettingsVisible(false);
           setTextSizeVisible(true);
         }}
-        onPressTerms={handleOpenTerms}
-        onPressPrivacy={handleOpenPrivacy}
+        onPressTerms={() => handleOpenLink(TERMS_URL)}
+        onPressPrivacy={() => handleOpenLink(PRIVACY_URL)}
+        onPressWebsite={() => handleOpenLink(WEBSITE_URL)}
+        onPressInstagram={() => handleOpenLink(INSTAGRAM_URL)}
         onPressManageAccount={() => {
           setSettingsVisible(false);
           setManageAccountVisible(true);

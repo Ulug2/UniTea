@@ -26,7 +26,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 const THEME_STORAGE_KEY = "@unitea_theme_preference";
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // Reactive: updates whenever the user changes the iPhone's appearance.
+  // Reactive: updates whenever the user changes the device's appearance.
   const systemColorScheme = useColorScheme();
 
   // false = follow system (default). true = force dark mode.
@@ -68,7 +68,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     save();
   }, [isManualDark, isInitialized]);
 
-  // When toggle is OFF, follow the iPhone appearance live. When ON, always dark.
+  // When toggle is OFF, follow the device appearance live. When ON, always dark.
   const isDark = isManualDark || systemColorScheme === "dark";
 
   const toggleTheme = () => {

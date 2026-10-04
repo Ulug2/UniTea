@@ -234,7 +234,7 @@ export default function Auth() {
               if (showResendOption) dismissResendOption();
             }}
             value={email}
-            placeholder="name.surname@university.edu"
+            placeholder="you@university.edu"
             autoCapitalize="none"
             keyboardType="email-address"
             errorMessage={emailError}

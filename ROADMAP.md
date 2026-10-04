@@ -5,7 +5,7 @@ check it off, add the commit hash, and move it to **Done** once it is pushed.
 
 Status: `[ ]` not started · `[~]` in progress · `[x]` done
 
-_Last updated: 2026-09-29_
+_Last updated: 2026-10-03_
 
 ---
 
@@ -15,8 +15,14 @@ _No open bugs._
 
 ## ✨ Features
 
-- [ ] **Lost & Found → Announcements & Advertisements.** Transform the Lost & Found section
-  into announcements and advertisements.
+Ordered by effort, easiest first.
+
+1. [ ] **Copy post and comment text.** Long-press the text of a post or comment to select it and
+   copy to the clipboard. Must not break tapping a post to open it or the existing long-press menus.
+2. [ ] **Lost & Found → L&F, Advertisements & Announcements.** Transform the Lost & Found section
+   into three kinds of post: lost & found, advertisements and announcements. Largest item: touches
+   the tab, create-post, detail screen, deep links and the backend, and must stay compatible with
+   installed builds.
 
 ## 🚀 Waiting on a store build
 
@@ -24,17 +30,23 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 (no over-the-air updates are configured). **Everything below ships in 1.2.0** (version bumped
 2026-09-25; 1.1.0 is live). Check these off once 1.2.0 is released.
 
-- [ ] Signup: "Too many attempts" lock now expires, real wait time shown, clear message for breached/common passwords (`345b4fb`) — after release, re-enable Supabase leaked-password protection (turned off 2026-09-29)
-- [ ] SDU branding shows "Suleiman Demirel" for `sdu.edu.kz` (`daf72ac`)
-- [ ] Clear "This university is not supported yet." message at signup (`daf72ac`)
-- [ ] Email-link screen tells verified users to sign in instead of showing an error (`a486933`)
-- [ ] Vote taps no longer open the post detail (`bfd5b45`) — verify on real iOS + Android devices
-- [ ] Chat images compressed + cached by path, full-screen loading/error state (`04e24d7`)
-- [ ] Chat: up to 3 images per message as rounded post-style tiles (`2e2c34c`, `d454f02`, `c9ed6cb`)
-- [ ] Swipeable full-screen gallery for chat and posts (`2e2c34c`)
-- [ ] Optimistic commenting: comments appear instantly while moderation runs (`2c8be1e`)
-- [ ] Tab lists no longer blank / stuck "dragged down" after background updates (`ccb4133`, `15b5d5c`)
-- [ ] Community header: avatar + name on one row, full-width description (`af20799`)
+- [x] Signup: "Too many attempts" lock now expires, real wait time shown, clear message for breached/common passwords (`345b4fb`) — after release, re-enable Supabase leaked-password protection (turned off 2026-09-29)
+- [x] SDU branding shows "Suleiman Demirel" for `sdu.edu.kz` (`daf72ac`)
+- [x] Clear "This university is not supported yet." message at signup (`daf72ac`)
+- [x] Email-link screen tells verified users to sign in instead of showing an error (`a486933`)
+- [x] Vote taps no longer open the post detail (`bfd5b45`) — verify on real iOS + Android devices
+- [x] Chat images compressed + cached by path, full-screen loading/error state (`04e24d7`)
+- [x] Chat: up to 3 images per message as rounded post-style tiles (`2e2c34c`, `d454f02`, `c9ed6cb`)
+- [x] Swipeable full-screen gallery for chat and posts (`2e2c34c`)
+- [x] Optimistic commenting: comments appear instantly while moderation runs (`2c8be1e`)
+- [x] Tab lists no longer blank / stuck "dragged down" after background updates (`ccb4133`, `15b5d5c`)
+- [x] Community header: avatar + name on one row, full-width description (`af20799`)
+
+Committed after the 1.2.0 list above was checked off — ships in whichever build is cut next:
+
+- [ ] Auth email placeholder reads `you@university.edu` (`HASH`)
+- [ ] Settings: Website (unitea.app) and Instagram (`unitee.ig`) links (`HASH`)
+- [ ] Settings: Dark Mode row says "Following system appearance" instead of naming iPhone on Android (`HASH`)
 
 ## 🔭 Later
 
@@ -63,3 +75,4 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 - [x] 2026-09-25 · Profile/Lost & Found/Chats lists: no blank list or stuck pull-to-refresh after background updates · `ccb4133`, `15b5d5c`
 - [x] 2026-09-25 · Community header: avatar + name on one row, full-width description · `af20799`
 - [x] 2026-09-29 · AI moderation allows names unless the content targets a private person (insults, threats, sexual comments, rumors, personal info); public figures can be criticized freely — deployed (server-side, all app versions) · `0c34450`
+- [x] 2026-10-03 · Auth email placeholder `you@university.edu`; Website + Instagram links in Settings; Dark Mode label no longer says "iPhone" on Android · `HASH`

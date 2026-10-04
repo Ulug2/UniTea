@@ -4,3 +4,7 @@ export const TERMS_URL =
 export const PRIVACY_URL =
   "https://www.notion.so/UniTee-Privacy-Policy-EN-2efa8fe2a0c180ef8601ed544944df9b?source=copy_link";
 
+
+export const WEBSITE_URL = "https://unitea.app";
+
+export const INSTAGRAM_URL = "https://www.instagram.com/unitee.ig";

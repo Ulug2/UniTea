@@ -28,6 +28,8 @@ type ProfileSettingsModalProps = {
   onPressPrivacy: () => void;
   onPressManageAccount: () => void;
   onPressContactSupport: () => void;
+  onPressWebsite: () => void;
+  onPressInstagram: () => void;
 };
 
 const FONT_SCALE_LABELS = {
@@ -50,6 +52,8 @@ export function ProfileSettingsModal({
   onPressPrivacy,
   onPressManageAccount,
   onPressContactSupport,
+  onPressWebsite,
+  onPressInstagram,
 }: ProfileSettingsModalProps) {
   const insets = useSafeAreaInsets();
   const fontScale = PixelRatio.getFontScale();
@@ -107,7 +111,7 @@ export function ProfileSettingsModal({
                   >
                     {isManualDark
                       ? "Forced dark"
-                      : "Following iPhone appearance"}
+                      : "Following system appearance"}
                   </Text>
                 </View>
               </View>
@@ -186,6 +190,50 @@ export function ProfileSettingsModal({
                 />
                 <Text style={[styles.settingLabel, { color: theme.text }]}>
                   Contact Support
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={chevronIconSize}
+                color={theme.secondaryText}
+              />
+            </Pressable>
+
+            {/* Website */}
+            <Pressable
+              style={[styles.settingRow, { borderBottomColor: theme.border }]}
+              onPress={onPressWebsite}
+            >
+              <View style={styles.settingLeft}>
+                <Ionicons
+                  name="globe-outline"
+                  size={rowIconSize}
+                  color={theme.text}
+                />
+                <Text style={[styles.settingLabel, { color: theme.text }]}>
+                  Website
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={chevronIconSize}
+                color={theme.secondaryText}
+              />
+            </Pressable>
+
+            {/* Instagram */}
+            <Pressable
+              style={[styles.settingRow, { borderBottomColor: theme.border }]}
+              onPress={onPressInstagram}
+            >
+              <View style={styles.settingLeft}>
+                <Ionicons
+                  name="logo-instagram"
+                  size={rowIconSize}
+                  color={theme.text}
+                />
+                <Text style={[styles.settingLabel, { color: theme.text }]}>
+                  Instagram
                 </Text>
               </View>
               <Ionicons
