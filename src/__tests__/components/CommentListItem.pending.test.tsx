@@ -76,3 +76,8 @@ it('shows the normal actions once confirmed', () => {
   expect(screen.getByText('Reply')).toBeTruthy();
   expect(screen.queryByText('Posting…')).toBeNull();
 });
+
+it('comment text is selectable so it can be copied', () => {
+  renderItem({ ...baseComment, _pending: false });
+  expect(screen.getByText('hello there').props.selectable).toBe(true);
+});

@@ -858,6 +858,7 @@ const PostListItem = React.memo(function PostListItem({
                       )
                     : undefined
                 }
+                selectable={isDetailedPost}
                 style={styles.repostComment}
               >
                 {content}
@@ -1057,6 +1058,7 @@ const PostListItem = React.memo(function PostListItem({
                 {hasPostTitle && (
                   <Text
                     numberOfLines={isDetailedPost ? undefined : 3}
+                    selectable={isDetailedPost}
                     style={[styles.titleText, { color: theme.text }]}
                   >
                     {trimmedPostTitle}
@@ -1080,6 +1082,7 @@ const PostListItem = React.memo(function PostListItem({
                             )
                           : undefined
                       }
+                      selectable={isDetailedPost}
                       style={[styles.contentText, { color: theme.text }]}
                     >
                       {content}

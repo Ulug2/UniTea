@@ -230,3 +230,19 @@ describe('PostListItem header identity navigation (Phase 3.1A UX refinement)', (
     expect(mockRouterPush).not.toHaveBeenCalled();
   });
 });
+
+// Selectable text swallows taps on Android, so it is only enabled on Post
+// Detail — in the feed a tap on the text must still open the post.
+describe('PostListItem text selection', () => {
+  it('feed: title and content are not selectable', () => {
+    render(<PostListItem {...BASE_PROPS} isAnonymous={false} title="A title" />);
+    expect(screen.getByText('A title').props.selectable).toBe(false);
+    expect(screen.getByText('Hello world').props.selectable).toBe(false);
+  });
+
+  it('post detail: title and content are selectable for copying', () => {
+    render(<PostListItem {...BASE_PROPS} isAnonymous={false} title="A title" isDetailedPost />);
+    expect(screen.getByText('A title').props.selectable).toBe(true);
+    expect(screen.getByText('Hello world').props.selectable).toBe(true);
+  });
+});

@@ -862,7 +862,7 @@ export default function LostFoundPostDetailed() {
               </View>
 
               {/* Title */}
-              <Text style={styles.title}>{title}</Text>
+              <Text selectable style={styles.title}>{title}</Text>
 
               {/* Location */}
               {post.location ? (
@@ -936,7 +936,9 @@ export default function LostFoundPostDetailed() {
 
               {/* Description */}
               <Text style={styles.sectionLabel}>Description</Text>
-              <Text style={styles.descriptionText}>{description}</Text>
+              <Text selectable style={styles.descriptionText}>
+                {description}
+              </Text>
 
               {/* Action row: Chat (others only) + Share (always) */}
               <View style={styles.actionRow}>

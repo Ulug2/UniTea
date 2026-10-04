@@ -459,7 +459,7 @@ const CommentListItem = ({
       />
 
       {/* Comment Content */}
-      <Text style={[styles.content, { color: theme.text }]}>
+      <Text selectable style={[styles.content, { color: theme.text }]}>
         {comment.content}
       </Text>
 
