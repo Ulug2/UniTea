@@ -12,6 +12,10 @@ import {
   normalizePostBody,
   normalizePostTitle,
 } from "../utils/postValidation";
+import {
+  boardPostsKey,
+  type BoardPostType,
+} from "../features/posts/utils/boardPosts";
 
 type CreatePostVariables = {
   imagePath: string | undefined;
@@ -22,6 +26,8 @@ type CreatePostVariables = {
   postLocation: string;
   postIsAnonymous: boolean;
   postCategory: "lost" | "found";
+  /** Whole tenge; market posts only. Null when the seller gave no price. */
+  postPrice?: number | null;
   pollOptions?: string[];
   /** Resolved at submit time so community posts never miss their target feed. */
   communityId?: string | null;
@@ -35,7 +41,8 @@ type CreatePostVariables = {
 };
 
 type CreatePostOptions = {
-  isLostFound: boolean;
+  /** Set for Market-tab posts (`market` / `lost_found`); null for feed posts. */
+  boardPostType: BoardPostType | null;
   repostId?: string | string[];
   currentUserId: string | null | undefined;
   universityId?: string | null;
@@ -51,7 +58,7 @@ type CreatePostOptions = {
 
 export function useCreatePostMutation(options: CreatePostOptions): UseMutationResult<any, unknown, CreatePostVariables> {
   const {
-    isLostFound,
+    boardPostType,
     repostId,
     currentUserId,
     universityId,
@@ -63,6 +70,8 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
     avatarUrl,
   } = options;
   const queryClient = useQueryClient();
+  const isBoardPost = boardPostType !== null;
+  const isLostFound = boardPostType === "lost_found";
 
   const resolvedRepostId =
     typeof repostId === "string" ? repostId : Array.isArray(repostId) ? repostId[0] : undefined;
@@ -80,6 +89,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
         postLocation,
         postIsAnonymous,
         postCategory,
+        postPrice,
         pollOptions,
         imagePath,
         imagePaths,
@@ -109,21 +119,22 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
       const postPayload = {
         id: idempotencyId,
         content: normalizedContent,
-        post_type: isLostFound ? "lost_found" : "feed",
+        post_type: boardPostType ?? "feed",
         image_url: primaryImagePath || null,
         image_urls: normalizedImagePaths.length > 0 ? normalizedImagePaths : null,
         image_aspect_ratio: imageAspectRatio ?? null,
-        is_anonymous: isLostFound ? false : postIsAnonymous,
+        is_anonymous: isBoardPost ? false : postIsAnonymous,
         ...(normalizedTitle && { title: normalizedTitle }),
-        ...(isLostFound && {
-          category: postCategory,
-          location: postLocation.trim(),
-        }),
+        ...(isLostFound && { category: postCategory }),
+        ...(isBoardPost &&
+          postLocation.trim() && { location: postLocation.trim() }),
+        ...(boardPostType === "market" &&
+          postPrice != null && { price: postPrice }),
         ...(effectiveCommunityId && { community_id: effectiveCommunityId }),
         ...(resolvedRepostId && {
           reposted_from_post_id: resolvedRepostId,
         }),
-        ...(!isLostFound &&
+        ...(!isBoardPost &&
           pollOptions &&
           pollOptions.length >= 2 && {
             poll_options: pollOptions,
@@ -185,14 +196,14 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
       Alert.alert("Error", message);
     },
     onSuccess: async (data, variables) => {
-      if (isLostFound) {
+      if (boardPostType) {
         // Awaited — onSuccess's returned promise is awaited internally by
         // TanStack Query before mutateAsync() resolves, so create-post.tsx
-        // does not navigate away until the Lost & Found list has actually
+        // does not navigate away until that board list has actually
         // refetched and contains the new post (not merely until the
         // refetch was *requested*).
         await queryClient.invalidateQueries({
-          queryKey: ["posts", "lost_found"],
+          queryKey: boardPostsKey(boardPostType),
         });
       } else {
         const effectiveCommunityId =
@@ -298,7 +309,7 @@ export function useCreatePostMutation(options: CreatePostOptions): UseMutationRe
       }
     },
     onSettled: (_data, _error, variables) => {
-      if (!isLostFound) {
+      if (!isBoardPost) {
         const communityId = variables?.communityId ?? defaultCommunityId ?? null;
         queryClient.invalidateQueries({
           predicate: feedKeys.belongsToCommunity(communityId),

@@ -25,6 +25,35 @@ describe('useCreatePostFormState', () => {
       expect(result.current.isRepost).toBe(false);
     });
 
+    it('treats "market" as a board post that is not Lost & Found', () => {
+      const { result } = renderHook(() =>
+        useCreatePostFormState({ type: 'market' })
+      );
+      expect(result.current.boardPostType).toBe('market');
+      expect(result.current.isBoardPost).toBe(true);
+      expect(result.current.isLostFound).toBe(false);
+    });
+
+    it('market post: title and description are required, location and price are not', () => {
+      const { result } = renderHook(() =>
+        useCreatePostFormState({ type: 'market' })
+      );
+      expect(result.current.canSubmit).toBe(false);
+      act(() => {
+        result.current.setTitle('Desk lamp');
+        result.current.setContent('Barely used');
+      });
+      expect(result.current.canSubmit).toBe(true);
+    });
+
+    it('price keeps digits only', () => {
+      const { result } = renderHook(() =>
+        useCreatePostFormState({ type: 'market' })
+      );
+      act(() => { result.current.setPrice('12 000₸abc'); });
+      expect(result.current.price).toBe('12000');
+    });
+
     it('sets isRepost=true when repostId is provided', () => {
       const { result } = renderHook(() =>
         useCreatePostFormState({ repostId: 'post-123' })

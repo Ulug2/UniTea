@@ -92,6 +92,7 @@ serve(async (req: Request) => {
       is_anonymous,
       location,
       category,
+      price,
       community_id,
       reposted_from_post_id,
       // Optional poll fields (feed posts only)
@@ -262,6 +263,19 @@ serve(async (req: Request) => {
       }
     }
 
+    // Optional price in whole tenge — market posts only. Older clients never
+    // send it; anything sent on another post type is ignored.
+    let marketPrice: number | null = null;
+    if (post_type === "market" && price !== undefined && price !== null) {
+      if (!Number.isInteger(price) || price < 0 || price > 2_000_000_000) {
+        return new Response(
+          JSON.stringify({ error: "Invalid price" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      marketPrice = price;
+    }
+
     // 5. Prepare post data for database insertion
     const postData: any = {
       user_id: user.id,
@@ -288,6 +302,9 @@ serve(async (req: Request) => {
     }
     if (category) {
       postData.category = category;
+    }
+    if (marketPrice !== null) {
+      postData.price = marketPrice;
     }
     if (community_id) {
       // Membership/university is enforced by the posts INSERT RLS policy.

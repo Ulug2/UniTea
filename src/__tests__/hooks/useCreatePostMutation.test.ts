@@ -86,7 +86,7 @@ describe('useCreatePostMutation', () => {
   describe('guards', () => {
     it('throws "You must be logged in" when currentUserId is null', async () => {
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: null }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: null }),
         { wrapper: createWrapper() }
       );
 
@@ -98,7 +98,7 @@ describe('useCreatePostMutation', () => {
 
     it('throws "Content is required" for regular post with empty content', async () => {
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -114,7 +114,7 @@ describe('useCreatePostMutation', () => {
       const { result } = renderHook(
         () =>
           useCreatePostMutation({
-            isLostFound: false,
+            boardPostType: null,
             currentUserId: USER_ID,
             repostId: 'original-post-id',
           }),
@@ -128,7 +128,7 @@ describe('useCreatePostMutation', () => {
 
     it('throws "Location is required" for lost&found post with empty location', async () => {
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: true, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: "lost_found", currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -146,7 +146,7 @@ describe('useCreatePostMutation', () => {
       mockGetSession.mockResolvedValueOnce({ data: { session: null }, error: null });
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -163,7 +163,7 @@ describe('useCreatePostMutation', () => {
       mockFetchSuccess({ id: 'post-1' });
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -182,7 +182,7 @@ describe('useCreatePostMutation', () => {
       const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -210,7 +210,7 @@ describe('useCreatePostMutation', () => {
       mockFetchSuccess({ id: 'post-4' });
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -234,7 +234,7 @@ describe('useCreatePostMutation', () => {
       mockFetchSuccess({ id: 'post-9' });
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -248,11 +248,58 @@ describe('useCreatePostMutation', () => {
       expect(fetchBody.id).toBe('stable-retry-id-99');
     });
 
+    it('market post: sends post_type "market" with price, no category, never anonymous', async () => {
+      mockFetchSuccess({ id: 'post-m1' });
+      const invalidateSpy = jest.spyOn(QueryClient.prototype, 'invalidateQueries');
+
+      const { result } = renderHook(
+        () => useCreatePostMutation({ boardPostType: 'market', currentUserId: USER_ID }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.mutate({
+          ...defaultVars,
+          postTitle: 'Desk lamp',
+          postLocation: '',
+          postIsAnonymous: true,
+          postPrice: 12000,
+        });
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const fetchBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(fetchBody.post_type).toBe('market');
+      expect(fetchBody.price).toBe(12000);
+      expect(fetchBody.is_anonymous).toBe(false);
+      expect(fetchBody).not.toHaveProperty('category');
+      expect(fetchBody).not.toHaveProperty('location');
+      expect(invalidateSpy.mock.calls.map((c) => c[0]?.queryKey)).toContainEqual(['posts', 'market']);
+      invalidateSpy.mockRestore();
+    });
+
+    it('never sends a price on non-market posts', async () => {
+      mockFetchSuccess({ id: 'post-m2' });
+
+      const { result } = renderHook(
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => { result.current.mutate({ ...defaultVars, postPrice: 500 }); });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      const fetchBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(fetchBody).not.toHaveProperty('price');
+    });
+
     it('includes title for feed posts when provided', async () => {
       mockFetchSuccess({ id: 'post-5' });
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -277,7 +324,7 @@ describe('useCreatePostMutation', () => {
       const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: true, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: "lost_found", currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -295,7 +342,7 @@ describe('useCreatePostMutation', () => {
       mockFetchSuccess({ id: 'post-2' });
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: true, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: "lost_found", currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -324,7 +371,7 @@ describe('useCreatePostMutation', () => {
         .mockImplementation(() => invalidatePromise as any);
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: true, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: "lost_found", currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -356,7 +403,7 @@ describe('useCreatePostMutation', () => {
       const { result } = renderHook(
         () =>
           useCreatePostMutation({
-            isLostFound: false,
+            boardPostType: null,
             currentUserId: USER_ID,
             repostId: ['first-id', 'second-id'],
           }),
@@ -407,7 +454,7 @@ describe('useCreatePostMutation', () => {
       const capturedCalls = spyOnSetQueryData();
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -431,7 +478,7 @@ describe('useCreatePostMutation', () => {
       const capturedCalls = spyOnSetQueryData();
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -459,7 +506,7 @@ describe('useCreatePostMutation', () => {
       const capturedCalls = spyOnSetQueryData();
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -491,7 +538,7 @@ describe('useCreatePostMutation', () => {
       const { result } = renderHook(
         () =>
           useCreatePostMutation({
-            isLostFound: false,
+            boardPostType: null,
             currentUserId: USER_ID,
             communityName: 'Chess Club',
           }),
@@ -532,7 +579,7 @@ describe('useCreatePostMutation', () => {
       const { result } = renderHook(
         () =>
           useCreatePostMutation({
-            isLostFound: false,
+            boardPostType: null,
             currentUserId: USER_ID,
             username: 'realuser',
             avatarUrl: 'https://cdn.example.com/avatar.png',
@@ -562,7 +609,7 @@ describe('useCreatePostMutation', () => {
       const { result } = renderHook(
         () =>
           useCreatePostMutation({
-            isLostFound: false,
+            boardPostType: null,
             currentUserId: USER_ID,
             username: 'realuser',
             avatarUrl: 'https://cdn.example.com/avatar.png',
@@ -597,7 +644,7 @@ describe('useCreatePostMutation', () => {
       const capturedCalls = spyOnSetQueryData();
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: true, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: "lost_found", currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -638,7 +685,7 @@ describe('useCreatePostMutation', () => {
       });
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -664,7 +711,7 @@ describe('useCreatePostMutation', () => {
       });
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 
@@ -682,7 +729,7 @@ describe('useCreatePostMutation', () => {
       });
 
       const { result } = renderHook(
-        () => useCreatePostMutation({ isLostFound: false, currentUserId: USER_ID }),
+        () => useCreatePostMutation({ boardPostType: null, currentUserId: USER_ID }),
         { wrapper: createWrapper() }
       );
 

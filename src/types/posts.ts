@@ -14,6 +14,8 @@ export type PostsSummaryViewRow = {
   category: string | null;
   location: string | null;
   post_type: string;
+  // Only set on `market` posts; absent until migration 20261003000000 is live.
+  price?: number | null;
   university_id: string;
   university_domain: string;
   community_id: string | null;

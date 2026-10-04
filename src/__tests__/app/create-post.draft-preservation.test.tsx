@@ -151,7 +151,12 @@ function mockBaseFormState() {
     setTitle: mockSetTitle,
     reset: mockReset,
     canSubmit: true,
+    price: '',
+    setPrice: jest.fn(),
     ...mockFormStateOverrides,
+    // Derived from the mode the same way the real hook derives them.
+    boardPostType: mockFormStateOverrides.isLostFound ? ('lost_found' as const) : null,
+    isBoardPost: Boolean(mockFormStateOverrides.isLostFound),
   };
 }
 

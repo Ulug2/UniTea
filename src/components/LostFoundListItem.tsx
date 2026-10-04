@@ -25,6 +25,10 @@ import { sharePost } from "../utils/sharePost";
 import ResponsiveImage from "./ResponsiveImage";
 import { prefetchLostFoundDetail } from "../features/posts/data/lostFoundDetailQuery";
 import { moderateScale, scale, verticalScale } from "../utils/scaling";
+import {
+  formatPrice,
+  getBoardPostTitle,
+} from "../features/posts/utils/boardPosts";
 
 export type LostFoundPostForMenu = {
   postId: string;
@@ -40,6 +44,9 @@ type LostFoundListItemProps = {
   imageUrl: string | null;
   imageUrls?: string[] | null;
   category: string | null;
+  /** `market` or `lost_found` — decides the title wording and whether a price shows. */
+  postType?: string | null;
+  price?: number | null;
   location: string | null;
   isAnonymous: boolean | null;
   createdAt: string | null;
@@ -147,6 +154,8 @@ const arePropsEqual = (
     JSON.stringify(prevProps.imageUrls ?? []) ===
       JSON.stringify(nextProps.imageUrls ?? []) &&
     prevProps.category === nextProps.category &&
+    prevProps.postType === nextProps.postType &&
+    prevProps.price === nextProps.price &&
     prevProps.location === nextProps.location &&
     prevProps.isAnonymous === nextProps.isAnonymous &&
     prevProps.createdAt === nextProps.createdAt &&
@@ -167,6 +176,8 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
   imageUrl,
   imageUrls,
   category,
+  postType,
+  price,
   location,
   isAnonymous,
   createdAt,
@@ -367,9 +378,8 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
     }
   };
 
-  const categoryPrefix = category === "lost" ? "Lost" : "Found";
-  // Display title: "Lost: {title}" when title is present, otherwise just "Lost"
-  const displayTitle = title ? `${categoryPrefix}: ${title}` : categoryPrefix;
+  const displayTitle = getBoardPostTitle({ post_type: postType, category, title });
+  const priceLabel = postType === "market" ? formatPrice(price) : null;
 
   const styles = StyleSheet.create({
     link: {
@@ -435,6 +445,11 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
       fontSize: moderateScale(17),
       fontFamily: "Poppins_700Bold",
       color: theme.text,
+    },
+    price: {
+      fontSize: moderateScale(16),
+      fontFamily: "Poppins_600SemiBold",
+      color: theme.primary,
     },
     locationContainer: {
       flexDirection: "row",
@@ -583,6 +598,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
           }}
         >
           <Text style={styles.title}>{displayTitle}</Text>
+          {priceLabel && <Text style={styles.price}>{priceLabel}</Text>}
           {location && (
             <View style={styles.locationContainer}>
               <Ionicons

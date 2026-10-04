@@ -36,6 +36,11 @@ import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { saveLostFoundToStorage } from "../../../utils/feedPersistence";
 import { usePullToRefresh } from "../../../hooks/usePullToRefresh";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
+import {
+  BOARD_POST_TYPES,
+  boardPostsKey,
+  type BoardPostType,
+} from "../../../features/posts/utils/boardPosts";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -43,7 +48,63 @@ type PostSummary = PostsSummaryViewRow;
 
 const POSTS_PER_PAGE = 10;
 
-export default function LostFoundScreen() {
+const SEGMENTS: Record<
+  BoardPostType,
+  { label: string; emptyText: string }
+> = {
+  market: { label: "Market", emptyText: "Nothing for sale yet" },
+  lost_found: {
+    label: "Lost & Found",
+    emptyText: "No lost & found posts yet",
+  },
+};
+
+/**
+ * Market tab: one screen, two segments — things for sale and Lost & Found.
+ * Each segment is its own list (own query, search and scroll position); the
+ * list is keyed by segment so switching never shows one segment's state in
+ * the other.
+ */
+export default function MarketScreen() {
+  const { theme } = useTheme();
+  const [segment, setSegment] = useState<BoardPostType>("market");
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={[styles.segmentBar, { backgroundColor: theme.card }]}>
+        {BOARD_POST_TYPES.map((type) => {
+          const selected = type === segment;
+          return (
+            <Pressable
+              key={type}
+              testID={`market-segment-${type}`}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              onPress={() => setSegment(type)}
+              style={[
+                styles.segmentButton,
+                selected && { backgroundColor: theme.primary },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.segmentText,
+                  { color: selected ? "#fff" : theme.text },
+                ]}
+                numberOfLines={1}
+              >
+                {SEGMENTS[type].label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <BoardPostsList key={segment} postType={segment} />
+    </View>
+  );
+}
+
+function BoardPostsList({ postType }: { postType: BoardPostType }) {
   const { theme } = useTheme();
   const fontScale = PixelRatio.getFontScale();
   const fabIconSize = moderateScale(28) * fontScale;
@@ -76,7 +137,7 @@ export default function LostFoundScreen() {
     };
   }, [searchQuery]);
 
-  // Fetch lost & found posts using optimized view with pagination
+  // Fetch this segment's posts using optimized view with pagination
   const {
     data: postsData,
     fetchNextPage,
@@ -85,7 +146,7 @@ export default function LostFoundScreen() {
     isPending,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ["posts", "lost_found", universityId],
+    queryKey: boardPostsKey(postType, universityId),
     queryFn: async ({ pageParam = 0 }) => {
       const from = pageParam * POSTS_PER_PAGE;
       const to = from + POSTS_PER_PAGE - 1;
@@ -93,7 +154,7 @@ export default function LostFoundScreen() {
       let query = (supabase as any)
         .from("posts_summary_view")
         .select("*")
-        .eq("post_type", "lost_found")
+        .eq("post_type", postType)
         .or("is_banned.is.null,is_banned.eq.false");
 
       if (universityId) {
@@ -167,14 +228,15 @@ export default function LostFoundScreen() {
   // Persist the first page to AsyncStorage after every successful fetch so the
   // next cold start can seed the RQ cache before the splash screen hides.
   // Scoped by universityId — saveLostFoundToStorage no-ops until it's known.
+  // Only Lost & Found has a cold-start seed (see feedPersistence.ts).
   useEffect(() => {
-    if (postsData?.pages?.length) {
+    if (postType === "lost_found" && postsData?.pages?.length) {
       saveLostFoundToStorage(universityId, postsData.pages as PostSummary[][]);
     }
-  }, [postsData, universityId]);
+  }, [postType, postsData, universityId]);
 
   const deletePostMutation = useDeletePost(undefined, {
-    scope: { type: "lost_found", universityId },
+    scope: { type: postType, universityId },
     onSuccess: () => {
       setShowMenu(false);
       setSelectedPost(null);
@@ -240,7 +302,7 @@ export default function LostFoundScreen() {
     [selectedPost, reportPostMutation],
   );
 
-  // L&F posts are always public, so block scope is always profile_only
+  // Board posts are always public, so block scope is always profile_only
   const blockUserMutation = useBlockUser(currentUserId ?? null);
 
   const handleBlockUser = useCallback(() => {
@@ -299,6 +361,8 @@ export default function LostFoundScreen() {
         imageUrl={item.image_url}
         imageUrls={item.image_urls ?? null}
         category={item.category}
+        postType={item.post_type}
+        price={item.price}
         location={item.location}
         isAnonymous={item.is_anonymous}
         createdAt={item.created_at}
@@ -384,7 +448,7 @@ export default function LostFoundScreen() {
                 >
                   {debouncedQuery
                     ? "No results for your search"
-                    : "No lost & found posts yet"}
+                    : SEGMENTS[postType].emptyText}
                 </Text>
               </View>
             ) : null
@@ -513,7 +577,7 @@ export default function LostFoundScreen() {
 
       {/* Floating Action Button */}
       <Pressable
-        onPress={() => router.push("/create-post?type=lost_found")}
+        onPress={() => router.push(`/create-post?type=${postType}`)}
         style={[styles.fab, { backgroundColor: theme.primary }]}
       >
         <FontAwesome name="plus" size={fabIconSize} color="#fff" />
@@ -525,6 +589,25 @@ export default function LostFoundScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  segmentBar: {
+    flexDirection: "row",
+    marginHorizontal: scale(16),
+    marginTop: verticalScale(8),
+    padding: moderateScale(4),
+    borderRadius: moderateScale(12),
+    gap: moderateScale(4),
+  },
+  segmentButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: verticalScale(8),
+    borderRadius: moderateScale(9),
+  },
+  segmentText: {
+    fontSize: moderateScale(14),
+    fontFamily: "Poppins_600SemiBold",
   },
   searchHeader: {
     paddingHorizontal: scale(16),

@@ -10,6 +10,10 @@ import type { Theme } from "../../../context/ThemeContext";
 import { sharePost } from "../../../utils/sharePost";
 import { prefetchLostFoundDetail } from "../../posts/data/lostFoundDetailQuery";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
+import {
+  getBoardPostTitle,
+  isBoardPostType,
+} from "../../posts/utils/boardPosts";
 
 type Post = Database["public"]["Tables"]["posts"]["Row"];
 
@@ -25,23 +29,16 @@ type ProfilePostItemProps = {
 const ProfilePostItem = memo(
   ({ item, postScore, commentCount, theme }: ProfilePostItemProps) => {
     const postId = "post_id" in item ? item.post_id : item.id;
-    const isLostFound = item.post_type === "lost_found";
+    // Market and Lost & Found posts share the item detail screen.
+    const isBoardPost = isBoardPostType(item.post_type);
     const queryClient = useQueryClient();
 
-    // Keep Lost & Found preview semantics. For feed posts, prefer title when available.
+    // Board posts preview as their item title; feed posts prefer title when available.
     const displayContent = useMemo(() => {
       const title = item.title?.trim();
-      if (!isLostFound) {
-        if (title) return title;
-        return item.content;
-      }
-      const category = (item as PostSummary).category;
-      if (title) {
-        const prefix = category === "found" ? "Found" : "Lost";
-        return `${prefix}: ${title}`;
-      }
-      return item.content;
-    }, [isLostFound, item]);
+      if (!title) return item.content;
+      return isBoardPost ? getBoardPostTitle(item as PostSummary) : title;
+    }, [isBoardPost, item]);
 
     const finalContent = useMemo(() => {
       const text = (displayContent ?? "").trim();
@@ -68,7 +65,7 @@ const ProfilePostItem = memo(
           { backgroundColor: theme.card, borderBottomColor: theme.border },
         ]}
         onPress={() => {
-          if (isLostFound) {
+          if (isBoardPost) {
             prefetchLostFoundDetail(queryClient, postId);
             router.push(`/lostfoundpost/${postId}`);
           } else {
@@ -91,7 +88,7 @@ const ProfilePostItem = memo(
           {finalContent}
         </Text>
         <View style={styles.postFooter}>
-          {!isLostFound && (
+          {!isBoardPost && (
             <View style={styles.postStat}>
               <MaterialCommunityIcons
                 name="arrow-up-bold"
@@ -121,7 +118,7 @@ const ProfilePostItem = memo(
             style={styles.postStat}
             onPress={(e) => {
               e.stopPropagation();
-              sharePost(postId, isLostFound ? "lost_found" : undefined);
+              sharePost(postId, isBoardPost ? "lost_found" : undefined);
             }}
           >
             <Ionicons

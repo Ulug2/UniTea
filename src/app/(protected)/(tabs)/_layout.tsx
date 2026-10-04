@@ -151,7 +151,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="lostfound"
           options={{
-            title: "Lost & Found",
+            title: "Market",
             headerTitleAlign: "center",
             headerTitleStyle: {
               fontSize: moderateScale(24),
@@ -159,7 +159,11 @@ export default function TabLayout() {
               color: theme.text,
             },
             tabBarIcon: ({ color }) => (
-              <Ionicons name="bag-outline" size={tabIconSize} color={color} />
+              <Ionicons
+                name="storefront-outline"
+                size={tabIconSize}
+                color={color}
+              />
             ),
           }}
         />

@@ -69,6 +69,7 @@ import { useFullscreenGallery } from "../../hooks/useFullscreenGallery";
 import { mapWithConcurrency } from "../../utils/asyncConcurrency";
 import { moderateScale, scale, verticalScale } from "../../utils/scaling";
 import { generateUuidV4 } from "../../utils/uuid";
+import { parsePrice } from "../../features/posts/utils/boardPosts";
 
 const MAX_POLL_OPTIONS = 11;
 const MAX_POST_IMAGES = 5;
@@ -152,6 +153,8 @@ export default function CreatePostScreen() {
     useOriginalPostForRepost(repostId);
 
   const {
+    boardPostType,
+    isBoardPost,
     isLostFound,
     isRepost,
     content,
@@ -172,6 +175,8 @@ export default function CreatePostScreen() {
     setLocation,
     title,
     setTitle,
+    price,
+    setPrice,
     reset,
     canSubmit,
   } = useCreatePostFormState({ type, repostId });
@@ -273,9 +278,9 @@ export default function CreatePostScreen() {
     }
     // Fallback (should be rare): return to the likely originating tab.
     router.replace(
-      isLostFound ? "/(protected)/(tabs)/lostfound" : "/(protected)/(tabs)",
+      isBoardPost ? "/(protected)/(tabs)/lostfound" : "/(protected)/(tabs)",
     );
-  }, [reset, closeScreen, isLostFound]);
+  }, [reset, closeScreen, isBoardPost]);
 
   const imageAspectRatiosRef = React.useRef<Record<string, number>>({});
   // True from when the picker closes until the compressed URIs land in state.
@@ -398,7 +403,7 @@ export default function CreatePostScreen() {
 
   // Create post mutation with optimistic UI updates (like Instagram/X)
   const createPostMutation = useCreatePostMutation({
-    isLostFound,
+    boardPostType,
     repostId,
     currentUserId: session?.user?.id,
     universityId: currentUser?.university_id,
@@ -432,7 +437,7 @@ export default function CreatePostScreen() {
 
       // If poll is enabled on feed posts, validate options
       let cleanedPollOptions: string[] | undefined = undefined;
-      if (!isLostFound && isPoll) {
+      if (!isBoardPost && isPoll) {
         const normalized = Array.from(
           new Set(pollOptions.map((o) => o.trim()).filter((o) => o.length > 0)),
         );
@@ -464,6 +469,7 @@ export default function CreatePostScreen() {
         location,
         isAnonymous,
         category,
+        price,
         images,
         pollOptions: cleanedPollOptions ?? null,
         communityId: resolvedCommunityId ?? null,
@@ -534,6 +540,7 @@ export default function CreatePostScreen() {
         postLocation: location,
         postIsAnonymous: isAnonymous,
         postCategory: category,
+        postPrice: parsePrice(price),
         pollOptions: cleanedPollOptions,
         communityId: resolvedCommunityId ?? null,
       });
@@ -547,7 +554,7 @@ export default function CreatePostScreen() {
       // Reset form and return to the feed that was already mounted behind this modal.
       // Using back() preserves the active community filter and scroll position.
       reset();
-      if (isLostFound) {
+      if (isBoardPost) {
         router.replace("/(protected)/(tabs)/lostfound");
       } else if (Platform.OS === "android") {
         closeScreen();
@@ -624,7 +631,9 @@ export default function CreatePostScreen() {
             ? "Repost"
             : isLostFound
               ? "Post Lost/Found Item"
-              : "Create Post"}
+              : isBoardPost
+                ? "Sell an Item"
+                : "Create Post"}
         </Text>
         <Pressable
           testID="create-post-submit-button"
@@ -750,8 +759,8 @@ export default function CreatePostScreen() {
               </View>
             )}
 
-            {/* ITEM NAME INPUT (Lost & Found only) */}
-            {isLostFound && (
+            {/* ITEM NAME INPUT (Market and Lost & Found) */}
+            {isBoardPost && (
               <View style={styles.locationSection}>
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>
                   Item Name *
@@ -779,17 +788,51 @@ export default function CreatePostScreen() {
                     keyboardAppearance={keyboardAppearance}
                     onChangeText={setTitle}
                     value={title}
-                    autoFocus={isLostFound}
+                    autoFocus={isBoardPost}
                   />
                 </View>
               </View>
             )}
 
-            {/* LOCATION INPUT (Lost & Found only) */}
-            {isLostFound && (
+            {/* PRICE INPUT (Market only) */}
+            {boardPostType === "market" && (
               <View style={styles.locationSection}>
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                  Location *
+                  Price in ₸ (optional)
+                </Text>
+                <View
+                  style={[
+                    styles.locationInputContainer,
+                    {
+                      backgroundColor: theme.background,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="cash-outline"
+                    size={icon20}
+                    color={theme.secondaryText}
+                  />
+                  <TextInput
+                    testID="create-post-price-input"
+                    placeholder="Price"
+                    placeholderTextColor={theme.secondaryText}
+                    style={[styles.locationInput, { color: theme.text }]}
+                    keyboardAppearance={keyboardAppearance}
+                    keyboardType="number-pad"
+                    onChangeText={setPrice}
+                    value={price}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* LOCATION INPUT (Market and Lost & Found) */}
+            {isBoardPost && (
+              <View style={styles.locationSection}>
+                <Text style={[styles.sectionLabel, { color: theme.text }]}>
+                  {isLostFound ? "Location *" : "Location (optional)"}
                 </Text>
                 <View
                   style={[
@@ -818,7 +861,7 @@ export default function CreatePostScreen() {
             )}
 
             {/* TITLE INPUT (Feed posts only) */}
-            {!isLostFound && (
+            {!isBoardPost && (
               <View style={styles.locationSection}>
                 <View style={styles.sectionLabelRow}>
                   <Text style={[styles.sectionLabelCompact, { color: theme.text }]}>
@@ -856,7 +899,7 @@ export default function CreatePostScreen() {
                     keyboardAppearance={keyboardAppearance}
                     onChangeText={setTitle}
                     value={title}
-                    autoFocus={!isLostFound && !isRepost}
+                    autoFocus={!isBoardPost && !isRepost}
                     maxLength={POST_TITLE_MAX_LENGTH}
                   />
                 </View>
@@ -866,7 +909,7 @@ export default function CreatePostScreen() {
             {/* CONTENT INPUT */}
             <View style={styles.contentSection}>
               <View style={styles.sectionLabelRow}>
-                {isLostFound ? (
+                {isBoardPost ? (
                   <Text style={[styles.sectionLabelCompact, { color: theme.text }]}>
                     Description *
                   </Text>
@@ -890,7 +933,7 @@ export default function CreatePostScreen() {
                 placeholder={
                   isRepost
                     ? "Say something about this..."
-                    : isLostFound
+                    : isBoardPost
                       ? "Describe the item..."
                       : "What's on your mind?"
                 }
@@ -908,7 +951,7 @@ export default function CreatePostScreen() {
             </View>
 
             {/* POLL BUILDER (feed posts only, shown only when enabled) */}
-            {!isLostFound && isPoll && (
+            {!isBoardPost && isPoll && (
               <View style={styles.pollSection}>
                 <View style={styles.pollHeaderRow}>
                   <Text style={[styles.sectionLabel, { color: theme.text }]}>
@@ -1132,7 +1175,7 @@ export default function CreatePostScreen() {
             ]}
           >
             {/* ANONYMOUS TOGGLE (Feed posts only) */}
-            {!isLostFound && (
+            {!isBoardPost && (
               <>
                 <View style={styles.anonymousFooterRow}>
                   {isAnonymous ? (
@@ -1185,7 +1228,7 @@ export default function CreatePostScreen() {
                 </View>
               </>
             )}
-            {isLostFound && (
+            {isBoardPost && (
               <>
                 <View />
                 <Pressable

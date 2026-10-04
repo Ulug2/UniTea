@@ -3,18 +3,19 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import { feedKeys } from "../../communities/data/queryKeys";
+import { boardPostsKey, type BoardPostType } from "../utils/boardPosts";
 
 /**
  * Explicit, discriminated invalidation scope for the deleted post. Required
  * (not inferred) because a feed post with communityId === null (Campus Feed)
- * is not distinguishable by value alone from "this is a Lost & Found post" —
- * the two live in structurally different cache entries
- * (feedKeys.list(...) vs. ["posts","lost_found",universityId]), and
+ * is not distinguishable by value alone from "this is a Market / Lost & Found
+ * post" — the two live in structurally different cache entries
+ * (feedKeys.list(...) vs. boardPostsKey(type, universityId)), and
  * feedKeys.belongsToCommunity's predicate only ever matches the former.
  */
 export type DeletePostScope =
   | { type: "feed"; communityId: string | null }
-  | { type: "lost_found"; universityId: string | null | undefined };
+  | { type: BoardPostType; universityId: string | null | undefined };
 
 type Options = {
   scope: DeletePostScope;
@@ -62,7 +63,10 @@ export function useDeletePost(postId: string | null | undefined, options: Option
           });
         } else {
           queryClient.invalidateQueries({
-            queryKey: ["posts", "lost_found", options.scope.universityId],
+            queryKey: boardPostsKey(
+              options.scope.type,
+              options.scope.universityId,
+            ),
           });
         }
         queryClient.invalidateQueries({ queryKey: ["post", id] });

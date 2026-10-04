@@ -1,4 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
+import {
+  isBoardPostType,
+  sanitizePriceInput,
+} from "../features/posts/utils/boardPosts";
 
 type CreatePostMode = {
   type?: string;
@@ -9,7 +13,10 @@ export type PollOptions = string[];
 
 export function useCreatePostFormState(params: CreatePostMode) {
   const { type, repostId } = params;
-  const isLostFound = type === "lost_found";
+  // Board posts (Market tab): `market` or `lost_found`. Null for feed posts.
+  const boardPostType = isBoardPostType(type) ? type : null;
+  const isBoardPost = boardPostType !== null;
+  const isLostFound = boardPostType === "lost_found";
   const isRepost = Boolean(repostId);
 
   const [content, setContent] = useState<string>("");
@@ -23,6 +30,11 @@ export function useCreatePostFormState(params: CreatePostMode) {
   const [category, setCategory] = useState<"lost" | "found">("lost");
   const [location, setLocation] = useState<string>("");
   const [title, setTitle] = useState<string>("");
+  const [price, setPriceText] = useState<string>("");
+  const setPrice = useCallback(
+    (text: string) => setPriceText(sanitizePriceInput(text)),
+    [],
+  );
 
   const reset = useCallback(() => {
     setContent("");
@@ -33,6 +45,7 @@ export function useCreatePostFormState(params: CreatePostMode) {
     setCategory("lost");
     setLocation("");
     setTitle("");
+    setPriceText("");
   }, []);
 
   const hasPollContent = useMemo(
@@ -41,8 +54,13 @@ export function useCreatePostFormState(params: CreatePostMode) {
   );
 
   const canSubmit = useMemo(() => {
-    if (isLostFound) {
-      return Boolean(title.trim()) && Boolean(content.trim()) && Boolean(location.trim());
+    if (isBoardPost) {
+      // Location says where a lost/found item is; for a sale it's optional.
+      return (
+        Boolean(title.trim()) &&
+        Boolean(content.trim()) &&
+        (!isLostFound || Boolean(location.trim()))
+      );
     }
 
     if (isRepost) {
@@ -56,10 +74,12 @@ export function useCreatePostFormState(params: CreatePostMode) {
     }
 
     return Boolean(content.trim()) || images.length > 0;
-  }, [isLostFound, isRepost, isPoll, content, title, location, images, hasPollContent]);
+  }, [isBoardPost, isLostFound, isRepost, isPoll, content, title, location, images, hasPollContent]);
 
   return {
     // mode
+    boardPostType,
+    isBoardPost,
     isLostFound,
     isRepost,
 
@@ -84,6 +104,8 @@ export function useCreatePostFormState(params: CreatePostMode) {
     setLocation,
     title,
     setTitle,
+    price,
+    setPrice,
 
     // helpers
     reset,

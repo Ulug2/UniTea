@@ -17,10 +17,11 @@ _No open bugs._
 
 Ordered by effort, easiest first.
 
-1. [ ] **Lost & Found → L&F, Advertisements & Announcements.** Transform the Lost & Found section
-   into three kinds of post: lost & found, advertisements and announcements. Largest item: touches
-   the tab, create-post, detail screen, deep links and the backend, and must stay compatible with
-   installed builds.
+1. [~] **Lost & Found tab → Market.** The tab is renamed "Market" with two segments: Market
+   (things for sale: title, description, photos, optional price in ₸, Chat button) and Lost & Found
+   (unchanged). Announcements dropped. Implemented on `feat/market-tab`; needs migration
+   `20261003000000_market_posts.sql` + `create-post` Edge Function deployed (both additive — old
+   builds keep seeing only Lost & Found), then a store build.
 
 ## 🚀 Waiting on a store build
 

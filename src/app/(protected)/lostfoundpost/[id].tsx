@@ -38,6 +38,10 @@ import { useBlockUser } from "../../../features/posts/hooks/useBlockUser";
 import { useDeletePost } from "../../../features/posts/hooks/useDeletePost";
 import { useMyProfile } from "../../../features/profile/hooks/useMyProfile";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
+import {
+  formatPrice,
+  getBoardPostTitle,
+} from "../../../features/posts/utils/boardPosts";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -552,7 +556,10 @@ export default function LostFoundPostDetailed() {
   const blockUserMutation = useBlockUser(currentUserId);
 
   const deletePostMutation = useDeletePost(postId, {
-    scope: { type: "lost_found", universityId: post?.university_id },
+    scope: {
+      type: post?.post_type === "market" ? "market" : "lost_found",
+      universityId: post?.university_id,
+    },
     onNavigateBack: navigateBack,
   });
 
@@ -717,13 +724,11 @@ export default function LostFoundPostDetailed() {
   // displayImageUrls is computed earlier (before the loading gates above —
   // it feeds the media-readiness effects) using post?.image_url/image_urls;
   // it's identical here now that post is confirmed non-null.
+  const isMarket = post.post_type === "market";
   const isLost = post.category === "lost";
   const isAnonymous = post.is_anonymous ?? false;
 
-  const categoryPrefix = isLost ? "Lost" : "Found";
-  const title = post.title
-    ? `${categoryPrefix}: ${post.title}`
-    : categoryPrefix;
+  const title = getBoardPostTitle(post);
   const description = post.content;
 
   const displayName = isAnonymous
@@ -742,9 +747,10 @@ export default function LostFoundPostDetailed() {
     ? `${formatDistanceToNowStrict(new Date(post.created_at))} ago`
     : null;
 
-  const badgeColor = isLost ? LOST_COLOR : FOUND_COLOR;
-  const badgeBg = isLost ? LOST_BG : FOUND_BG;
-  const badgeLabel = isLost ? "Lost" : "Found";
+  // Lost & Found shows its category; a market post shows its price (if any).
+  const badgeLabel = isMarket ? formatPrice(post.price) : isLost ? "Lost" : "Found";
+  const badgeColor = !isMarket && isLost ? LOST_COLOR : FOUND_COLOR;
+  const badgeBg = !isMarket && isLost ? LOST_BG : FOUND_BG;
 
   // ── JSX ──────────────────────────────────────────────────────────────────────
   // Real content mounts immediately once post data is ready (never gated
@@ -840,25 +846,27 @@ export default function LostFoundPostDetailed() {
                   </View>
                 </View>
 
-                {/* Category pill badge */}
-                <View
-                  style={{
-                    backgroundColor: badgeBg,
-                    paddingHorizontal: scale(10),
-                    paddingVertical: verticalScale(4),
-                    borderRadius: moderateScale(8),
-                  }}
-                >
-                  <Text
+                {/* Category / price pill badge */}
+                {badgeLabel ? (
+                  <View
                     style={{
-                      fontSize: moderateScale(13),
-                      fontFamily: "Poppins_600SemiBold",
-                      color: badgeColor,
+                      backgroundColor: badgeBg,
+                      paddingHorizontal: scale(10),
+                      paddingVertical: verticalScale(4),
+                      borderRadius: moderateScale(8),
                     }}
                   >
-                    {badgeLabel}
-                  </Text>
-                </View>
+                    <Text
+                      style={{
+                        fontSize: moderateScale(13),
+                        fontFamily: "Poppins_600SemiBold",
+                        color: badgeColor,
+                      }}
+                    >
+                      {badgeLabel}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
 
               {/* Title */}
