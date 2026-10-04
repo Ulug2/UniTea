@@ -44,9 +44,9 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 
 Committed after the 1.2.0 list above was checked off — ships in whichever build is cut next:
 
-- [ ] Auth email placeholder reads `you@university.edu` (`HASH`)
-- [ ] Settings: Website (unitea.app) and Instagram (`unitee.ig`) links (`HASH`)
-- [ ] Settings: Dark Mode row says "Following system appearance" instead of naming iPhone on Android (`HASH`)
+- [ ] Auth email placeholder reads `you@university.edu` (`09526aa`)
+- [ ] Settings: Website (unitea.app) and Instagram (`unitee.ig`) links (`09526aa`)
+- [ ] Settings: Dark Mode row says "Following system appearance" instead of naming iPhone on Android (`09526aa`)
 
 ## 🔭 Later
 
@@ -75,4 +75,4 @@ Committed after the 1.2.0 list above was checked off — ships in whichever buil
 - [x] 2026-09-25 · Profile/Lost & Found/Chats lists: no blank list or stuck pull-to-refresh after background updates · `ccb4133`, `15b5d5c`
 - [x] 2026-09-25 · Community header: avatar + name on one row, full-width description · `af20799`
 - [x] 2026-09-29 · AI moderation allows names unless the content targets a private person (insults, threats, sexual comments, rumors, personal info); public figures can be criticized freely — deployed (server-side, all app versions) · `0c34450`
-- [x] 2026-10-03 · Auth email placeholder `you@university.edu`; Website + Instagram links in Settings; Dark Mode label no longer says "iPhone" on Android · `HASH`
+- [x] 2026-10-03 · Auth email placeholder `you@university.edu`; Website + Instagram links in Settings; Dark Mode label no longer says "iPhone" on Android · `09526aa`
