@@ -41,7 +41,7 @@ Committed after the 1.2.0 list above was checked off — ships in whichever buil
 - [ ] Settings: Website (unitea.app) and Instagram (`unitee.ig`) links (`09526aa`)
 - [ ] Settings: Dark Mode row says "Following system appearance" instead of naming iPhone on Android (`09526aa`)
 - [ ] Copy post and comment text on detail screens: press-and-select on Android, long-press → Copy (whole text) on iOS (`6f8e744`) — verify on real iOS + Android devices
-- [ ] Market tab: Lost & Found tab renamed "Market" with Market (for sale, optional ₸ price, Chat) and Lost & Found segments (`521c05d`) — server side already live; verify segments, price field and ₸ sign on real iOS + Android devices
+- [ ] Market tab: Lost & Found tab renamed "Market" with Market (for sale, optional ₸ price, Chat) and Lost & Found segments, with its own safety reminder on selling posts (`521c05d`, `ebddb29`) — server side already live; verify segments, price field and ₸ sign on real iOS + Android devices
 
 ## 🔭 Later
 
