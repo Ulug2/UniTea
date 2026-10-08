@@ -73,4 +73,4 @@ Committed after the 1.2.0 list above was checked off — ships in whichever buil
 - [x] 2026-10-03 · Auth email placeholder `you@university.edu`; Website + Instagram links in Settings; Dark Mode label no longer says "iPhone" on Android · `09526aa`
 - [x] 2026-10-03 · Post, comment and Lost & Found detail text can be copied (selectable on detail screens only, so feed taps still open the post) · `6f8e744`
 - [x] 2026-10-03 · Market tab (sell items next to Lost & Found): migration `20261003000000` + `create-post` deployed (additive, old builds unaffected); app side waits for a store build · `521c05d`
-- [x] 2026-10-08 · AI moderation removed from comments and community creation (name + description); posts and post images stay AI-moderated — `create-comment`, `create-community`, `create-post` deployed (server-side, all app versions)
+- [x] 2026-10-08 · AI moderation removed from comments and community creation (name + description); posts and post images stay AI-moderated — `create-comment`, `create-community`, `create-post` deployed (server-side, all app versions) · `8c1171c`
