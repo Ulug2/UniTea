@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  Keyboard,
   PixelRatio,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
@@ -26,7 +27,7 @@ import {
 } from "@tanstack/react-query";
 import { supabase } from "../../../lib/supabase";
 import { useBlockUser } from "../../../features/posts/hooks/useBlockUser";
-import { useCallback, useMemo, useState, useEffect, useRef } from "react";
+import { memo, useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { Database } from "../../../types/database.types";
 import { useRevealAfterFirstNImages } from "../../../hooks/useRevealAfterFirstNImages";
 import type { PostsSummaryViewRow } from "../../../types/posts";
@@ -61,13 +62,31 @@ const SEGMENTS: Record<
 
 /**
  * Market tab: one screen, two segments — things for sale and Lost & Found.
- * Each segment is its own list (own query, search and scroll position); the
- * list is keyed by segment so switching never shows one segment's state in
- * the other.
+ * Each segment is its own list (own query, search and scroll position).
+ *
+ * A segment's list is mounted the first time it is opened and then stays
+ * mounted, hidden with opacity:0 while the other one is showing — the same
+ * approach as the Campus/community feed panes (see feedLayerHidden in
+ * index.tsx). Unmounting it instead destroyed its native image views, so
+ * every switch back re-read each image from disk and replayed its fade-in
+ * over an empty container (a visible white flash).
  */
 export default function MarketScreen() {
   const { theme } = useTheme();
   const [segment, setSegment] = useState<BoardPostType>("market");
+  const [mountedSegments, setMountedSegments] = useState<
+    readonly BoardPostType[]
+  >(["market"]);
+
+  const selectSegment = useCallback((type: BoardPostType) => {
+    // The other segment's search field stays mounted, so it no longer loses
+    // focus by being unmounted.
+    Keyboard.dismiss();
+    setSegment(type);
+    setMountedSegments((previous) =>
+      previous.includes(type) ? previous : [...previous, type],
+    );
+  }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -80,7 +99,7 @@ export default function MarketScreen() {
               testID={`market-segment-${type}`}
               accessibilityRole="tab"
               accessibilityState={{ selected }}
-              onPress={() => setSegment(type)}
+              onPress={() => selectSegment(type)}
               style={[
                 styles.segmentButton,
                 selected && { backgroundColor: theme.primary },
@@ -99,12 +118,37 @@ export default function MarketScreen() {
           );
         })}
       </View>
-      <BoardPostsList key={segment} postType={segment} />
+      <View style={styles.listStack}>
+        {mountedSegments.map((type) => {
+          const isActive = type === segment;
+          return (
+            <View
+              key={type}
+              style={[styles.listLayer, !isActive && styles.listLayerHidden]}
+              pointerEvents={isActive ? "auto" : "none"}
+              importantForAccessibility={
+                isActive ? "auto" : "no-hide-descendants"
+              }
+              accessibilityElementsHidden={!isActive}
+            >
+              <BoardPostsList postType={type} isActive={isActive} />
+            </View>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
-function BoardPostsList({ postType }: { postType: BoardPostType }) {
+// memo: a hidden list stays mounted and laid out, so it should only re-render
+// for its own changes, not every time the other segment is selected.
+const BoardPostsList = memo(function BoardPostsList({
+  postType,
+  isActive,
+}: {
+  postType: BoardPostType;
+  isActive: boolean;
+}) {
   const { theme } = useTheme();
   const fontScale = PixelRatio.getFontScale();
   const fabIconSize = moderateScale(28) * fontScale;
@@ -144,6 +188,7 @@ function BoardPostsList({ postType }: { postType: BoardPostType }) {
     hasNextPage,
     isFetchingNextPage,
     isPending,
+    isStale,
     refetch,
   } = useInfiniteQuery({
     queryKey: boardPostsKey(postType, universityId),
@@ -190,6 +235,14 @@ function BoardPostsList({ postType }: { postType: BoardPostType }) {
 
   // Spinner only for user pulls, never background refetches — see usePullToRefresh.
   const pullToRefresh = usePullToRefresh(refetch);
+
+  // Coming back to a segment used to remount its list, which refetched stale
+  // data. The list now stays mounted, so do that refresh explicitly.
+  const wasActiveRef = useRef(isActive);
+  useEffect(() => {
+    if (isActive && !wasActiveRef.current && isStale) refetch();
+    wasActiveRef.current = isActive;
+  }, [isActive, isStale, refetch]);
 
   // Flatten pages into single array, remove duplicates, and filter blocked users
   const lostFoundPosts = useMemo(() => {
@@ -584,7 +637,7 @@ function BoardPostsList({ postType }: { postType: BoardPostType }) {
       </Pressable>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -608,6 +661,17 @@ const styles = StyleSheet.create({
   segmentText: {
     fontSize: moderateScale(14),
     fontFamily: "Poppins_600SemiBold",
+  },
+  listStack: {
+    flex: 1,
+  },
+  listLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  // opacity:0, not display:"none" — the latter drops the node out of layout
+  // and its images lose their decoded bitmaps (see feedLayerHidden in index.tsx).
+  listLayerHidden: {
+    opacity: 0,
   },
   searchHeader: {
     paddingHorizontal: scale(16),

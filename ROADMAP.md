@@ -43,6 +43,7 @@ Committed after the 1.2.0 list above was checked off — ships in whichever buil
 - [ ] Copy post and comment text on detail screens: press-and-select on Android, long-press → Copy (whole text) on iOS (`6f8e744`) — verify on real iOS + Android devices
 - [ ] Market tab: Lost & Found tab renamed "Market" with Market (for sale, optional ₸ price, Chat) and Lost & Found segments, with its own safety reminder on selling posts (`521c05d`, `ebddb29`) — server side already live; verify segments, price field and ₸ sign on real iOS + Android devices
 - [x] Chat shows which post a conversation is about: opening a chat from a post (feed, anonymous, Lost & Found, Market) attaches it to the next message as a tappable preview; images shown as `[image]` (`9511d22`) — test on real iOS + Android devices before release
+- [x] Market tab: images no longer flash white when switching between Market and Lost & Found; both lists stay mounted, so scroll position and search text are kept (`HASH_PLACEHOLDER`) — verify on real iOS + Android devices
 
 ## 🔭 Later
 
@@ -76,3 +77,4 @@ Committed after the 1.2.0 list above was checked off — ships in whichever buil
 - [x] 2026-10-03 · Market tab (sell items next to Lost & Found): migration `20261003000000` + `create-post` deployed (additive, old builds unaffected); app side waits for a store build · `521c05d`
 - [x] 2026-10-08 · AI moderation removed from comments and community creation (name + description); posts and post images stay AI-moderated — `create-comment`, `create-community`, `create-post` deployed (server-side, all app versions) · `8c1171c`
 - [x] 2026-10-08 · Chat post preview: migration `20261008000000` deployed (additive, old builds unaffected); app side waits for a store build · `9511d22`
+- [x] 2026-10-08 · Market tab: no white image flash when switching Market ↔ Lost & Found (client-side, waits for a store build) · `HASH_PLACEHOLDER`
