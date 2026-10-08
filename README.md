@@ -16,7 +16,7 @@ UniTee is a mobile community for university students: post to the feed, help oth
 - **Chat**: Direct messaging, including “anonymous chats” tied to post context.
 - **Safety + moderation**:
   - In-app reporting, blocking, notifications
-  - AI-assisted moderation on post/comment creation (Edge Functions)
+  - AI-assisted moderation on post creation (Edge Functions)
   - Separate admin moderation dashboard with a full audit log
 - **Reliability**: Sentry integration, Expo push notifications, client-side caching (TanStack Query).
 
@@ -34,7 +34,7 @@ UniTee is a mobile community for university students: post to the feed, help oth
 
 - **Supabase**: Postgres + Auth + Realtime + Storage
 - **Edge Functions (Deno)**:
-  - AI moderation on create (`create-post`, `create-comment`)
+  - AI moderation on post create (`create-post`)
   - Push delivery (`send-push-notification`)
   - Admin actions (`ban-user`, `unban-user`, `delete-post`, `delete-comment`)
   - Utility (`check-email-exists`)
@@ -114,7 +114,7 @@ npm test
   - `SUPABASE_URL`
   - `SUPABASE_ANON_KEY`
   - `SUPABASE_SERVICE_ROLE_KEY` (required for admin functions and utilities)
-  - `OPENAI_API_KEY` (required for AI moderation functions)
+  - `OPENAI_API_KEY` (required for `create-post` AI moderation)
 
 Generate updated DB types (requires Supabase CLI access to the project):
 

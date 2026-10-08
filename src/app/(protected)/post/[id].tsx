@@ -613,7 +613,7 @@ export default function PostDetailed() {
 
     // Optimistic: the comment appears in the list immediately (see
     // useCreateComment's onMutate) and the composer clears right away,
-    // while moderation + insert run in the background.
+    // while the insert runs in the background.
     setCommentText("");
     setParentCommentId(null);
     setReplyingToUsername(null);

@@ -1,16 +1,6 @@
-// Supabase Edge Function - Community creation with AI content moderation
+// Supabase Edge Function - Community creation (validation + rate limit)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import OpenAI from "https://esm.sh/openai@4";
-import {
-  EXPLICIT_SEXUAL_RULE,
-  LANGUAGE_NOTE,
-  MODERATION_MODEL,
-  MODERATION_TEMPERATURE,
-  TARGETS_PRIVATE_PERSON_RULE,
-  parseModerationJson,
-  targetsPrivatePersonMessage,
-} from "../_shared/moderation.ts";
 import {
   checkRateLimit,
   rateLimitExceededResponse,
@@ -22,8 +12,6 @@ import {
 } from "../_shared/validationConstants.ts";
 
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
-
-const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY") });
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin");
@@ -105,71 +93,6 @@ serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ error: `Description must be at most ${COMMUNITY_DESCRIPTION_MAX_LENGTH} characters.` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    // AI content moderation on name + description
-    const textToModerate = description
-      ? `Community name: ${name}\nDescription: ${description}`
-      : `Community name: ${name}`;
-
-    const moderation = await openai.moderations.create({ input: textToModerate });
-    const modResults = moderation.results?.[0];
-    if (
-      modResults?.categories["sexual/minors"] ||
-      modResults?.categories["self-harm/intent"] ||
-      modResults?.categories["self-harm/instructions"] ||
-      modResults?.categories["violence/graphic"] ||
-      modResults?.flagged
-    ) {
-      return new Response(
-        JSON.stringify({ error: "Community name or description violates content guidelines." }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const contextCheck = await openai.chat.completions.create({
-      model: MODERATION_MODEL,
-      messages: [
-        {
-          role: "system",
-          content: `You are an AI moderator for a university social app. Evaluate the proposed community name and description. ${LANGUAGE_NOTE}
-Evaluate for three violations:
-1. ${TARGETS_PRIVATE_PERSON_RULE}
-2. ${EXPLICIT_SEXUAL_RULE}
-3. impersonation: true if it impersonates an official university body (e.g. "NU Administration Official", "Dean's Office").
-Output JSON ONLY: {"targets_private_person": boolean, "explicit_sexual": boolean, "impersonation": boolean}`,
-        },
-        { role: "user", content: textToModerate.slice(0, 500) },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 60,
-      temperature: MODERATION_TEMPERATURE,
-    });
-
-    // Parse failure allows through — a false rejection is worse.
-    const aiResponse = parseModerationJson<{
-      targets_private_person: boolean;
-      explicit_sexual: boolean;
-      impersonation: boolean;
-    }>(contextCheck.choices[0]?.message?.content);
-
-    if (aiResponse.explicit_sexual) {
-      return new Response(
-        JSON.stringify({ error: "Community name or description contains sexually explicit content." }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-    if (aiResponse.targets_private_person) {
-      return new Response(
-        JSON.stringify({ error: targetsPrivatePersonMessage("Community name or description") }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-    if (aiResponse.impersonation) {
-      return new Response(
-        JSON.stringify({ error: "Community name appears to impersonate an official university body." }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 

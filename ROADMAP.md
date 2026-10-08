@@ -31,7 +31,7 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 - [x] Chat images compressed + cached by path, full-screen loading/error state (`04e24d7`)
 - [x] Chat: up to 3 images per message as rounded post-style tiles (`2e2c34c`, `d454f02`, `c9ed6cb`)
 - [x] Swipeable full-screen gallery for chat and posts (`2e2c34c`)
-- [x] Optimistic commenting: comments appear instantly while moderation runs (`2c8be1e`)
+- [x] Optimistic commenting: comments appear instantly while the comment is saved (`2c8be1e`)
 - [x] Tab lists no longer blank / stuck "dragged down" after background updates (`ccb4133`, `15b5d5c`)
 - [x] Community header: avatar + name on one row, full-width description (`af20799`)
 
@@ -73,3 +73,4 @@ Committed after the 1.2.0 list above was checked off — ships in whichever buil
 - [x] 2026-10-03 · Auth email placeholder `you@university.edu`; Website + Instagram links in Settings; Dark Mode label no longer says "iPhone" on Android · `09526aa`
 - [x] 2026-10-03 · Post, comment and Lost & Found detail text can be copied (selectable on detail screens only, so feed taps still open the post) · `6f8e744`
 - [x] 2026-10-03 · Market tab (sell items next to Lost & Found): migration `20261003000000` + `create-post` deployed (additive, old builds unaffected); app side waits for a store build · `521c05d`
+- [x] 2026-10-08 · AI moderation removed from comments and community creation (name + description); posts and post images stay AI-moderated — `create-comment`, `create-community`, `create-post` deployed (server-side, all app versions)

@@ -9,7 +9,7 @@ import {
   IMAGE_MODERATION_PROMPT,
   MODERATION_MODEL,
   MODERATION_TEMPERATURE,
-  moderateText,
+  moderatePostText,
   parseModerationJson,
   targetsPrivatePersonMessage,
 } from "../_shared/moderation.ts";
@@ -170,7 +170,7 @@ serve(async (req: Request) => {
     //    targeting a private person) — see _shared/moderation.ts.
     const textToModerate = [trimmedTitle, trimmedContent].filter(Boolean).join(" ");
     if (textToModerate) {
-      await moderateText(openai, textToModerate, "Post");
+      await moderatePostText(openai, textToModerate);
     }
 
     const normalizedImageUrls = Array.from(

@@ -1,6 +1,6 @@
-// Shared AI moderation rules for user-generated text (posts, comments,
-// communities) and text inside post images. One definition so every surface
-// enforces the same policy.
+// AI moderation rules for post text and text inside post images. One
+// definition so both enforce the same policy. Comments and communities are
+// not AI-moderated; reports and admin removal cover them.
 //
 // Names of private people are ALLOWED unless the content targets them:
 // insults/harassment, threats, sexual comments, rumors or accusations, or
@@ -13,10 +13,10 @@ export const MODERATION_MODEL = "gpt-4o-mini";
 /** Deterministic verdicts: the same text should always get the same decision. */
 export const MODERATION_TEMPERATURE = 0;
 
-export const LANGUAGE_NOTE =
+const LANGUAGE_NOTE =
   `Text may be in English, Russian, Kazakh, or Latin-transliterated Russian/Kazakh (e.g., "krasavchik", "zhasap", "pizdec").`;
 
-export const TARGETS_PRIVATE_PERSON_RULE = `targets_private_person: true ONLY if the text names or clearly identifies an everyday, private individual (e.g. a student or classmate) AND does at least one of:
+const TARGETS_PRIVATE_PERSON_RULE = `targets_private_person: true ONLY if the text names or clearly identifies an everyday, private individual (e.g. a student or classmate) AND does at least one of:
    - insults, mocks, humiliates, or harasses them (including their looks, body, ethnicity, religion, gender, or sexuality)
    - threatens them or encourages others to harass, avoid, or harm them
    - makes sexual comments or claims about them
@@ -27,10 +27,10 @@ export const TARGETS_PRIVATE_PERSON_RULE = `targets_private_person: true ONLY if
    - FALSE for opinions or criticism of someone's public work or role (a performance, film, song, match, a speech) that don't include any of the harms above — e.g. "X is overrated", "X's new song is bad".
    - If it is unclear whether the mention is harmful, answer false.`;
 
-export const EXPLICIT_SEXUAL_RULE = `explicit_sexual: true ONLY if the text is highly graphic, pornographic, erotica, or describes sexual violence/non-consensual acts.
+const EXPLICIT_SEXUAL_RULE = `explicit_sexual: true ONLY if the text is highly graphic, pornographic, erotica, or describes sexual violence/non-consensual acts.
    - FALSE for normal discussions about relationships, sex, anatomy, or casual sexual slang (e.g., "fingering", "hooking up") used in a conversational, joking, or educational context.`;
 
-export const TEXT_MODERATION_SYSTEM_PROMPT = `You are an AI moderator for an anonymous social app for university students.
+const TEXT_MODERATION_SYSTEM_PROMPT = `You are an AI moderator for an anonymous social app for university students.
 Analyze the user's text. ${LANGUAGE_NOTE}
 
 Evaluate for two violations:
@@ -70,11 +70,7 @@ export function parseModerationJson<T extends object>(text: string | null | unde
  * with a user-facing message on the first violation, checked in order:
  * severe harm, explicit sexual content, targeting a private person.
  */
-export async function moderateText(
-  openai: OpenAI,
-  text: string,
-  subject: "Post" | "Comment",
-): Promise<void> {
+export async function moderatePostText(openai: OpenAI, text: string): Promise<void> {
   const [moderation, contextCheck] = await Promise.all([
     openai.moderations.create({ input: text }),
     openai.chat.completions.create({
@@ -97,16 +93,16 @@ export async function moderateText(
       categories["self-harm/instructions"] ||
       categories["violence/graphic"])
   ) {
-    throw new Error(`${subject} violates severe safety guidelines (harm, minors, graphic violence)`);
+    throw new Error("Post violates severe safety guidelines (harm, minors, graphic violence)");
   }
 
   const verdict = parseModerationJson<{ targets_private_person: boolean; explicit_sexual: boolean }>(
     contextCheck.choices[0]?.message?.content,
   );
   if (verdict.explicit_sexual) {
-    throw new Error(`${subject} contains sexually explicit content`);
+    throw new Error("Post contains sexually explicit content");
   }
   if (verdict.targets_private_person) {
-    throw new Error(targetsPrivatePersonMessage(subject));
+    throw new Error(targetsPrivatePersonMessage("Post"));
   }
 }

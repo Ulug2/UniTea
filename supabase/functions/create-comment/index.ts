@@ -4,8 +4,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import OpenAI from "https://esm.sh/openai@4";
-import { moderateText } from "../_shared/moderation.ts";
 import {
   checkRateLimit,
   rateLimitExceededResponse,
@@ -14,10 +12,6 @@ import {
 // 10 comments per 2 minutes per user
 const COMMENT_RATE_LIMIT_MAX = 10;
 const COMMENT_RATE_LIMIT_WINDOW_SECONDS = 120;
-
-const openai = new OpenAI({
-  apiKey: Deno.env.get("OPENAI_API_KEY"),
-});
 
 const ALLOWED_ORIGINS = ["https://unitea.app", "https://www.unitea.app"];
 
@@ -101,7 +95,7 @@ serve(async (req: Request) => {
 
       // If a comment with this id already exists, this is a retry of an
       // earlier attempt that actually succeeded server-side — return it
-      // as-is instead of re-running rate-limit/moderation/insert/notification.
+      // as-is instead of re-running rate-limit/insert/notification.
       // Scoped to `user_id` too (on top of RLS) so a colliding id can never
       // return someone else's comment.
       const { data: existingComment, error: existingCommentError } = await supabase
@@ -121,9 +115,9 @@ serve(async (req: Request) => {
       }
     }
 
-    // Rate limit check (before any expensive OpenAI calls). Placed after
-    // the idempotency short-circuit above so resubmitting an
-    // already-created comment never costs part of the user's comment quota.
+    // Rate limit check. Placed after the idempotency short-circuit above so
+    // resubmitting an already-created comment never costs part of the user's
+    // comment quota.
     const allowed = await checkRateLimit(
       `comment:${user.id}`,
       COMMENT_RATE_LIMIT_MAX,
@@ -133,7 +127,7 @@ serve(async (req: Request) => {
       return rateLimitExceededResponse(corsHeaders, COMMENT_RATE_LIMIT_WINDOW_SECONDS);
     }
 
-    // 4. Validate required fields
+    // 3. Validate required fields
     if (!content || !content.trim()) {
       throw new Error("Comment content is required");
     }
@@ -142,11 +136,7 @@ serve(async (req: Request) => {
       throw new Error("Post ID is required");
     }
 
-    // 4. Text moderation (severe harm, explicit sexual content, content
-    //    targeting a private person) — see _shared/moderation.ts.
-    await moderateText(openai, content.trim(), "Comment");
-
-    // 5. Prepare comment data for database insertion
+    // 4. Prepare comment data for database insertion
     const commentData: any = {
       user_id: user.id,
       post_id: post_id,
@@ -163,11 +153,11 @@ serve(async (req: Request) => {
       commentData.parent_comment_id = parent_comment_id;
     }
 
-    // 5a. post_specific_anon_id is assigned atomically by the
+    // 4a. post_specific_anon_id is assigned atomically by the
     //     assign_comment_anon_id BEFORE INSERT trigger on the comments table.
     //     No assignment needed here.
 
-    // 6. Insert into database
+    // 5. Insert into database
     let { data, error: dbError } = await supabase
       .from("comments")
       .insert(commentData)
@@ -201,7 +191,7 @@ serve(async (req: Request) => {
       throw dbError;
     }
 
-    // 6a. Create notification for post author (gracefully fail if notification insert fails)
+    // 5a. Create notification for post author (gracefully fail if notification insert fails)
     try {
       const notificationDb = adminSupabase ?? supabase;
 
@@ -246,7 +236,7 @@ serve(async (req: Request) => {
       console.error("Unexpected error in notification logic:", notificationError);
     }
 
-    // 7. Return success response
+    // 6. Return success response
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

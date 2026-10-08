@@ -253,7 +253,7 @@ For each completed feature, record what was verified, any bugs found, root cause
 - Inline composer at bottom of post detail
 - Anonymous toggle (shows anon avatar in preview when on)
 - Reply mode: "Replying to @user" label, pre-populates `parent_comment_id`
-- `create-comment` Edge Function: rate limit (10/2min), OpenAI moderation, notification to post author
+- `create-comment` Edge Function: rate limit (10/2min), notification to post author
 - Direct push notification triggered by Edge Function for `comment_reply`
 - Comment appears in tree immediately after submit (optimistic or refetch)
 
@@ -261,7 +261,7 @@ For each completed feature, record what was verified, any bugs found, root cause
 **Bugs found:** None during this pass.
 **Fix applied:** N/A
 **Tests added:** None needed.
-**Known limitations:** `create-comment` Edge Function's server-side moderation/notification logic is out of scope for this app's Jest suite (Deno runtime).
+**Known limitations:** `create-comment` Edge Function's server-side rate-limit/notification logic is out of scope for this app's Jest suite (Deno runtime).
 **Last verified:** 2026-07-03
 
 ---

@@ -539,11 +539,11 @@ describe('useCreateComment — optimistic comments', () => {
     });
     await waitFor(() => expect(queryClient.getQueryData<any[]>(key)).toHaveLength(1));
 
-    await act(async () => respond({ error: 'Comment contains sexually explicit content' }, false));
+    await act(async () => respond({ error: 'Comment content is required' }, false));
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     expect(queryClient.getQueryData<any[]>(key)).toEqual([]);
-    expect(Alert.alert).toHaveBeenCalledWith('Error', 'Comment contains sexually explicit content');
+    expect(Alert.alert).toHaveBeenCalledWith('Error', 'Comment content is required');
   });
 
   it("reuses the viewer's existing anonymous number on this post for the pending comment", async () => {

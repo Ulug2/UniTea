@@ -55,7 +55,7 @@ supabase functions serve <function-name>   # local testing
 
 **Migrations**: `supabase/migrations/` — sequential SQL files. Always add new schema changes as new migration files, never edit existing ones.
 
-**Edge Functions** (`supabase/functions/`): Deno runtime. Each function imports from `https://deno.land/` and `https://esm.sh/`. Shared utilities in `_shared/`. Functions needing admin access use `SUPABASE_SERVICE_ROLE_KEY`. AI moderation (`create-post`, `create-comment`) calls OpenAI via `OPENAI_API_KEY`. Three functions bypass JWT verification (configured in `supabase/config.toml`): `check-email-exists`, `send-push-notification`, `profile-count`.
+**Edge Functions** (`supabase/functions/`): Deno runtime. Each function imports from `https://deno.land/` and `https://esm.sh/`. Shared utilities in `_shared/`. Functions needing admin access use `SUPABASE_SERVICE_ROLE_KEY`. AI moderation (`create-post` only — comments and communities are not AI-moderated) calls OpenAI via `OPENAI_API_KEY`. Three functions bypass JWT verification (configured in `supabase/config.toml`): `check-email-exists`, `send-push-notification`, `profile-count`.
 
 ### Moderation dashboard (`moderation/`)
 
