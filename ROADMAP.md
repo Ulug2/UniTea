@@ -20,10 +20,11 @@ _No open features._
 ## 🚀 Waiting on a store build
 
 Committed and pushed, but only reaches users with the next App Store / Google Play release
-(no over-the-air updates are configured). **Everything below ships in 1.2.0** (version bumped
-2026-09-25; 1.1.0 is live). Check these off once 1.2.0 is released.
+(no over-the-air updates are configured). 1.2.0 (build 42, cut from `640fe07`) is live. **Everything unreleased below ships in 1.3.0**
+(version bumped 2026-10-08).
 
-- [x] Signup: "Too many attempts" lock now expires, real wait time shown, clear message for breached/common passwords (`345b4fb`) — after release, re-enable Supabase leaked-password protection (turned off 2026-09-29)
+Released in 1.2.0:
+
 - [x] SDU branding shows "Suleiman Demirel" for `sdu.edu.kz` (`daf72ac`)
 - [x] Clear "This university is not supported yet." message at signup (`daf72ac`)
 - [x] Email-link screen tells verified users to sign in instead of showing an error (`a486933`)
@@ -35,15 +36,16 @@ Committed and pushed, but only reaches users with the next App Store / Google Pl
 - [x] Tab lists no longer blank / stuck "dragged down" after background updates (`ccb4133`, `15b5d5c`)
 - [x] Community header: avatar + name on one row, full-width description (`af20799`)
 
-Committed after the 1.2.0 list above was checked off — ships in whichever build is cut next:
+Ships in 1.3.0 (everything committed after the 1.2.0 build):
 
+- [ ] Signup: "Too many attempts" lock now expires, real wait time shown, clear message for breached/common passwords (`345b4fb`) — after release, re-enable Supabase leaked-password protection (turned off 2026-09-29)
 - [ ] Auth email placeholder reads `you@university.edu` (`09526aa`)
 - [ ] Settings: Website (unitea.app) and Instagram (`unitee.ig`) links (`09526aa`)
 - [ ] Settings: Dark Mode row says "Following system appearance" instead of naming iPhone on Android (`09526aa`)
 - [ ] Copy post and comment text on detail screens: press-and-select on Android, long-press → Copy (whole text) on iOS (`6f8e744`) — verify on real iOS + Android devices
 - [ ] Market tab: Lost & Found tab renamed "Market" with Market (for sale, optional ₸ price, Chat) and Lost & Found segments, with its own safety reminder on selling posts (`521c05d`, `ebddb29`) — server side already live; verify segments, price field and ₸ sign on real iOS + Android devices
-- [x] Chat shows which post a conversation is about: opening a chat from a post (feed, anonymous, Lost & Found, Market) attaches it to the next message as a tappable preview; images shown as `[image]` (`9511d22`) — test on real iOS + Android devices before release
-- [x] Market tab: images no longer flash white when switching between Market and Lost & Found; both lists stay mounted, so scroll position and search text are kept (`0c9746f`) — verify on real iOS + Android devices
+- [ ] Chat shows which post a conversation is about: opening a chat from a post (feed, anonymous, Lost & Found, Market) attaches it to the next message as a tappable preview; images shown as `[image]` (`9511d22`) — test on real iOS + Android devices before release
+- [ ] Market tab: images no longer flash white when switching between Market and Lost & Found; both lists stay mounted, so scroll position and search text are kept (`0c9746f`) — verify on real iOS + Android devices
 
 ## 🔭 Later
 
