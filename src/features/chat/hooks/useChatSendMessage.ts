@@ -30,6 +30,8 @@ type SendParams = {
   text: string;
   images?: PickedChatImage[];
   replyToId?: string | null;
+  /** The post the chat was opened from, attached to this message. */
+  contextPostId?: string | null;
   /**
    * Idempotency key for this logical send attempt (Phase 3). Omit for a
    * fresh, user-initiated send — send() generates one. retry() passes the
@@ -163,11 +165,12 @@ export function useChatSendMessage(
       /** The local images those paths were uploaded from (kept for retry/restore). */
       images: PickedChatImage[];
       replyToId?: string | null;
+      contextPostId?: string | null;
       clientMessageId: string;
     },
     MutationContext | undefined
   >({
-    mutationFn: async ({ messageText, imagePaths, images, replyToId, clientMessageId }) => {
+    mutationFn: async ({ messageText, imagePaths, images, replyToId, contextPostId, clientMessageId }) => {
       if (!chatId || !currentUserId) {
         throw new Error("Missing chat ID or user ID");
       }
@@ -217,6 +220,10 @@ export function useChatSendMessage(
         image_aspect_ratio: images[0]?.aspectRatio ?? null,
       };
 
+      // Only sent when set, so a message without a post is the exact same
+      // insert as before.
+      const contextColumns = contextPostId ? { context_post_id: contextPostId } : {};
+
       let newMessage: ChatMessageVM;
 
       if (isAnonymous) {
@@ -234,6 +241,7 @@ export function useChatSendMessage(
           user_id: currentUserId,
           content: messageText?.trim() ?? "",
           ...imageColumns,
+          ...contextColumns,
           reply_to_id: replyToId ?? null,
         });
 
@@ -272,6 +280,7 @@ export function useChatSendMessage(
             user_id: currentUserId,
             content: messageText?.trim() ?? "",
             ...imageColumns,
+            ...contextColumns,
             reply_to_id: replyToId ?? null,
           })
           .select(REPLY_SELECT)
@@ -314,6 +323,7 @@ export function useChatSendMessage(
       imagePaths,
       images,
       replyToId,
+      contextPostId,
       clientMessageId,
     }) => {
       if (!chatId || !currentUserId) throw new Error("Missing chat ID or user ID");
@@ -374,11 +384,13 @@ export function useChatSendMessage(
         deleted_by_sender: null,
         reply_to_id: replyToId ?? null,
         replyToMessage: optimisticReplyToMessage,
+        context_post_id: contextPostId ?? null,
         sendStatus: "sending",
         _clientPayload: {
           messageText,
           images,
           replyToId: replyToId ?? null,
+          contextPostId: contextPostId ?? null,
           clientMessageId,
         },
       };
@@ -584,6 +596,7 @@ export function useChatSendMessage(
         text: messageText,
         images = [],
         replyToId,
+        contextPostId,
         clientMessageId: providedClientMessageId,
       } = params;
       if (!messageText?.trim() && images.length === 0) return;
@@ -650,6 +663,7 @@ export function useChatSendMessage(
           imagePaths,
           images,
           replyToId: replyToId ?? null,
+          contextPostId: contextPostId ?? null,
           clientMessageId,
         },
         {
@@ -688,6 +702,7 @@ export function useChatSendMessage(
         text: payload?.messageText ?? msg.content ?? "",
         images: payload?.images ?? legacyImage,
         replyToId: payload?.replyToId ?? null,
+        contextPostId: payload?.contextPostId ?? null,
         // Reuse the same id this attempt already sent to the server (Phase
         // 3) so a retry can never create a second row. Falls back to a
         // fresh id if this failed message predates the update (no stored

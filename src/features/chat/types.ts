@@ -63,6 +63,8 @@ export type ChatMessageVM = ChatMessageRow & {
     imageAspectRatio?: number | null;
     /** Preserved across retry so replies survive failed-send recovery. */
     replyToId?: string | null;
+    /** Preserved across retry so the post a message is about survives too. */
+    contextPostId?: string | null;
     /**
      * Idempotency key for this logical send attempt (Phase 3). Reused
      * verbatim by retry() so a retried send can never create a second
@@ -74,6 +76,11 @@ export type ChatMessageVM = ChatMessageRow & {
   reply_to_id?: string | null;
   /** Denormalised original message data, populated from JOIN or optimistic update. */
   replyToMessage?: ReplyPreview | null;
+  /**
+   * The post this message was sent about — set on the first message sent
+   * after opening the chat from a post. Absent on messages from older builds.
+   */
+  context_post_id?: string | null;
 };
 
 export type MessagesQueryData = {

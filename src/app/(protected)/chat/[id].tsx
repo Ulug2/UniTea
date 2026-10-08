@@ -64,6 +64,11 @@ import {
   chatDetailStyles,
 } from "../../../features/chat/styles";
 import { saveChatMessagesToStorage } from "../../../utils/feedPersistence";
+import {
+  getChatContextPostPreview,
+  parseContextPostId,
+  useChatContextPost,
+} from "../../../features/chat/data/contextPost";
 import { ChatHeader } from "../../../features/chat/components/ChatHeader";
 import { ChatComposer } from "../../../features/chat/components/ChatComposer";
 import { ChatMessageList } from "../../../features/chat/components/ChatMessageList";
@@ -79,7 +84,13 @@ const KEYBOARD_ANIM_FALLBACK_MS = 250;
 const KEYBOARD_ANIM_EASING = Easing.out(Easing.ease);
 
 export default function ChatDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, postId: postIdParam } = useLocalSearchParams<{
+    id: string;
+    postId?: string;
+  }>();
+  // The post this chat was opened from, if any (see pendingContextPostId).
+  const openedFromPostId = parseContextPostId(postIdParam);
+  const [postContextDismissed, setPostContextDismissed] = useState(false);
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const dynamicStyles = useMemo(
@@ -812,16 +823,35 @@ export default function ChatDetailScreen() {
     [currentUserId, otherUserName],
   );
 
+  // The next message is sent "about" the post the chat was opened from —
+  // unless the user removed it, or the most recent post already shown in
+  // this conversation is that same post (which is also what clears it once
+  // the message carrying it has been sent).
+  const pendingContextPostId = useMemo(() => {
+    if (!openedFromPostId || postContextDismissed || isLoadingMessages) {
+      return null;
+    }
+    const latestContextPostId =
+      messages.find((m) => m.context_post_id)?.context_post_id ?? null;
+    return latestContextPostId === openedFromPostId ? null : openedFromPostId;
+  }, [openedFromPostId, postContextDismissed, isLoadingMessages, messages]);
+  const { data: pendingContextPost, isLoading: isLoadingPendingContextPost } =
+    useChatContextPost(pendingContextPostId);
+  const pendingPostContext = pendingContextPostId
+    ? getChatContextPostPreview(pendingContextPost, isLoadingPendingContextPost)
+    : null;
+
   const handleSend = useCallback(() => {
     send({
       text: message,
       images: selectedImages,
       replyToId: replyingTo?.message.id ?? null,
+      contextPostId: pendingContextPostId,
     });
     setMessage("");
     setSelectedImages([]);
     setReplyingTo(null);
-  }, [message, selectedImages, replyingTo, send]);
+  }, [message, selectedImages, replyingTo, pendingContextPostId, send]);
 
   const handlePickImage = useCallback(async () => {
     const picked = await pickChatImages(MAX_CHAT_IMAGES - selectedImages.length);
@@ -1441,6 +1471,8 @@ export default function ChatDetailScreen() {
           primaryColor={theme.primary}
           replyingTo={replyingTo}
           onCancelReply={() => setReplyingTo(null)}
+          postContext={pendingPostContext}
+          onCancelPostContext={() => setPostContextDismissed(true)}
           replyPreviewBg={theme.card}
           replyPreviewBorderColor={theme.border}
           styles={dynamicStyles}

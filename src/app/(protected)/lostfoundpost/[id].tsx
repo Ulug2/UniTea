@@ -642,7 +642,7 @@ export default function LostFoundPostDetailed() {
       });
 
       if (existing) {
-        router.push(`/chat/${existing.id}`);
+        router.push(`/chat/${existing.id}?postId=${postId}`);
         return;
       }
 
@@ -678,7 +678,7 @@ export default function LostFoundPostDetailed() {
         return data;
       });
 
-      router.push(`/chat/${created.id}`);
+      router.push(`/chat/${created.id}?postId=${postId}`);
     } catch (err: unknown) {
       const e = err as { message?: string; code?: string };
       const msg =

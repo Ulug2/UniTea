@@ -753,7 +753,7 @@ const PostListItem = React.memo(function PostListItem({
       { postId, postAuthorId: userId, isPostAnonymous: isAnonymous ?? false },
       {
         onSuccess: ({ chatId }) => {
-          router.push(`/chat/${chatId}`);
+          router.push(`/chat/${chatId}?postId=${postId}`);
         },
       },
     );

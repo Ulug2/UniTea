@@ -1,5 +1,6 @@
 import React, { memo } from "react";
 import {
+  Keyboard,
   View,
   Text,
   Pressable,
@@ -21,6 +22,12 @@ import ResponsiveImage, { GALLERY_ITEM_HEIGHT } from "../../../components/Respon
 import type { Theme } from "../../../context/ThemeContext";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 import { getChatImageBounds } from "../../../utils/chatImageSizing";
+import { router } from "expo-router";
+import {
+  getChatContextPostPreview,
+  getContextPostRoute,
+  useChatContextPost,
+} from "../data/contextPost";
 
 type ChatMessageRowProps = {
   item: ChatMessageVM;
@@ -126,8 +133,10 @@ function ChatMessageRowInner({
   // container is never silently dropped.
   const hasReply = !!(item.reply_to_id && !showTombstone);
   const hasReplyData = hasReply && !!item.replyToMessage;
+  const contextPostId = showTombstone ? null : (item.context_post_id ?? null);
+  const hasQuoteBlock = hasReply || !!contextPostId;
   // Caption joins flush (square top corners) to what sits directly above it.
-  const captionJoinsAbove = hasImages ? !hasImageStrip : hasReply;
+  const captionJoinsAbove = hasImages ? !hasImageStrip : hasQuoteBlock;
   const replyDeleted =
     hasReplyData &&
     item.replyToMessage!.deleted_by_sender === true &&
@@ -247,10 +256,19 @@ function ChatMessageRowInner({
               paddingHorizontal: 0,
               paddingVertical: 0,
               overflow: "hidden" as const,
-              minWidth: hasReply ? REPLY_BLOCK_MIN_WIDTH : undefined,
+              minWidth: hasQuoteBlock ? REPLY_BLOCK_MIN_WIDTH : undefined,
             },
           ]}
         >
+          {contextPostId && (
+            <PostContextQuote
+              postId={contextPostId}
+              isCurrentUser={isCurrentUser}
+              isDark={isDark}
+              secondaryTextColor={theme.secondaryText}
+            />
+          )}
+
           {/* Reply quote — only present when hasReply is true */}
           {replyBlock}
 
@@ -499,6 +517,86 @@ function ChatMessageRowInner({
         </View>
       )}
     </>
+  );
+}
+
+/**
+ * The post a message was sent about, shown above it in the same style as a
+ * reply quote. Tapping it opens the post.
+ */
+function PostContextQuote({
+  postId,
+  isCurrentUser,
+  isDark,
+  secondaryTextColor,
+}: {
+  postId: string;
+  isCurrentUser: boolean;
+  isDark: boolean;
+  secondaryTextColor: string;
+}) {
+  const { data: post, isLoading } = useChatContextPost(postId);
+  const preview = getChatContextPostPreview(post, isLoading);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      style={[
+        replyQuoteStyles.container,
+        isCurrentUser
+          ? replyQuoteStyles.containerCurrentUser
+          : {
+              backgroundColor: isDark
+                ? "rgba(255,255,255,0.10)"
+                : "rgba(0,0,0,0.06)",
+            },
+      ]}
+      onPress={() => {
+        if (!post) return;
+        Keyboard.dismiss();
+        // Pushed on top of the chat with the detail screen's own transition,
+        // so closing it returns here.
+        router.push(getContextPostRoute(post) as any);
+      }}
+      disabled={!post}
+    >
+      <View
+        style={[
+          replyQuoteStyles.accentBar,
+          {
+            backgroundColor: isCurrentUser
+              ? "rgba(255,255,255,0.7)"
+              : "#2FC9C1",
+          },
+        ]}
+      />
+      <View style={replyQuoteStyles.textBlock}>
+        <Text
+          style={[
+            replyQuoteStyles.authorName,
+            { color: isCurrentUser ? "rgba(255,255,255,0.9)" : "#2FC9C1" },
+          ]}
+          numberOfLines={1}
+        >
+          {preview.label}
+        </Text>
+        <Text
+          style={[
+            replyQuoteStyles.contentSnippet,
+            {
+              color: isCurrentUser
+                ? "rgba(255,255,255,0.75)"
+                : secondaryTextColor,
+            },
+            post === null && { fontStyle: "italic" },
+          ]}
+          numberOfLines={3}
+          ellipsizeMode="tail"
+        >
+          {preview.text}
+        </Text>
+      </View>
+    </TouchableOpacity>
   );
 }
 

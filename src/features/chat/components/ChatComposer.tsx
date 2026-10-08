@@ -14,6 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import type { PickedChatImage, ReplyingToState } from "../types";
+import type { ChatContextPostPreview } from "../data/contextPost";
 import ResponsiveImage from "../../../components/ResponsiveImage";
 import { moderateScale, scale, verticalScale } from "../../../utils/scaling";
 
@@ -39,6 +40,9 @@ type ChatComposerProps = {
   /** Set when the user is composing a reply to a specific message. */
   replyingTo?: ReplyingToState | null;
   onCancelReply?: () => void;
+  /** Set when the chat was opened from a post: the next message is sent about it. */
+  postContext?: ChatContextPostPreview | null;
+  onCancelPostContext?: () => void;
   styles: {
     inputContainer: StyleProp<ViewStyle>;
     input: StyleProp<ViewStyle>;
@@ -70,6 +74,8 @@ export function ChatComposer({
   replyPreviewBorderColor = "#E5E7EB",
   replyingTo,
   onCancelReply,
+  postContext,
+  onCancelPostContext,
   styles: styleSet,
   paddingBottom = 0,
 }: ChatComposerProps) {
@@ -92,6 +98,50 @@ export function ChatComposer({
 
   return (
     <>
+      {/* Post preview strip */}
+      {postContext && (
+        <View
+          style={[
+            replyStyles.replyPreviewContainer,
+            {
+              backgroundColor: replyPreviewBg,
+              borderTopColor: replyPreviewBorderColor,
+            },
+          ]}
+        >
+          <View
+            style={[
+              replyStyles.replyAccentBar,
+              { backgroundColor: primaryColor },
+            ]}
+          />
+          <View style={replyStyles.replyTextBlock}>
+            <Text
+              style={[replyStyles.replySenderName, { color: primaryColor }]}
+              numberOfLines={1}
+            >
+              {postContext.label}
+            </Text>
+            <Text style={replyStyles.replyContentText} numberOfLines={1}>
+              {postContext.text.replace(/\n/g, " ")}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={onCancelPostContext}
+            style={replyStyles.replyCancelButton}
+            accessibilityLabel="Remove post"
+            hitSlop={{
+              top: verticalScale(8),
+              bottom: verticalScale(8),
+              left: scale(8),
+              right: scale(8),
+            }}
+          >
+            <Ionicons name="close" size={closeIconSize} color="#6B7280" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Reply preview strip */}
       {replyingTo && (
         <View

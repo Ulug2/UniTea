@@ -313,7 +313,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
 
       if (existingChat) {
         // Chat already exists, navigate to it
-        router.push(`/chat/${existingChat.id}`);
+        router.push(`/chat/${existingChat.id}?postId=${postId}`);
         return;
       }
 
@@ -355,7 +355,7 @@ const LostFoundListItem = React.memo(function LostFoundListItem({
       });
 
       // Navigate to chat
-      router.push(`/chat/${newChat.id}`);
+      router.push(`/chat/${newChat.id}?postId=${postId}`);
     } catch (error: any) {
       console.error("Error creating/finding chat:", error);
 

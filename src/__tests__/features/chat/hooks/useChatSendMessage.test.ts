@@ -202,6 +202,74 @@ describe('useChatSendMessage', () => {
     });
   });
 
+  describe('post context', () => {
+    const POST_ID = '11111111-2222-4333-8444-555555555555';
+
+    it('sends context_post_id and shows it on the optimistic message when the chat was opened from a post', async () => {
+      const insertChain = buildInsertChain({ data: fakeMessage, error: null });
+      mockFrom.mockReset();
+      mockFrom
+        .mockReturnValueOnce(insertChain)
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: null }));
+
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'is this still available?', contextPostId: POST_ID });
+      });
+
+      await waitFor(() => expect(insertChain.insert).toHaveBeenCalled());
+      expect(insertChain.insert.mock.calls[0][0].context_post_id).toBe(POST_ID);
+
+      const optimistic = mockAddOptimistic.mock.calls[0][2];
+      expect(optimistic.context_post_id).toBe(POST_ID);
+      expect(optimistic._clientPayload.contextPostId).toBe(POST_ID);
+    });
+
+    it('sends context_post_id for anonymous chats too', async () => {
+      const insertChain = buildInsertChain({ data: null, error: null });
+      mockFrom.mockReset();
+      mockFrom
+        .mockReturnValueOnce(insertChain)
+        .mockReturnValueOnce(buildInsertChain({ data: fakeMessage, error: null }));
+
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', true, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'hi', contextPostId: POST_ID });
+      });
+
+      await waitFor(() => expect(insertChain.insert).toHaveBeenCalled());
+      expect(insertChain.insert.mock.calls[0][0].context_post_id).toBe(POST_ID);
+    });
+
+    it('leaves the column out of the insert entirely for an ordinary message', async () => {
+      const insertChain = buildInsertChain({ data: fakeMessage, error: null });
+      mockFrom.mockReset();
+      mockFrom
+        .mockReturnValueOnce(insertChain)
+        .mockReturnValueOnce(buildInsertChain({ data: null, error: null }));
+
+      const opts = makeOptions();
+      const { result } = renderHook(() => useChatSendMessage('chat-1', 'u1', false, opts), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        await result.current.send({ text: 'hello' });
+      });
+
+      await waitFor(() => expect(insertChain.insert).toHaveBeenCalled());
+      expect(insertChain.insert.mock.calls[0][0]).not.toHaveProperty('context_post_id');
+    });
+  });
+
   describe('happy path — image message', () => {
     it('calls uploadImage first then inserts message with image_url', async () => {
       const opts = makeOptions();

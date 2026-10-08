@@ -87,6 +87,24 @@ describe("ChatComposer", () => {
     expect(onPickImage).not.toHaveBeenCalled();
   });
 
+  it("shows the post the next message is about and lets the user remove it", () => {
+    const onCancelPostContext = jest.fn();
+    renderComposer({
+      postContext: { label: "Lost & Found", text: "Lost: Keys\n[image]" },
+      onCancelPostContext,
+    });
+
+    expect(screen.getByText("Lost & Found")).toBeTruthy();
+    expect(screen.getByText("Lost: Keys [image]")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("Remove post"));
+    expect(onCancelPostContext).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows no post strip for an ordinary chat", () => {
+    renderComposer();
+    expect(screen.queryByLabelText("Remove post")).toBeNull();
+  });
+
   it("keeps the picker enabled below the limit", () => {
     const onPickImage = jest.fn();
     renderComposer({ selectedImages: [image(1)], onPickImage });

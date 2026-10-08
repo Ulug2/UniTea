@@ -165,6 +165,7 @@ export type Database = {
         Row: {
           chat_id: string
           content: string
+          context_post_id: string | null
           created_at: string | null
           deleted_by_receiver: boolean | null
           deleted_by_sender: boolean | null
@@ -179,6 +180,7 @@ export type Database = {
         Insert: {
           chat_id: string
           content: string
+          context_post_id?: string | null
           created_at?: string | null
           deleted_by_receiver?: boolean | null
           deleted_by_sender?: boolean | null
@@ -193,6 +195,7 @@ export type Database = {
         Update: {
           chat_id?: string
           content?: string
+          context_post_id?: string | null
           created_at?: string | null
           deleted_by_receiver?: boolean | null
           deleted_by_sender?: boolean | null
@@ -1011,6 +1014,7 @@ export type Database = {
           is_edited: boolean | null
           location: string | null
           post_type: string
+          price: number | null
           repost_comment: string | null
           reposted_from_post_id: string | null
           title: string | null
@@ -1034,6 +1038,7 @@ export type Database = {
           is_edited?: boolean | null
           location?: string | null
           post_type: string
+          price?: number | null
           repost_comment?: string | null
           reposted_from_post_id?: string | null
           title?: string | null
@@ -1057,6 +1062,7 @@ export type Database = {
           is_edited?: boolean | null
           location?: string | null
           post_type?: string
+          price?: number | null
           repost_comment?: string | null
           reposted_from_post_id?: string | null
           title?: string | null
@@ -1388,6 +1394,7 @@ export type Database = {
         Row: {
           chat_id: string | null
           content: string | null
+          context_post_id: string | null
           created_at: string | null
           deleted_by_receiver: boolean | null
           deleted_by_sender: boolean | null
@@ -1583,6 +1590,7 @@ export type Database = {
           original_user_id: string | null
           post_id: string | null
           post_type: string | null
+          price: number | null
           repost_comment: string | null
           repost_count: number | null
           reposted_from_post_id: string | null
@@ -1745,6 +1753,7 @@ export type Database = {
         Returns: number
       }
       count_today_dau: { Args: { p_since: string }; Returns: number }
+      count_verified_users: { Args: never; Returns: number }
       delete_anonymous_chat: { Args: { p_chat_id: string }; Returns: undefined }
       delete_user_account: { Args: never; Returns: undefined }
       generate_random_username: { Args: never; Returns: string }

@@ -24,7 +24,18 @@ jest.mock('../../../../components/ResponsiveImage', () => {
   };
 });
 
+jest.mock('../../../../lib/supabase', () => ({
+  supabase: { from: jest.fn() },
+}));
+jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('../../../../features/chat/data/contextPost', () => ({
+  ...jest.requireActual('../../../../features/chat/data/contextPost'),
+  useChatContextPost: jest.fn(),
+}));
+
 import React from 'react';
+import { router } from 'expo-router';
+import { useChatContextPost } from '../../../../features/chat/data/contextPost';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { ChatMessageRow } from '../../../../features/chat/components/ChatMessageRow';
 import type { ChatMessageVM } from '../../../../features/chat/types';
@@ -387,5 +398,72 @@ describe('ChatMessageRow — multi-image messages', () => {
       />,
     );
     expect(screen.queryAllByTestId('responsive-image')).toHaveLength(0);
+  });
+});
+
+describe('ChatMessageRow — post the message was sent about', () => {
+  const POST_ID = '11111111-2222-4333-8444-555555555555';
+  const mockUseChatContextPost = useChatContextPost as jest.Mock;
+  const feedPost = {
+    post_id: POST_ID,
+    title: 'Selling my bike',
+    content: 'Barely used',
+    post_type: 'feed',
+    category: null,
+    has_image: true,
+  };
+
+  it('shows the post above the message, with an [image] placeholder instead of the image', () => {
+    mockUseChatContextPost.mockReturnValue({ data: feedPost, isLoading: false });
+    const item = makeMessage({ content: 'Is it still available?', context_post_id: POST_ID });
+
+    render(<ChatMessageRow item={item} {...defaultProps} />);
+
+    expect(mockUseChatContextPost).toHaveBeenCalledWith(POST_ID);
+    expect(screen.getByText('Selling my bike\nBarely used\n[image]')).toBeTruthy();
+    expect(screen.getByText('Is it still available?')).toBeTruthy();
+    expect(screen.queryByTestId('responsive-image')).toBeNull();
+  });
+
+  it('opens the post detail screen when tapped', () => {
+    mockUseChatContextPost.mockReturnValue({ data: feedPost, isLoading: false });
+    const item = makeMessage({ content: 'hi', context_post_id: POST_ID });
+
+    render(<ChatMessageRow item={item} {...defaultProps} />);
+    fireEvent.press(screen.getByText('Post'));
+
+    expect(router.push).toHaveBeenCalledWith(`/post/${POST_ID}`);
+  });
+
+  it('opens Lost & Found posts on their own detail screen', () => {
+    mockUseChatContextPost.mockReturnValue({
+      data: { ...feedPost, post_type: 'lost_found', category: 'found', title: 'Wallet' },
+      isLoading: false,
+    });
+    const item = makeMessage({ content: 'hi', context_post_id: POST_ID });
+
+    render(<ChatMessageRow item={item} {...defaultProps} />);
+    fireEvent.press(screen.getByText('Lost & Found'));
+
+    expect(router.push).toHaveBeenCalledWith(`/lostfoundpost/${POST_ID}`);
+  });
+
+  it('shows "Post unavailable" and does not navigate when the post is gone', () => {
+    mockUseChatContextPost.mockReturnValue({ data: null, isLoading: false });
+    const item = makeMessage({ content: 'hi', context_post_id: POST_ID });
+
+    render(<ChatMessageRow item={item} {...defaultProps} />);
+    fireEvent.press(screen.getByText('Post unavailable'));
+
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('renders ordinary messages (no post) exactly as before', () => {
+    const item = makeMessage({ content: 'plain message' });
+
+    render(<ChatMessageRow item={item} {...defaultProps} />);
+
+    expect(mockUseChatContextPost).not.toHaveBeenCalled();
+    expect(screen.getByText('plain message')).toBeTruthy();
   });
 });
